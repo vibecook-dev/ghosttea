@@ -43,6 +43,7 @@ import { configuredBindingsForPlatform, type GhosttyBindingEntry } from "../bind
 import type { WorkspaceEffect } from "./hotkeys.js";
 import { PendingPromiseCache } from "./pending-cache.js";
 import { sessionsToClaim } from "./session-scope.js";
+import { createPaneFocusScheduler } from "./pane-focus.js";
 import { decodeWorkspaceDocument } from "./workspace-model.js";
 
 const DEFAULT_STORAGE_KEY = "ghosttea:workspace:v1";
@@ -762,15 +763,26 @@ export function GhostteaWorkspace({
     };
   }, []);
 
-  const activatePane = useCallback((paneId: string): void => {
-    setActivePaneId(paneId);
-    window.requestAnimationFrame(() => {
-      const target = Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>("[data-pane-id]") ?? []).find(
-        (element) => element.dataset.paneId === paneId,
-      );
-      target?.querySelector<HTMLTextAreaElement>(".terminal-input")?.focus({ preventScroll: true });
-    });
+  const focusPane = useCallback((paneId: string): void => {
+    const target = Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>("[data-pane-id]") ?? []).find(
+      (element) => element.dataset.paneId === paneId,
+    );
+    target?.querySelector<HTMLTextAreaElement>(".terminal-input")?.focus({ preventScroll: true });
   }, []);
+  const [paneFocus] = useState(() => createPaneFocusScheduler(window));
+  useEffect(() => paneFocus.cancel, [paneFocus]);
+  useEffect(() => {
+    if (!active) paneFocus.cancel();
+  }, [active, paneFocus]);
+
+  const activatePane = useCallback(
+    (paneId: string): void => {
+      activePaneIdRef.current = paneId;
+      setActivePaneId(paneId);
+      paneFocus.request(paneId, focusPane);
+    },
+    [focusPane, paneFocus],
+  );
 
   const activateSession = useCallback(
     (sessionId: string): void => {
