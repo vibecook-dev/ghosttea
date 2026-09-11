@@ -8,6 +8,9 @@ import {
   pane,
   persistedWorkspace,
   restoreNode,
+  updateSplit,
+  type PaneNode,
+  type SplitAxis,
 } from "./pane-layout";
 
 function session(id: string): SessionSummary {
@@ -33,6 +36,85 @@ function session(id: string): SessionSummary {
     activity: unknownSessionActivity(),
   };
 }
+
+function paneSizes(node: PaneNode, width = 1, height = 1): { id: string; width: number; height: number }[] {
+  if (node.kind === "pane") return [{ id: node.id, width, height }];
+  return node.axis === "horizontal"
+    ? [
+        ...paneSizes(node.first, width * node.ratio, height),
+        ...paneSizes(node.second, width * (1 - node.ratio), height),
+      ]
+    : [
+        ...paneSizes(node.first, width, height * node.ratio),
+        ...paneSizes(node.second, width, height * (1 - node.ratio)),
+      ];
+}
+
+describe("equal split sizing", () => {
+  it("keeps halving the focused pane by default", () => {
+    const two = insertPane(pane("one", session("one")), pane("two", session("two")), "one", "horizontal", "split-1");
+    const three = insertPane(two, pane("three", session("three")), "two", "horizontal", "split-2");
+    expect(paneSizes(three).map(({ width }) => width)).toEqual([0.5, 0.25, 0.25]);
+  });
+
+  it.each<SplitAxis>(["horizontal", "vertical"])("makes repeated %s splits equal from any focused pane", (axis) => {
+    for (const target of ["one", "two"]) {
+      const two = insertPane(pane("one", session("one")), pane("two", session("two")), "one", axis, "split-1", "equal");
+      const three = insertPane(two, pane("three", session("three")), target, axis, "split-2", "equal");
+      const dimension = axis === "horizontal" ? "width" : "height";
+      for (const size of paneSizes(three)) expect(size[dimension]).toBeCloseTo(1 / 3);
+      expect(leaves(three).map(({ id }) => id)).toEqual(
+        target === "one" ? ["one", "three", "two"] : ["one", "two", "three"],
+      );
+      for (const fourthTarget of ["one", "two", "three"]) {
+        const four = insertPane(three, pane("four", session("four")), fourthTarget, axis, "split-3", "equal");
+        for (const size of paneSizes(four)) expect(size[dimension]).toBeCloseTo(1 / 4);
+      }
+    }
+  });
+
+  it("redistributes a manually resized row when a pane is added", () => {
+    const two = insertPane(pane("one", session("one")), pane("two", session("two")), "one", "horizontal", "split-1");
+    const resized = updateSplit(two, "split-1", (split) => ({ ...split, ratio: 0.7 }));
+    const three = insertPane(resized, pane("three", session("three")), "two", "horizontal", "split-2", "equal");
+    for (const { width } of paneSizes(three)) expect(width).toBeCloseTo(1 / 3);
+  });
+
+  it("keeps perpendicular groups together and leaves other rows unchanged", () => {
+    const stack = insertPane(pane("one", session("one")), pane("two", session("two")), "one", "vertical", "stack");
+    const topRow = insertPane(stack, pane("three", session("three")), "one", "horizontal", "row");
+    const topStack = insertPane(topRow, pane("four", session("four")), "one", "vertical", "inner-stack");
+    const resized = updateSplit(
+      updateSplit(topStack, "stack", (split) => ({ ...split, ratio: 0.6 })),
+      "inner-stack",
+      (split) => ({ ...split, ratio: 0.7 }),
+    );
+    const result = insertPane(resized, pane("five", session("five")), "three", "horizontal", "new-split", "equal");
+    const sizes = new Map(paneSizes(result).map((size) => [size.id, size]));
+    for (const id of ["one", "three", "four", "five"]) expect(sizes.get(id)?.width).toBeCloseTo(1 / 3);
+    expect(sizes.get("one")?.height).toBeCloseTo(0.6 * 0.7);
+    expect(sizes.get("four")?.height).toBeCloseTo(0.6 * 0.3);
+    expect(sizes.get("three")?.height).toBeCloseTo(0.6);
+    expect(sizes.get("five")?.height).toBeCloseTo(0.6);
+    expect(sizes.get("two")).toEqual({ id: "two", width: 1, height: 0.4 });
+  });
+
+  it("preserves equal widths through workspace persistence and restoration", () => {
+    const two = insertPane(
+      pane("one", session("one")),
+      pane("two", session("two")),
+      "one",
+      "horizontal",
+      "split-1",
+      "equal",
+    );
+    const three = insertPane(two, pane("three", session("three")), "two", "horizontal", "split-2", "equal");
+    const saved = persistedWorkspace(three, "three", null);
+    const restored = restoreNode(saved.root, new Map(leaves(three).map(({ session }) => [session.id, session])));
+    expect(restored).toEqual(three);
+    for (const { width } of paneSizes(restored!)) expect(width).toBeCloseTo(1 / 3);
+  });
+});
 
 describe("insertPane", () => {
   it("composes synchronous session additions without losing either pane", () => {

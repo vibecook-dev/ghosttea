@@ -37,6 +37,7 @@ import {
   updateSplit,
   type PaneNode,
   type SplitAxis,
+  type SplitSizing,
 } from "./pane-layout.js";
 import { resolveKeyEvent, routeConsumesInput } from "../bindings/action-route.js";
 import { configuredBindingsForPlatform, type GhosttyBindingEntry } from "../bindings/ghostty-bindings.js";
@@ -172,6 +173,8 @@ export interface GhostteaWorkspaceProps {
   onPaneClose?: ((context: GhostteaPaneClose) => void) | undefined;
   onActiveSessionChange?: (session: SessionSummary | undefined) => void;
   createSplitSession?: (activeSession: SessionSummary, axis: SplitAxis) => Promise<SessionSummary>;
+  /** Size new splits by halving the active pane (default) or equalizing its row/column. */
+  splitSizing?: SplitSizing;
   enableRemoteSessions?: boolean;
   active?: boolean;
   showTitlebar?: boolean;
@@ -616,6 +619,7 @@ export function GhostteaWorkspace({
   onPaneClose,
   onActiveSessionChange,
   createSplitSession,
+  splitSizing = "halves",
   enableRemoteSessions = true,
   active = true,
   showTitlebar = true,
@@ -819,7 +823,7 @@ export function GhostteaWorkspace({
         return;
       }
       const next = pane(layoutId("pane"), session);
-      const updated = insertPane(current, next, activePaneIdRef.current, axis, layoutId("split"));
+      const updated = insertPane(current, next, activePaneIdRef.current, axis, layoutId("split"), splitSizing);
       // Commit the ref synchronously so multiple agent/session callbacks in
       // one React turn compose instead of each splitting the same stale tree.
       layoutRef.current = updated;
@@ -828,7 +832,7 @@ export function GhostteaWorkspace({
       setOperationError(undefined);
       activatePane(next.id);
     },
-    [activatePane, terminalRuntime],
+    [activatePane, splitSizing, terminalRuntime],
   );
 
   const newSplit = useCallback(

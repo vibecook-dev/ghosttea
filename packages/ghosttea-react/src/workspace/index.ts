@@ -70,6 +70,7 @@ export {
   type PaneNode,
   type PaneSplit,
   type SplitAxis,
+  type SplitSizing,
 } from "./pane-layout.js";
 export {
   WORKSPACE_SCHEMA_VERSION,
