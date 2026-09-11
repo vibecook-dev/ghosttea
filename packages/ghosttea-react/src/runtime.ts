@@ -2118,6 +2118,28 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#routedGeometry.delete(sessionId);
   }
 
+  /**
+   * Detach one of our views and let the seat go with it.
+   *
+   * The daemon clears the resize controller when its holder detaches, but a
+   * local session announces control only through the legacy `control-changed`
+   * frame, which cannot say "no controller": the clear never reaches this
+   * client, and a pane that remounts (a split re-parents its surface) would
+   * see its own previous incarnation on the record forever and never claim.
+   * Our own detach is the one clear this client can predict, so the record is
+   * cleared here at the same revision and the session's remaining views get
+   * their one look at the empty seat (§4.2.3).
+   */
+  #detachView(sessionId: string, viewId: string): void {
+    this.#control?.notify({ type: "detach-session", sessionId, viewId });
+    const control = this.#controlBySession.get(sessionId);
+    if (!control?.controller || control.controller.viewId !== viewId) return;
+    this.#controlBySession.set(sessionId, { controller: null, revision: control.revision });
+    for (const other of this.#viewIdsForSession(sessionId)) {
+      if (other !== viewId) this.#maybeReclaim(other);
+    }
+  }
+
   #createMountLease(mounted: MountedCanvas): TerminalMount {
     let disposed = false;
     return {
@@ -2138,8 +2160,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
             this.#postWorker({ type: "unmount", surfaceId: mounted.viewId });
             this.#mountGenerationBySurface.delete(mounted.viewId);
             if (this.#routedHost) this.#releaseRoutedView(mounted.sessionId, mounted.viewId);
-            else
-              this.#control?.notify({ type: "detach-session", sessionId: mounted.sessionId, viewId: mounted.viewId });
+            else this.#detachView(mounted.sessionId, mounted.viewId);
             this.#views.delete(mounted.viewId);
             this.#focusByView.delete(mounted.viewId);
           }
@@ -2859,8 +2880,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       if (ownsWorkerSurface) {
         this.#postWorker({ type: "unmount", surfaceId: mounted.viewId });
         this.#mountGenerationBySurface.delete(mounted.viewId);
-        if (detachViews)
-          this.#control?.notify({ type: "detach-session", sessionId: mounted.sessionId, viewId: mounted.viewId });
+        if (detachViews) this.#detachView(mounted.sessionId, mounted.viewId);
         this.#views.delete(mounted.viewId);
         this.#focusByView.delete(mounted.viewId);
       }
@@ -2870,7 +2890,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     for (const [viewId, view] of this.#views) {
       if (view.sessionId === sessionId) {
         view.pendingInput.length = 0;
-        if (detachViews) this.#control?.notify({ type: "detach-session", sessionId, viewId });
+        if (detachViews) this.#detachView(sessionId, viewId);
         this.#views.delete(viewId);
         this.#focusByView.delete(viewId);
       }

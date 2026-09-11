@@ -1323,6 +1323,62 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     runtime.dispose();
   });
 
+  it("lets a remounted pane reclaim the seat its previous incarnation held", async () => {
+    // A split re-parents the active pane, so React remounts its surface: the
+    // old view detaches while the record still names it, and a local session's
+    // legacy control-changed frame can never say "no controller". The detach
+    // itself must clear the seat here, or the new view waits forever.
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    const claims = (): Record<string, unknown>[] =>
+      control.messages.filter((message) => message.type === "focus-and-resize");
+
+    const first = runtime.mount(session.id, session.handle, "view-1", canvas());
+    await flushMicrotasks();
+    runtime.claimResizeControl(session.handle, "view-1", 80, 24);
+    expect(claims()).toHaveLength(1);
+    controlChanged(control, "view-1", 80, 24);
+
+    // The remount: the successor attaches and asks while the record still names view-1.
+    runtime.mount(session.id, session.handle, "view-2", canvas());
+    await flushMicrotasks();
+    runtime.claimResizeControl(session.handle, "view-2", 60, 18);
+    expect(claims()).toHaveLength(1);
+
+    // The old view goes; nothing arrives from the daemon about the seat.
+    first.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushMicrotasks();
+
+    expect(control.messages.filter((message) => message.type === "detach-session")).toMatchObject([
+      { sessionId: session.id, viewId: "view-1" },
+    ]);
+    expect(claims()).toHaveLength(2);
+    expect(claims().at(-1)).toMatchObject({ viewId: "view-2", cols: 60, rows: 18 });
+
+    // Once the daemon seats the successor, its geometry flows again.
+    controlChanged(control, "view-2", 60, 18);
+    runtime.resize(session.id, "view-2", 50, 16);
+    expect(control.messages.filter((message) => message.type === "resize").at(-1)).toMatchObject({
+      viewId: "view-2",
+      cols: 50,
+      rows: 16,
+    });
+    runtime.dispose();
+  });
+
   it("never turns focus into a geometry claim", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();
