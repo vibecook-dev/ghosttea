@@ -3,6 +3,7 @@
 
 import {
   decodeClipboardWrite,
+  decodeLinkTargets,
   decodeCursorState,
   decodeFrame,
   decodeGlyphDefinitions,
@@ -58,6 +59,7 @@ interface SessionSnapshot {
   awaitingResync: boolean;
   catalogFallback: boolean;
   scrollbar: TerminalScrollbarState | null;
+  linkSignature: string;
 }
 
 interface SurfaceSnapshot {
@@ -341,6 +343,7 @@ function emptySessionSnapshot(): SessionSnapshot {
     awaitingResync: false,
     catalogFallback: false,
     scrollbar: null,
+    linkSignature: "",
   };
 }
 
@@ -829,6 +832,8 @@ function applyFrame(
   for (const replacement of replacements) {
     if (replacement.row >= frame.rows) throw new RangeError("Row replacement exceeds viewport");
   }
+  const linkSection = frame.sections.find((candidate) => candidate.kind === SectionKind.LinkTargets);
+  const links = linkSection ? decodeLinkTargets(linkSection, frame.cols, frame.rows) : [];
   const nextCursor = decodeCursorState(cursorSection);
   const clipboardText = clipboardSection ? decodeClipboardWrite(clipboardSection) : undefined;
   let scrollbar: TerminalScrollbarState | undefined;
@@ -981,6 +986,11 @@ function applyFrame(
   if (replacingScene) {
     snapshots.set(id, previous);
     if (installedScene) clearSessionCatalog(installedScene);
+  }
+  const linkSignature = JSON.stringify(links);
+  if (previous.linkSignature !== linkSignature || changedSession || completingResync) {
+    previous.linkSignature = linkSignature;
+    postToRenderer({ type: "link-targets", sessionHandle: id, links });
   }
   if (clipboardText !== undefined) postToRenderer({ type: "clipboard-write", text: clipboardText });
   if (scrollbarChanged && scrollbar) postToRenderer({ type: "scrollbar-state", sessionHandle: id, scrollbar });

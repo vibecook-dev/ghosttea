@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { createGhostteaClipboardBridge } from "@vibecook/ghosttea-electron/preload";
+import { createGhostteaClipboardBridge, createGhostteaLinkBridge } from "@vibecook/ghosttea-electron/preload";
 import type { RendererPortBootstrapMessage } from "@vibecook/ghosttea-electron/types";
 
 console.info("[terminal-runtime] preload ready");
@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("desktop", {
   initialCwd,
   defaultShell:
     process.platform === "win32" ? (process.env.COMSPEC ?? "powershell.exe") : (process.env.SHELL ?? "/bin/zsh"),
+  openExternal: createGhostteaLinkBridge(ipcRenderer).openExternal,
   writeClipboard: clipboardBridge.writeText,
   readClipboard: clipboardBridge.readText,
   setTerminalCanCopy: clipboardBridge.setCanCopy,

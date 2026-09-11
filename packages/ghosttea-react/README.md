@@ -9,6 +9,27 @@ paths. Create one runtime per renderer window, provide it through
 
 Import `@vibecook/ghosttea-react/styles.css` once in the renderer entrypoint.
 
+## Terminal links
+
+Provide `platform.openExternal(url)` to enable Command-hover/click on macOS
+and Ctrl-hover/click elsewhere. Links are underlined per pane, and a successful
+click is consumed before TUI mouse reporting. Modifier release, window blur,
+dragging, and changing terminal output cancel an in-progress link click. The
+underline overlay works with both WebGPU and Canvas rendering.
+
+The updated daemon supplies plain URL matches and explicit OSC 8 destinations,
+including cell ranges for wrapped links and Unicode text. `link-url = false`
+disables plain URL matches while retaining OSC 8. Built-in opening accepts
+HTTP, HTTPS, mailto, FTP and FTPS destinations. No interaction is enabled when
+the host omits the callback or the frame producer lacks link metadata (including
+legacy logical replicas).
+
+Electron hosts use `installGhostteaLinkHost(ipcMain, shell, isTrusted)` from
+`@vibecook/ghosttea-electron/main` and expose
+`createGhostteaLinkBridge(ipcRenderer).openExternal` from the preload. The trust
+callback should admit only the app's terminal renderer URL; the helper also
+rejects subframe senders and validates URL schemes in the main process.
+
 ## Routed terminal transport
 
 The additive `transport: "routed"` mode connects one control WebSocket and one

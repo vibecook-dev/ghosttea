@@ -19,3 +19,5 @@ export {
 } from "./edit-commands.js";
 export { TerminalSupervisor, type GhostteaBinary, type TerminalSupervisorOptions } from "./supervisor.js";
 export type { TerminalDaemonConnection } from "./types.js";
+
+export { installGhostteaLinkHost } from "./links.js";

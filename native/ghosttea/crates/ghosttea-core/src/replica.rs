@@ -334,6 +334,7 @@ impl LogicalReplicaModel {
             new_glyph_definitions: &[],
             clipboard: None,
             cursor: &cursor,
+            links: None,
         });
         match result {
             Ok(frame) => {
@@ -479,6 +480,7 @@ impl LogicalReplicaModel {
             new_glyph_definitions: &definitions,
             clipboard: None,
             cursor: &cursor,
+            links: None,
         });
         self.render_performance.sequence = self.render_performance.sequence.saturating_add(1);
         self.render_performance.row_prepare_nanoseconds = duration_nanoseconds(prepare_duration);

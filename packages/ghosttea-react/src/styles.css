@@ -73,3 +73,16 @@
   width: 9px;
   background: color-mix(in srgb, currentColor 68%, transparent);
 }
+
+.terminal-link-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.terminal-link-overlay > span {
+  position: absolute;
+  height: 1px;
+}

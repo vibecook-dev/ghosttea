@@ -227,9 +227,15 @@ pub struct PaletteConfigEntry {
     pub color: [u8; 3],
 }
 
+fn default_link_url() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RendererConfig {
+    #[serde(default = "default_link_url")]
+    pub link_url: bool,
     pub foreground: [u8; 3],
     pub background: [u8; 3],
     pub cursor: [u8; 3],
@@ -501,6 +507,7 @@ pub struct ConfigDocumentUpdate {
 impl Default for ConfigSnapshot {
     fn default() -> Self {
         let renderer = RendererConfig {
+            link_url: true,
             foreground: DEFAULT_FOREGROUND,
             background: DEFAULT_BACKGROUND,
             cursor: DEFAULT_FOREGROUND,
@@ -1452,6 +1459,21 @@ fn project(mut state: LoadState) -> ConfigSnapshot {
             )),
         }
     }
+    for setting in scalars.iter().filter(|setting| setting.key == "link-url") {
+        if setting.value.is_empty() {
+            snapshot.renderer.link_url = true;
+            continue;
+        }
+        match parse_bool(&setting.value) {
+            Some(value) => snapshot.renderer.link_url = value,
+            None => state.diagnostics.push(diagnostic_at(
+                DiagnosticSeverity::Error,
+                "invalid-value",
+                "`link-url` must be `true` or `false`".to_owned(),
+                setting,
+            )),
+        }
+    }
     for setting in scalars
         .iter()
         .filter(|setting| setting.key == "scrollback-limit")
@@ -1927,7 +1949,8 @@ fn known_keys() -> BTreeSet<&'static str> {
 
 fn support_for_key(key: &str) -> ConfigSupport {
     match key {
-        "background"
+        "link-url"
+        | "background"
         | "background-opacity"
         | "background-opacity-cells"
         | "foreground"
@@ -3015,5 +3038,25 @@ mod tests {
         let (next, changed) = manager.reload();
         assert!(changed);
         assert_ne!(first.revision, next.revision);
+    }
+    #[test]
+    fn link_url_defaults_on_and_reports_applied_configuration() {
+        let temporary = TempDir::new().unwrap();
+        let config = temporary.path().join("config");
+        write(&config, "link-url = false\n");
+        let snapshot = load_config(&ConfigLoadOptions::explicit(&config));
+        assert!(!snapshot.renderer.link_url);
+        assert!(
+            snapshot
+                .configured_keys
+                .iter()
+                .any(|key| key.key == "link-url" && key.support == ConfigSupport::Applied)
+        );
+        write(&config, "link-url = false\nlink-url =\n");
+        assert!(
+            load_config(&ConfigLoadOptions::explicit(&config))
+                .renderer
+                .link_url
+        );
     }
 }

@@ -4,6 +4,7 @@ mod authority;
 mod effects;
 pub mod frame;
 mod input_order;
+pub mod links;
 mod logical;
 mod model;
 mod replica;

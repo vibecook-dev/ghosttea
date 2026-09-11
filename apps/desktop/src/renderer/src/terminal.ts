@@ -5,6 +5,7 @@ export const terminalRuntime = createGhostteaTerminalRuntime({
   clientBuild: "ghosttea-desktop",
   sessionOwnerId: window.desktop.tabId,
   platform: {
+    openExternal: (url) => window.desktop.openExternal(url),
     writeClipboard: (text) => window.desktop.writeClipboard(text),
     forceCanvasFallback: () => sessionStorage.getItem("ghosttea:force-canvas-fallback") === "1",
     setForceCanvasFallback: (enabled) => {

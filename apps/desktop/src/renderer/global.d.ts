@@ -10,6 +10,7 @@ declare global {
       claimExistingSessions: boolean;
       initialCwd?: string;
       defaultShell: string;
+      openExternal: (url: string) => Promise<void>;
       writeClipboard: (text: string) => void;
       readClipboard: () => Promise<string>;
       setTerminalCanCopy: (canCopy: boolean) => void;

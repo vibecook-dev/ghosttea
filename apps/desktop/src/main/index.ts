@@ -9,6 +9,7 @@ import {
   GhostteaElectronBackend,
   GhostteaConfigDocumentConflictError,
   installGhostteaClipboardHost,
+  installGhostteaLinkHost,
   installGhostteaEditShortcuts,
   type GhostteaElectronBackendOptions,
 } from "@vibecook/ghosttea-electron/main";
@@ -63,6 +64,7 @@ const ownsProfile = app.requestSingleInstanceLock({ profile: profile.name });
 if (!ownsProfile) app.quit();
 
 const clipboardHost = installGhostteaClipboardHost(ipcMain, clipboard);
+installGhostteaLinkHost(ipcMain, shell, (sender) => trustedManagedConfigEditorSender(sender, sender.mainFrame));
 
 ipcMain.on("terminal-context-menu", (event, canCopy: boolean) => {
   const window = BrowserWindow.fromWebContents(event.sender);

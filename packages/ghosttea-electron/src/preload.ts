@@ -9,3 +9,5 @@ export function forwardGhostteaRendererPorts(ipcRenderer: IpcRenderer, channel =
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);
 }
+
+export { createGhostteaLinkBridge } from "./links.js";

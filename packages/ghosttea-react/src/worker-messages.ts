@@ -1,3 +1,4 @@
+import type { TerminalLink } from "@vibecook/ghosttea-frame";
 import type { CellSelection, TerminalEffects, TerminalTheme } from "./renderers/types.js";
 import type { TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import type { TerminalRenderCounterSnapshot, TerminalRenderPerformanceSnapshot } from "./performance.js";
@@ -30,6 +31,7 @@ export type RendererToWorkerMessage =
   | { type: "routed-frames-detach"; activationId: string };
 
 export type WorkerToRendererMessage =
+  | { type: "link-targets"; sessionHandle: string; links: TerminalLink[] }
   | { type: "renderer-status"; backend: string; textEngine?: string; recovered?: boolean }
   | { type: "clipboard-write"; text: string }
   | { type: "scrollbar-state"; sessionHandle: string; scrollbar: TerminalScrollbarState }

@@ -602,6 +602,11 @@ impl TerminalModel {
             new_glyph_definitions: &new_definitions,
             clipboard: snapshot.clipboard.as_deref(),
             cursor: &cursor,
+            links: Some(&crate::links::terminal_links(
+                &snapshot.cells,
+                &snapshot.row_metadata,
+                &snapshot.hyperlinks,
+            )),
         })
     }
 }

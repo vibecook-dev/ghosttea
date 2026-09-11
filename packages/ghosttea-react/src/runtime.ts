@@ -1,3 +1,5 @@
+import type { TerminalLink } from "@vibecook/ghosttea-frame";
+import { terminalLinkUrl } from "@vibecook/ghosttea-protocol";
 import { ControlClient } from "@vibecook/ghosttea";
 import {
   DEFAULT_ROUTED_PROTOCOL_LIMITS,
@@ -55,6 +57,8 @@ export interface GhostteaRendererPorts {
 
 export interface GhostteaRendererPlatform {
   writeClipboard(text: string): void;
+  /** Open a user-clicked URL in the host. Omit to disable link interaction. */
+  openExternal?(url: string): void | Promise<void>;
   forceCanvasFallback(): boolean;
   setForceCanvasFallback(enabled: boolean): void;
   reload(): void;
@@ -368,6 +372,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     number,
     { resolve: (value: TerminalRenderCounterSnapshot) => void; reject: (error: Error) => void; timer: number }
   >();
+  readonly #linksByHandle = new Map<string, TerminalLink[]>();
   #disposed = false;
 
   constructor(options: GhostteaTerminalRuntimeOptions) {
@@ -417,6 +422,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.dispatchEvent(new CustomEvent("renderer-status", { detail: data }));
       } else if (data.type === "clipboard-write") {
         this.#platform.writeClipboard(data.text);
+      } else if (data.type === "link-targets") {
+        this.#linksByHandle.set(
+          data.sessionHandle,
+          data.links.filter((link) => terminalLinkUrl(link.uri) !== null),
+        );
+        this.dispatchEvent(new CustomEvent("link-targets", { detail: { sessionHandle: data.sessionHandle } }));
       } else if (data.type === "scrollbar-state") {
         this.#scrollbarByHandle.set(data.sessionHandle, data.scrollbar);
         this.dispatchEvent(
@@ -2658,6 +2669,19 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#postWorker({ type: "effects", sessionHandle, ...(surfaceId ? { surfaceId } : {}), effects });
   }
 
+  links(sessionHandle: string): readonly TerminalLink[] {
+    return this.#platform.openExternal
+      ? (this.#linksByHandle.get(sessionHandle) ?? []).filter(
+          (link) => link.explicit || this.#configSnapshot?.renderer.linkUrl !== false,
+        )
+      : [];
+  }
+
+  async openLink(uri: string): Promise<void> {
+    const url = terminalLinkUrl(uri);
+    if (url) await this.#platform.openExternal?.(url);
+  }
+
   setSelection(sessionHandle: string, selection: CellSelection | null, surfaceId?: string): void {
     this.#postWorker({ type: "selection", sessionHandle, ...(surfaceId ? { surfaceId } : {}), selection });
   }
@@ -2869,6 +2893,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#sessionMountReferences.delete(handle);
     const subscriptionChanged = this.#subscribedSessionHandles.delete(handle);
     this.#cancelMetadataRefresh(handle);
+    this.#linksByHandle.delete(handle);
     this.#mouseTrackingByHandle.delete(handle);
     this.#scrollbarByHandle.delete(handle);
     for (const mounted of [...this.#mountedEntries]) {
@@ -2995,6 +3020,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#recoveredSessions.clear();
     this.#focusByView.clear();
     this.#mountGenerationBySurface.clear();
+    this.#linksByHandle.clear();
     this.#mouseTrackingByHandle.clear();
     this.#scrollbarByHandle.clear();
     this.#subscribedSessionHandles.clear();
