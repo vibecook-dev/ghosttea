@@ -46,6 +46,19 @@ contextBridge.exposeInMainWorld("desktop", {
   closeAllWindows: () => ipcRenderer.send("terminal-close-all-windows"),
   openConfig: () => ipcRenderer.send("terminal-open-config"),
   reloadConfig: () => ipcRenderer.send("terminal-reload-config"),
+  ...(process.platform === "darwin"
+    ? {
+        backdropBlur: {
+          load: () => ipcRenderer.invoke("terminal-backdrop-blur-load") as Promise<boolean>,
+          save: (enabled: boolean) => ipcRenderer.invoke("terminal-backdrop-blur-save", enabled) as Promise<boolean>,
+          subscribe: (listener: (enabled: boolean) => void) => {
+            const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void => listener(enabled);
+            ipcRenderer.on("terminal-backdrop-blur-changed", handler);
+            return () => ipcRenderer.removeListener("terminal-backdrop-blur-changed", handler);
+          },
+        },
+      }
+    : {}),
   ...(managedConfigEditor
     ? {
         saveAppearance: (update: unknown) => ipcRenderer.invoke("terminal-save-appearance", update) as Promise<void>,

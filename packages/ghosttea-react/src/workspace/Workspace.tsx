@@ -12,7 +12,11 @@ import type { ConfigSnapshot, SessionSummary } from "@vibecook/ghosttea-protocol
 import { TerminalSurface, type TerminalMenuAction } from "../TerminalSurface.js";
 import { DEFAULT_EFFECTS, type TerminalEffects, type TerminalTheme } from "../renderers/types.js";
 import { AppearanceSettings } from "../appearance/AppearanceSettings.js";
-import type { GhostteaAppearanceUpdate, GhostteaConfigEditorBridge } from "../appearance/types.js";
+import type {
+  GhostteaAppearanceUpdate,
+  GhostteaBackdropBlurBridge,
+  GhostteaConfigEditorBridge,
+} from "../appearance/types.js";
 import { useGhostteaRuntime } from "../context.js";
 import { terminalEffectsFromConfig, terminalThemeFromConfig } from "../config.js";
 import { RemoteSessionPalette, type RemoteChoice } from "./RemoteSessionPalette.js";
@@ -85,6 +89,7 @@ export interface GhostteaWorkspacePlatform {
   saveAppearance?: (update: GhostteaAppearanceUpdate) => Promise<void>;
   /** Edit only the host's profile-owned final Ghostty overlay. */
   configEditor?: GhostteaConfigEditorBridge;
+  backdropBlur?: GhostteaBackdropBlurBridge;
   newTab?: (cwd?: string) => void;
   selectTab?: (target: "previous" | "next" | "last" | number) => void;
   closeTab?: () => void;
@@ -1254,6 +1259,7 @@ export function GhostteaWorkspace({
           onClose={() => setAppearanceSettingsOpen(false)}
           {...(platform.saveAppearance ? { onSave: platform.saveAppearance } : {})}
           {...(platform.configEditor ? { configEditor: platform.configEditor } : {})}
+          {...(platform.backdropBlur ? { backdropBlur: platform.backdropBlur } : {})}
           onPreview={setConfigPreview}
         />
       ) : null}

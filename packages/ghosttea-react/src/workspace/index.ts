@@ -116,6 +116,7 @@ export {
 export { TERMINAL_THEMES } from "./themes.js";
 export type {
   GhostteaAppearanceUpdate,
+  GhostteaBackdropBlurBridge,
   GhostteaConfigEditorBridge,
   GhostteaConfigEditorExportResult,
   GhostteaConfigEditorImportResult,

@@ -3,7 +3,8 @@ import type { ConfigSnapshot } from "@vibecook/ghosttea-protocol";
 import { GHOSTTY_COLOR_THEMES, colorThemeFromRenderer, findMatchingColorTheme } from "./catalog.js";
 import { GHOSTTEA_SHADER_OPTIONS, UNAVAILABLE_UPSTREAM_SHADERS, isGhostteaShaderEffect } from "./shaders.js";
 import { AdvancedConfigSettings } from "./AdvancedConfigSettings.js";
-import type { GhostteaAppearanceUpdate, GhostteaConfigEditorBridge } from "./types.js";
+import { BackdropBlurControl } from "./BackdropBlurControl.js";
+import type { GhostteaAppearanceUpdate, GhostteaBackdropBlurBridge, GhostteaConfigEditorBridge } from "./types.js";
 import type { TerminalShaderEffect } from "../renderers/types.js";
 
 export interface AppearanceDraftState {
@@ -42,10 +43,18 @@ export interface AppearanceSettingsProps {
   onClose: () => void;
   onSave?: (update: GhostteaAppearanceUpdate) => Promise<void>;
   configEditor?: GhostteaConfigEditorBridge;
+  backdropBlur?: GhostteaBackdropBlurBridge;
   onPreview: (config: ConfigSnapshot | undefined) => void;
 }
 
-export function AppearanceSettings({ config, onClose, onSave, configEditor, onPreview }: AppearanceSettingsProps) {
+export function AppearanceSettings({
+  config,
+  onClose,
+  onSave,
+  configEditor,
+  backdropBlur,
+  onPreview,
+}: AppearanceSettingsProps) {
   const [section, setSection] = useState<"appearance" | "advanced">(onSave ? "appearance" : "advanced");
   const [advancedOpened, setAdvancedOpened] = useState(!onSave);
   const [advancedDirty, setAdvancedDirty] = useState(false);
@@ -327,10 +336,13 @@ export function AppearanceSettings({ config, onClose, onSave, configEditor, onPr
                     />
                     <span>Apply opacity to explicit cell backgrounds</span>
                   </label>
-                  <p className="appearance-help">
-                    Desktop-through transparency is enabled by the macOS host; framed Windows and Linux hosts preserve
-                    alpha inside the renderer but remain OS-opaque.
-                  </p>
+                  {backdropBlur ? (
+                    <BackdropBlurControl bridge={backdropBlur} />
+                  ) : (
+                    <p className="appearance-help">
+                      Desktop transparency and background blur depend on your operating system and app host.
+                    </p>
+                  )}
 
                   <h2>Shader stack</h2>
                   <p className="appearance-help">

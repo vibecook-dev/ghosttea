@@ -1,4 +1,8 @@
-import type { GhostteaAppearanceUpdate, GhostteaConfigEditorBridge } from "@vibecook/ghosttea-react/workspace";
+import type {
+  GhostteaAppearanceUpdate,
+  GhostteaBackdropBlurBridge,
+  GhostteaConfigEditorBridge,
+} from "@vibecook/ghosttea-react/workspace";
 
 export {};
 
@@ -24,6 +28,7 @@ declare global {
       reloadConfig: () => void;
       saveAppearance?: (update: GhostteaAppearanceUpdate) => Promise<void>;
       configEditor?: GhostteaConfigEditorBridge;
+      backdropBlur?: GhostteaBackdropBlurBridge;
       newTab: (cwd?: string) => void;
       selectTab: (target: "previous" | "next" | "last" | number) => void;
       closeTab: () => void;
