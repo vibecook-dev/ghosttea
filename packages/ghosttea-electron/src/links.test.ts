@@ -17,13 +17,7 @@ describe("terminal link bridge", () => {
     const host = installGhostteaLinkHost(ipc as unknown as IpcMain, { openExternal }, (value) => value === sender);
     await handler(event, "https://example.com/path");
     expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com/path");
-    for (const value of [
-      "javascript:alert(1)",
-      "data:text/html,hello",
-      "file:///tmp/app",
-      "https://example.com/\n",
-      42,
-    ]) {
+    for (const value of ["javascript:alert(1)", "data:text/html,hello", "https://example.com/\n", 42]) {
       await expect(handler(event, value)).rejects.toThrow();
     }
     await expect(handler({ ...event, senderFrame: {} } as IpcMainInvokeEvent, "https://example.com")).rejects.toThrow(
@@ -33,6 +27,8 @@ describe("terminal link bridge", () => {
       handler({ ...event, sender: { mainFrame: event.senderFrame } } as IpcMainInvokeEvent, "https://example.com"),
     ).rejects.toThrow("Untrusted");
     expect(openExternal).toHaveBeenCalledTimes(1);
+    await handler(event, "file:///tmp/my%20project/source.ts#L42");
+    expect(openExternal).toHaveBeenLastCalledWith("file:///tmp/my%20project/source.ts#L42");
     host.dispose();
     expect(ipc.removeHandler).toHaveBeenCalledWith("ghosttea:links:open");
   });
@@ -41,6 +37,8 @@ describe("terminal link bridge", () => {
     const bridge = createGhostteaLinkBridge({ invoke } as unknown as IpcRenderer);
     await bridge.openExternal("https://example.com");
     expect(invoke).toHaveBeenCalledWith("ghosttea:links:open", "https://example.com/");
+    await bridge.openExternal("file:///tmp/source.ts");
+    expect(invoke).toHaveBeenLastCalledWith("ghosttea:links:open", "file:///tmp/source.ts");
     await expect(bridge.openExternal("javascript:alert(1)")).rejects.toThrow();
     invoke.mockRejectedValueOnce(new Error("opener failed"));
     await expect(bridge.openExternal("mailto:team@example.com")).rejects.toThrow("opener failed");

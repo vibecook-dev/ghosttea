@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRendererClientCommandAllowed, isServerEvent, unknownSessionActivity } from "./index";
+import { isRendererClientCommandAllowed, isServerEvent, terminalLinkUrl, unknownSessionActivity } from "./index";
 
 describe("isServerEvent forward compatibility", () => {
   it("tolerates fields it has never heard of, so an additive daemon change is not fatal", () => {
@@ -445,5 +445,29 @@ describe("isServerEvent", () => {
         viewStateSeq: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe("terminalLinkUrl", () => {
+  it.each([
+    ["https://example.com", "https://example.com/"],
+    ["mailto:team@example.com", "mailto:team@example.com"],
+    ["file:///tmp/source.ts", "file:///tmp/source.ts"],
+    ["file:///tmp/my%20project/source.ts#L42", "file:///tmp/my%20project/source.ts#L42"],
+    ["file://localhost/tmp/source.ts", "file:///tmp/source.ts"],
+    ["file://workstation/tmp/source.ts", "file://workstation/tmp/source.ts"],
+  ])("accepts and normalizes %s", (input, expected) => {
+    expect(terminalLinkUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,hello",
+    "file:relative.ts",
+    "file:/tmp/source.ts",
+    "/tmp/source.ts",
+    "https://example.com/\n",
+  ])("rejects %s", (input) => {
+    expect(terminalLinkUrl(input)).toBeNull();
   });
 });

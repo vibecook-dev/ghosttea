@@ -122,6 +122,8 @@ pub struct TerminalModel {
     view_selections: HashMap<String, TrackedTerminalSelection>,
     render_cache: RenderCache,
     metadata: TerminalMetadata,
+    link_cwd: Option<String>,
+    link_home: Option<String>,
     session_handle: u64,
     session_epoch: u64,
     layout_epoch: u64,
@@ -148,6 +150,8 @@ impl TerminalModel {
                 title: None,
                 cwd: None,
             },
+            link_cwd: None,
+            link_home: None,
             session_handle: options.session_handle,
             session_epoch: options.session_epoch,
             layout_epoch: options.layout_epoch,
@@ -156,6 +160,13 @@ impl TerminalModel {
             latest_logical: None,
             text_engine_performance: TextEnginePerformanceSnapshot::default(),
         })
+    }
+
+    /// Set the process launch context before the first frame. OSC 7 cwd updates
+    /// take precedence when resolving relative paths in later terminal output.
+    pub fn set_link_context(&mut self, cwd: Option<String>, home: Option<String>) {
+        self.link_cwd = cwd;
+        self.link_home = home;
     }
 
     pub fn session_epoch(&self) -> u64 {
@@ -411,7 +422,7 @@ impl TerminalModel {
             cols: snapshot.cols,
             rows: snapshot.rows.len() as u16,
             title: snapshot.title.clone(),
-            cwd: snapshot.cwd.clone(),
+            cwd: snapshot.cwd.clone().or_else(|| self.link_cwd.clone()),
         };
         if metadata != self.metadata {
             self.metadata = metadata.clone();
@@ -602,10 +613,14 @@ impl TerminalModel {
             new_glyph_definitions: &new_definitions,
             clipboard: snapshot.clipboard.as_deref(),
             cursor: &cursor,
-            links: Some(&crate::links::terminal_links(
+            links: Some(&crate::links::terminal_links_with_context(
                 &snapshot.cells,
                 &snapshot.row_metadata,
                 &snapshot.hyperlinks,
+                crate::links::LinkContext {
+                    cwd: snapshot.cwd.as_deref().or(self.link_cwd.as_deref()),
+                    home: self.link_home.as_deref(),
+                },
             )),
         })
     }
@@ -675,6 +690,47 @@ fn logical_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn path_links_use_launch_cwd_until_osc7_changes_it() {
+        let mut model = TerminalModel::new(
+            Arc::new(TerminalRuntime::discover().unwrap()),
+            TerminalModelOptions {
+                session_handle: 4,
+                session_epoch: 1,
+                layout_epoch: 1,
+                cols: 40,
+                rows: 4,
+                scrollback_bytes: 4096,
+            },
+        )
+        .unwrap();
+        model.set_link_context(Some("/initial".into()), Some("/home/user".into()));
+        for (output, destination) in [
+            (b"src/main.rs".as_slice(), "file:///initial/src/main.rs"),
+            (
+                b"\x1b]7;file://localhost/changed\x1b\\".as_slice(),
+                "file:///changed/src/main.rs",
+            ),
+        ] {
+            let update = model.feed(output, RenderRequest::Full).unwrap();
+            let frame = update
+                .as_slice()
+                .iter()
+                .find_map(|effect| match effect {
+                    TerminalEffect::FrameReady(frame) => Some(frame),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                frame
+                    .windows(destination.len())
+                    .any(|bytes| bytes == destination.as_bytes()),
+                "{destination}"
+            );
+        }
+    }
 
     #[test]
     fn terminal_reply_precedes_semantic_and_render_effects() {

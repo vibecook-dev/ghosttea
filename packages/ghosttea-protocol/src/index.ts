@@ -1105,8 +1105,10 @@ export function terminalLinkUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0 || value.length > 8192 || /[\s\p{Cc}]/u.test(value)) return null;
   try {
     const url = new URL(value);
-    if (!["http:", "https:", "mailto:", "ftp:", "ftps:"].includes(url.protocol)) return null;
-    if (url.protocol === "mailto:" ? !url.pathname : !url.hostname) return null;
+    if (!["http:", "https:", "mailto:", "ftp:", "ftps:", "file:"].includes(url.protocol)) return null;
+    if (url.protocol === "file:") {
+      if (!value.toLowerCase().startsWith("file://") || !url.pathname.startsWith("/")) return null;
+    } else if (url.protocol === "mailto:" ? !url.pathname : !url.hostname) return null;
     return url.href;
   } catch {
     return null;
