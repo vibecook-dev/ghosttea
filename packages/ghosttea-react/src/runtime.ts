@@ -2780,9 +2780,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return;
     }
-    // The legacy protocol has no release verb. Clearing the local epoch still
-    // closes every resize path immediately; a later explicit claim can renew it.
-    view.controlEpoch = undefined;
+    // The legacy protocol has no release verb, so the daemon keeps this view
+    // seated. Dropping the request is what closes every resize path; the epoch
+    // stays, because it is still the seat's truth and a later explicit claim
+    // resumes on it. Clearing it here would leave the view with the record in
+    // its own name and no epoch: the funnel's one-claim-per-attachment guard
+    // refuses that claim, and a pane hidden by a zoom never resizes again.
   }
 
   setViewInputPolicy(viewId: string, readWrite: boolean): void {

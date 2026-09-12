@@ -1379,6 +1379,51 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     runtime.dispose();
   });
 
+  it("resizes again after a pane hidden by a zoom releases and reclaims the seat it kept", async () => {
+    // A zoom hides the other panes and each releases resize control. The legacy
+    // protocol has no release verb, so the daemon keeps them seated; when the
+    // zoom lifts they claim again and their geometry must flow on the seat they
+    // never lost, without a claim the funnel would refuse anyway.
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    const claims = (): Record<string, unknown>[] =>
+      control.messages.filter((message) => message.type === "focus-and-resize");
+    const resizes = (): Record<string, unknown>[] => control.messages.filter((message) => message.type === "resize");
+
+    runtime.mount(session.id, session.handle, "view-1", canvas());
+    await flushMicrotasks();
+    runtime.claimResizeControl(session.handle, "view-1", 80, 24);
+    expect(claims()).toHaveLength(1);
+    controlChanged(control, "view-1", 80, 24);
+    runtime.resize(session.id, "view-1", 70, 22);
+    expect(resizes()).toHaveLength(1);
+
+    // Hidden: the pane measures itself at nothing and sends nothing.
+    runtime.releaseResizeControl("view-1");
+    runtime.resize(session.id, "view-1", 2, 22);
+    expect(resizes()).toHaveLength(1);
+
+    // Shown again: the claim needs no round trip, and the next measurement lands.
+    runtime.claimResizeControl(session.handle, "view-1", 2, 22);
+    runtime.resize(session.id, "view-1", 67, 18);
+    expect(claims()).toHaveLength(1);
+    expect(resizes()).toHaveLength(2);
+    expect(resizes().at(-1)).toMatchObject({ viewId: "view-1", cols: 67, rows: 18 });
+    runtime.dispose();
+  });
+
   it("never turns focus into a geometry claim", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();
