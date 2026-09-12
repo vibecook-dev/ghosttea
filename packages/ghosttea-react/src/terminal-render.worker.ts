@@ -45,6 +45,7 @@ import { catalogAdmission, definitionCatalogFits, glyphCatalogFits } from "./cat
 import { RoutedFramesTransport, type RoutedAppliedFrame, type RoutedExpectedLayout } from "./routed-frames.js";
 
 interface SessionSnapshot {
+  cols: number;
   rows: string[];
   nativeRows: GlyphInstance[][];
   nativeStyleRows: StyleRun[][];
@@ -329,6 +330,7 @@ function postToRenderer(message: WorkerToRendererMessage): void {
 
 function emptySessionSnapshot(): SessionSnapshot {
   return {
+    cols: 0,
     rows: [],
     nativeRows: [],
     nativeStyleRows: [],
@@ -455,6 +457,7 @@ function deleteSurface(surfaceId: string): SurfaceSnapshot | undefined {
 
 function renderView(session: SessionSnapshot, presentation: SurfaceSnapshot): RenderView {
   return {
+    cols: session.cols,
     rows: session.rows,
     nativeRows: session.nativeRows,
     nativeStyleRows: session.nativeStyleRows,
@@ -966,6 +969,7 @@ function applyFrame(
     rowRevisions[replacement.row] = replacement.revision;
     damagedRows.push(replacement.row);
   }
+  previous.cols = frame.cols;
   previous.rows = rows;
   previous.nativeRows = nativeRows;
   previous.nativeStyleRows = nativeStyleRows;

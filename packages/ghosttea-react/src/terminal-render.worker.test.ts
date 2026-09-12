@@ -168,6 +168,64 @@ describe("terminal render worker surfaces", () => {
     ]);
   });
 
+  it("passes committed grid dimensions to every surface independently of canvas size", async () => {
+    const workerScope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback): number => {
+        callback(performance.now());
+        return 1;
+      },
+    };
+    vi.stubGlobal("self", workerScope);
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown): void => workerScope.onmessage?.({ data } as MessageEvent);
+    const settle = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-a",
+      sessionHandle: "11",
+      canvas: {},
+    });
+    await settle();
+    dispatch({ type: "frame", packet: minimalFullFrame(11n, 12n) });
+    await settle();
+    expect(renderer.renderBatch).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "view-a",
+        view: expect.objectContaining({ cols: 80, rows: Array(24).fill("") }),
+      }),
+    ]);
+    dispatch({
+      type: "resize",
+      surfaceId: "view-a",
+      width: 706,
+      height: 510,
+      dpr: 2,
+    });
+    await settle();
+    expect(renderer.renderBatch).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "view-a",
+        view: expect.objectContaining({ cols: 80 }),
+      }),
+    ]);
+    const replacement = minimalFullFrame(11n, 12n);
+    const header = new DataView(replacement);
+    header.setBigUint64(32, 2n, true);
+    header.setBigUint64(40, 2n, true);
+    header.setUint16(56, 89, true);
+    dispatch({ type: "frame", packet: replacement });
+    await settle();
+    expect(renderer.renderBatch).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        id: "view-a",
+        view: expect.objectContaining({ cols: 89 }),
+      }),
+    ]);
+  });
+
   it("keeps shader effects isolated between two surfaces for one session", async () => {
     const workerScope = {
       onmessage: null as ((event: MessageEvent) => void) | null,
