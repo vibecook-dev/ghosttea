@@ -1308,6 +1308,23 @@ impl Session {
             command.cwd(cwd);
         }
         configure_environment(&mut command, env, environment, extra_private_prefixes);
+        let link_cwd = command
+            .get_cwd()
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .map(|path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    std::env::current_dir().unwrap_or_default().join(path)
+                }
+            })
+            .and_then(|path| path.into_os_string().into_string().ok());
+        let link_home = command
+            .get_env("HOME")
+            .or_else(|| command.get_env("USERPROFILE"))
+            .and_then(|value| value.to_str())
+            .map(str::to_owned);
         let child = pair.slave.spawn_command(command).map_err(|error| {
             // `Command::spawn` keeps its io::Error in the anyhow chain, but
             // portable-pty resolves an absolute executable first and renders
@@ -1377,7 +1394,7 @@ impl Session {
         let (control_state_tx, _) = broadcast::channel(16);
         let (activity_tx, _) = broadcast::channel(16);
         let runtime = Arc::new(TerminalRuntime::from_shared_text_engine(text_engine));
-        let model = TerminalModel::new(
+        let mut model = TerminalModel::new(
             runtime,
             TerminalModelOptions {
                 session_handle: handle,
@@ -1388,6 +1405,7 @@ impl Session {
                 scrollback_bytes,
             },
         )?;
+        model.set_link_context(link_cwd.clone(), link_home);
         let session = Arc::new(Self {
             summary: Mutex::new(SessionSummary {
                 id,
@@ -1398,7 +1416,7 @@ impl Session {
                 exited: false,
                 read_write: true,
                 title: None,
-                cwd: None,
+                cwd: link_cwd,
                 bell_count: 0,
                 pid,
                 created_at_ms,

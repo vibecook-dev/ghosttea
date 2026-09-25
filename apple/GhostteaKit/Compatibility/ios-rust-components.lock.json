@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "target": "aarch64-apple-ios",
   "root": {
-    "ref": "pkg:cargo/ghosttea-apple-ffi@0.11.1",
+    "ref": "pkg:cargo/ghosttea-apple-ffi@0.12.0",
     "name": "ghosttea-apple-ffi",
-    "version": "0.11.1",
+    "version": "0.12.0",
     "dependencies": [
-      "pkg:cargo/ghosttea-ffi@0.11.1",
-      "pkg:cargo/ghosttea-font-fixture-ffi@0.11.1"
+      "pkg:cargo/ghosttea-ffi@0.12.0",
+      "pkg:cargo/ghosttea-font-fixture-ffi@0.12.0"
     ]
   },
-  "cargoLockSha256": "477713035f0a7e626f656342601697e0492ad36ce3e868ec46a74efa42e39065",
+  "cargoLockSha256": "6da56d16f37b315fb22ebe023528c7f4ff8b00b6674613e894838a658c2c83d3",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
@@ -358,9 +358,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-config@0.11.1",
+      "ref": "pkg:cargo/ghosttea-config@0.12.0",
       "name": "ghosttea-config",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -372,47 +372,47 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-core@0.11.1",
+      "ref": "pkg:cargo/ghosttea-core@0.12.0",
       "name": "ghosttea-core",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/ghosttea-text@0.11.1",
-        "pkg:cargo/ghosttea-vt@0.11.1",
+        "pkg:cargo/ghosttea-text@0.12.0",
+        "pkg:cargo/ghosttea-vt@0.12.0",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/smallvec@1.15.2"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-ffi@0.11.1",
+      "ref": "pkg:cargo/ghosttea-ffi@0.12.0",
       "name": "ghosttea-ffi",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-config@0.11.1",
-        "pkg:cargo/ghosttea-core@0.11.1",
-        "pkg:cargo/ghosttea-text@0.11.1",
+        "pkg:cargo/ghosttea-config@0.12.0",
+        "pkg:cargo/ghosttea-core@0.12.0",
+        "pkg:cargo/ghosttea-text@0.12.0",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.11.1",
+      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.12.0",
       "name": "ghosttea-font-fixture-ffi",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-text@0.11.1",
+        "pkg:cargo/ghosttea-text@0.12.0",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-text@0.11.1",
+      "ref": "pkg:cargo/ghosttea-text@0.12.0",
       "name": "ghosttea-text",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -428,9 +428,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt-sys@0.11.1",
+      "ref": "pkg:cargo/ghosttea-vt-sys@0.12.0",
       "name": "ghosttea-vt-sys",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -443,13 +443,13 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt@0.11.1",
+      "ref": "pkg:cargo/ghosttea-vt@0.12.0",
       "name": "ghosttea-vt",
-      "version": "0.11.1",
+      "version": "0.12.0",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-vt-sys@0.11.1"
+        "pkg:cargo/ghosttea-vt-sys@0.12.0"
       ]
     },
     {
@@ -666,12 +666,12 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls-webpki@0.103.13",
+      "ref": "pkg:cargo/rustls-webpki@0.103.15",
       "name": "rustls-webpki",
-      "version": "0.103.13",
+      "version": "0.103.15",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "ISC",
-      "checksum": "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e",
+      "checksum": "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2",
       "dependencies": [
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
@@ -679,18 +679,18 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls@0.23.42",
+      "ref": "pkg:cargo/rustls@0.23.45",
       "name": "rustls",
-      "version": "0.23.42",
+      "version": "0.23.45",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "Apache-2.0 OR ISC OR MIT",
-      "checksum": "3c54fcab019b409d04215d3a17cb438fd7fbf192ee61461f20f4fe18704bc138",
+      "checksum": "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634",
       "dependencies": [
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls-webpki@0.103.13",
+        "pkg:cargo/rustls-webpki@0.103.15",
         "pkg:cargo/subtle@2.6.1",
         "pkg:cargo/zeroize@1.9.0"
       ]
@@ -961,7 +961,7 @@
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/percent-encoding@2.3.2",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls@0.23.42",
+        "pkg:cargo/rustls@0.23.45",
         "pkg:cargo/ureq-proto@0.6.0",
         "pkg:cargo/utf8-zero@0.8.1",
         "pkg:cargo/webpki-roots@1.0.8"

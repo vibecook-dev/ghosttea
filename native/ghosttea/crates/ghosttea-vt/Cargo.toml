@@ -10,4 +10,4 @@ description = "Safe Rust adapter for Ghosttea's Ghostty VT core"
 readme = "README.md"
 
 [dependencies]
-ghosttea-vt-sys = { version = "0.11.1", path = "../ghosttea-vt-sys" }
+ghosttea-vt-sys = { version = "0.12.0", path = "../ghosttea-vt-sys" }

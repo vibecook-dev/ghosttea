@@ -53,6 +53,8 @@ export interface CellSelection {
 }
 
 export interface RenderView {
+  /** Columns in the committed terminal frame, independent of the canvas size. */
+  cols: number;
   rows: string[];
   nativeRows: GlyphInstance[][];
   nativeStyleRows: StyleRun[][];

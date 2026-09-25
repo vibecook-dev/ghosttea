@@ -3,6 +3,7 @@
 
 import {
   decodeClipboardWrite,
+  decodeLinkTargets,
   decodeCursorState,
   decodeFrame,
   decodeGlyphDefinitions,
@@ -44,6 +45,7 @@ import { catalogAdmission, definitionCatalogFits, glyphCatalogFits } from "./cat
 import { RoutedFramesTransport, type RoutedAppliedFrame, type RoutedExpectedLayout } from "./routed-frames.js";
 
 interface SessionSnapshot {
+  cols: number;
   rows: string[];
   nativeRows: GlyphInstance[][];
   nativeStyleRows: StyleRun[][];
@@ -58,6 +60,7 @@ interface SessionSnapshot {
   awaitingResync: boolean;
   catalogFallback: boolean;
   scrollbar: TerminalScrollbarState | null;
+  linkSignature: string;
 }
 
 interface SurfaceSnapshot {
@@ -327,6 +330,7 @@ function postToRenderer(message: WorkerToRendererMessage): void {
 
 function emptySessionSnapshot(): SessionSnapshot {
   return {
+    cols: 0,
     rows: [],
     nativeRows: [],
     nativeStyleRows: [],
@@ -341,6 +345,7 @@ function emptySessionSnapshot(): SessionSnapshot {
     awaitingResync: false,
     catalogFallback: false,
     scrollbar: null,
+    linkSignature: "",
   };
 }
 
@@ -452,6 +457,7 @@ function deleteSurface(surfaceId: string): SurfaceSnapshot | undefined {
 
 function renderView(session: SessionSnapshot, presentation: SurfaceSnapshot): RenderView {
   return {
+    cols: session.cols,
     rows: session.rows,
     nativeRows: session.nativeRows,
     nativeStyleRows: session.nativeStyleRows,
@@ -829,6 +835,8 @@ function applyFrame(
   for (const replacement of replacements) {
     if (replacement.row >= frame.rows) throw new RangeError("Row replacement exceeds viewport");
   }
+  const linkSection = frame.sections.find((candidate) => candidate.kind === SectionKind.LinkTargets);
+  const links = linkSection ? decodeLinkTargets(linkSection, frame.cols, frame.rows) : [];
   const nextCursor = decodeCursorState(cursorSection);
   const clipboardText = clipboardSection ? decodeClipboardWrite(clipboardSection) : undefined;
   let scrollbar: TerminalScrollbarState | undefined;
@@ -961,6 +969,7 @@ function applyFrame(
     rowRevisions[replacement.row] = replacement.revision;
     damagedRows.push(replacement.row);
   }
+  previous.cols = frame.cols;
   previous.rows = rows;
   previous.nativeRows = nativeRows;
   previous.nativeStyleRows = nativeStyleRows;
@@ -981,6 +990,11 @@ function applyFrame(
   if (replacingScene) {
     snapshots.set(id, previous);
     if (installedScene) clearSessionCatalog(installedScene);
+  }
+  const linkSignature = JSON.stringify(links);
+  if (previous.linkSignature !== linkSignature || changedSession || completingResync) {
+    previous.linkSignature = linkSignature;
+    postToRenderer({ type: "link-targets", sessionHandle: id, links });
   }
   if (clipboardText !== undefined) postToRenderer({ type: "clipboard-write", text: clipboardText });
   if (scrollbarChanged && scrollbar) postToRenderer({ type: "scrollbar-state", sessionHandle: id, scrollbar });

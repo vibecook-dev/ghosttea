@@ -1,3 +1,5 @@
+import type { TerminalLink } from "@vibecook/ghosttea-frame";
+import { terminalLinkUrl } from "@vibecook/ghosttea-protocol";
 import { ControlClient } from "@vibecook/ghosttea";
 import {
   DEFAULT_ROUTED_PROTOCOL_LIMITS,
@@ -55,6 +57,8 @@ export interface GhostteaRendererPorts {
 
 export interface GhostteaRendererPlatform {
   writeClipboard(text: string): void;
+  /** Open a user-clicked URL in the host. Omit to disable link interaction. */
+  openExternal?(url: string): void | Promise<void>;
   forceCanvasFallback(): boolean;
   setForceCanvasFallback(enabled: boolean): void;
   reload(): void;
@@ -368,6 +372,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     number,
     { resolve: (value: TerminalRenderCounterSnapshot) => void; reject: (error: Error) => void; timer: number }
   >();
+  readonly #linksByHandle = new Map<string, TerminalLink[]>();
   #disposed = false;
 
   constructor(options: GhostteaTerminalRuntimeOptions) {
@@ -417,6 +422,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.dispatchEvent(new CustomEvent("renderer-status", { detail: data }));
       } else if (data.type === "clipboard-write") {
         this.#platform.writeClipboard(data.text);
+      } else if (data.type === "link-targets") {
+        this.#linksByHandle.set(
+          data.sessionHandle,
+          data.links.filter((link) => terminalLinkUrl(link.uri) !== null),
+        );
+        this.dispatchEvent(new CustomEvent("link-targets", { detail: { sessionHandle: data.sessionHandle } }));
       } else if (data.type === "scrollbar-state") {
         this.#scrollbarByHandle.set(data.sessionHandle, data.scrollbar);
         this.dispatchEvent(
@@ -2118,6 +2129,28 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#routedGeometry.delete(sessionId);
   }
 
+  /**
+   * Detach one of our views and let the seat go with it.
+   *
+   * The daemon clears the resize controller when its holder detaches, but a
+   * local session announces control only through the legacy `control-changed`
+   * frame, which cannot say "no controller": the clear never reaches this
+   * client, and a pane that remounts (a split re-parents its surface) would
+   * see its own previous incarnation on the record forever and never claim.
+   * Our own detach is the one clear this client can predict, so the record is
+   * cleared here at the same revision and the session's remaining views get
+   * their one look at the empty seat (§4.2.3).
+   */
+  #detachView(sessionId: string, viewId: string): void {
+    this.#control?.notify({ type: "detach-session", sessionId, viewId });
+    const control = this.#controlBySession.get(sessionId);
+    if (!control?.controller || control.controller.viewId !== viewId) return;
+    this.#controlBySession.set(sessionId, { controller: null, revision: control.revision });
+    for (const other of this.#viewIdsForSession(sessionId)) {
+      if (other !== viewId) this.#maybeReclaim(other);
+    }
+  }
+
   #createMountLease(mounted: MountedCanvas): TerminalMount {
     let disposed = false;
     return {
@@ -2138,8 +2171,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
             this.#postWorker({ type: "unmount", surfaceId: mounted.viewId });
             this.#mountGenerationBySurface.delete(mounted.viewId);
             if (this.#routedHost) this.#releaseRoutedView(mounted.sessionId, mounted.viewId);
-            else
-              this.#control?.notify({ type: "detach-session", sessionId: mounted.sessionId, viewId: mounted.viewId });
+            else this.#detachView(mounted.sessionId, mounted.viewId);
             this.#views.delete(mounted.viewId);
             this.#focusByView.delete(mounted.viewId);
           }
@@ -2637,6 +2669,19 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#postWorker({ type: "effects", sessionHandle, ...(surfaceId ? { surfaceId } : {}), effects });
   }
 
+  links(sessionHandle: string): readonly TerminalLink[] {
+    return this.#platform.openExternal
+      ? (this.#linksByHandle.get(sessionHandle) ?? []).filter(
+          (link) => link.explicit || this.#configSnapshot?.renderer.linkUrl !== false,
+        )
+      : [];
+  }
+
+  async openLink(uri: string): Promise<void> {
+    const url = terminalLinkUrl(uri);
+    if (url) await this.#platform.openExternal?.(url);
+  }
+
   setSelection(sessionHandle: string, selection: CellSelection | null, surfaceId?: string): void {
     this.#postWorker({ type: "selection", sessionHandle, ...(surfaceId ? { surfaceId } : {}), selection });
   }
@@ -2735,9 +2780,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return;
     }
-    // The legacy protocol has no release verb. Clearing the local epoch still
-    // closes every resize path immediately; a later explicit claim can renew it.
-    view.controlEpoch = undefined;
+    // The legacy protocol has no release verb, so the daemon keeps this view
+    // seated. Dropping the request is what closes every resize path; the epoch
+    // stays, because it is still the seat's truth and a later explicit claim
+    // resumes on it. Clearing it here would leave the view with the record in
+    // its own name and no epoch: the funnel's one-claim-per-attachment guard
+    // refuses that claim, and a pane hidden by a zoom never resizes again.
   }
 
   setViewInputPolicy(viewId: string, readWrite: boolean): void {
@@ -2848,6 +2896,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#sessionMountReferences.delete(handle);
     const subscriptionChanged = this.#subscribedSessionHandles.delete(handle);
     this.#cancelMetadataRefresh(handle);
+    this.#linksByHandle.delete(handle);
     this.#mouseTrackingByHandle.delete(handle);
     this.#scrollbarByHandle.delete(handle);
     for (const mounted of [...this.#mountedEntries]) {
@@ -2859,8 +2908,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       if (ownsWorkerSurface) {
         this.#postWorker({ type: "unmount", surfaceId: mounted.viewId });
         this.#mountGenerationBySurface.delete(mounted.viewId);
-        if (detachViews)
-          this.#control?.notify({ type: "detach-session", sessionId: mounted.sessionId, viewId: mounted.viewId });
+        if (detachViews) this.#detachView(mounted.sessionId, mounted.viewId);
         this.#views.delete(mounted.viewId);
         this.#focusByView.delete(mounted.viewId);
       }
@@ -2870,7 +2918,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     for (const [viewId, view] of this.#views) {
       if (view.sessionId === sessionId) {
         view.pendingInput.length = 0;
-        if (detachViews) this.#control?.notify({ type: "detach-session", sessionId, viewId });
+        if (detachViews) this.#detachView(sessionId, viewId);
         this.#views.delete(viewId);
         this.#focusByView.delete(viewId);
       }
@@ -2975,6 +3023,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#recoveredSessions.clear();
     this.#focusByView.clear();
     this.#mountGenerationBySurface.clear();
+    this.#linksByHandle.clear();
     this.#mouseTrackingByHandle.clear();
     this.#scrollbarByHandle.clear();
     this.#subscribedSessionHandles.clear();

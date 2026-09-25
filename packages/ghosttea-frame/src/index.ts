@@ -21,6 +21,7 @@ export enum SectionKind {
   ViewportMetadata = 9,
   AccessibilityText = 10,
   ClipboardWrite = 11,
+  LinkTargets = 12,
 }
 
 export interface FrameSection {
@@ -352,4 +353,54 @@ export function decodeClipboardWrite(section: FrameSection): string {
   const length = view.getUint32(0, true);
   assertRange(length === section.bytes.byteLength - 4, "clipboard length mismatch");
   return new TextDecoder("utf-8", { fatal: true }).decode(section.bytes.subarray(4));
+}
+
+export interface TerminalLinkSpan {
+  row: number;
+  startColumn: number;
+  endColumn: number;
+}
+
+export interface TerminalLink {
+  uri: string;
+  explicit: boolean;
+  spans: TerminalLinkSpan[];
+}
+
+/** Section 12 replaces the entire viewport link set, even on incremental frames. */
+export function decodeLinkTargets(section: FrameSection, cols: number, rows: number): TerminalLink[] {
+  const bytes = section.bytes;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  assertRange(bytes.length >= 4, "truncated link count");
+  const count = view.getUint32(0, true);
+  assertRange(count === section.itemCount && count <= cols * rows, "invalid link count");
+  const links: TerminalLink[] = [];
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let offset = 4;
+  for (let index = 0; index < count; index++) {
+    assertRange(offset + 8 <= bytes.length, "truncated link header");
+    const length = view.getUint32(offset, true);
+    const spanCount = view.getUint16(offset + 4, true);
+    const flags = view.getUint16(offset + 6, true);
+    offset += 8;
+    assertRange(
+      length > 0 && length <= 8192 && spanCount > 0 && spanCount <= rows && flags <= 1,
+      "invalid link header",
+    );
+    assertRange(offset + length + spanCount * 6 <= bytes.length, "truncated link target");
+    const uri = decoder.decode(bytes.subarray(offset, offset + length));
+    offset += length;
+    const spans: TerminalLinkSpan[] = [];
+    for (let spanIndex = 0; spanIndex < spanCount; spanIndex++) {
+      const row = view.getUint16(offset, true);
+      const startColumn = view.getUint16(offset + 2, true);
+      const endColumn = view.getUint16(offset + 4, true);
+      assertRange(row < rows && startColumn < endColumn && endColumn <= cols, "link span exceeds viewport");
+      spans.push({ row, startColumn, endColumn });
+      offset += 6;
+    }
+    links.push({ uri, explicit: flags === 1, spans });
+  }
+  assertRange(offset === bytes.length, "trailing link data");
+  return links;
 }

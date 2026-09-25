@@ -22,8 +22,8 @@ required-features = ["interop-fixture"]
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-ghosttea = { version = "0.11.1", path = "../.." }
-ghosttea-text = { version = "0.11.1", path = "../ghosttea-text" }
+ghosttea = { version = "0.12.0", path = "../.." }
+ghosttea-text = { version = "0.12.0", path = "../ghosttea-text" }
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

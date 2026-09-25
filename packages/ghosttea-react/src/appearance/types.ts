@@ -7,6 +7,13 @@ import type {
 import type { GhostteaColorTheme } from "./catalog.js";
 import type { TerminalShaderEffect } from "../renderers/types.js";
 
+/** Optional native host capability. Changes are persisted and applied immediately. */
+export interface GhostteaBackdropBlurBridge {
+  load: () => Promise<boolean>;
+  save: (enabled: boolean) => Promise<boolean>;
+  subscribe: (listener: (enabled: boolean) => void) => () => void;
+}
+
 export interface GhostteaAppearanceUpdate {
   /** Omitted when the user keeps a non-catalog/custom color configuration. */
   theme?: GhostteaColorTheme;

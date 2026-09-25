@@ -1,3 +1,4 @@
+use crate::links::TerminalLink;
 use anyhow::{Result, bail};
 use ghosttea_text::{GlyphDefinition, GlyphFormat, GlyphInstance, ShapedRow};
 use ghosttea_vt::{CellStyle, TerminalCell, TerminalScrollbar, TerminalSelection};
@@ -14,6 +15,7 @@ pub const STYLE_DEFINITIONS: u16 = 2;
 pub const GLYPH_DEFINITIONS: u16 = 1;
 pub const CLIPBOARD_WRITE: u16 = 11;
 pub const SELECTION_SPANS: u16 = 5;
+pub const LINK_TARGETS: u16 = 12;
 pub const FULL_SNAPSHOT: u16 = 1;
 pub const MOUSE_TRACKING: u16 = 1 << 1;
 pub const CATALOG_RESET: u16 = 1 << 2;
@@ -253,6 +255,7 @@ pub struct TextSnapshot<'a> {
     pub new_glyph_definitions: &'a [GlyphDefinition],
     pub clipboard: Option<&'a [u8]>,
     pub cursor: &'a FrameCursor,
+    pub links: Option<&'a [TerminalLink]>,
 }
 
 pub(crate) struct FrameTextSnapshot<'a, C: FrameCell> {
@@ -274,6 +277,7 @@ pub(crate) struct FrameTextSnapshot<'a, C: FrameCell> {
     pub new_glyph_definitions: &'a [GlyphDefinition],
     pub clipboard: Option<&'a [u8]>,
     pub cursor: &'a FrameCursor,
+    pub links: Option<&'a [TerminalLink]>,
 }
 
 pub fn encode_text_snapshot(snapshot: TextSnapshot<'_>) -> Result<Vec<u8>> {
@@ -296,6 +300,7 @@ pub fn encode_text_snapshot(snapshot: TextSnapshot<'_>) -> Result<Vec<u8>> {
         new_glyph_definitions: snapshot.new_glyph_definitions,
         clipboard: snapshot.clipboard,
         cursor: snapshot.cursor,
+        links: snapshot.links,
     })
 }
 
@@ -321,6 +326,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         new_glyph_definitions,
         clipboard,
         cursor,
+        links,
     } = snapshot;
     if rows.len() > u16::MAX as usize {
         bail!("too many rows");
@@ -438,7 +444,22 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
     });
     // Selection is present even when empty so an incremental frame can clear a
     // previously retained selection without widening another section.
-    let section_count = 7 + usize::from(clipboard_payload.is_some());
+    let mut link_payload = Vec::new();
+    if let Some(links) = links {
+        link_payload.extend_from_slice(&u32::try_from(links.len())?.to_le_bytes());
+        for link in links {
+            link_payload.extend_from_slice(&u32::try_from(link.uri.len())?.to_le_bytes());
+            link_payload.extend_from_slice(&u16::try_from(link.spans.len())?.to_le_bytes());
+            link_payload.extend_from_slice(&u16::from(link.explicit).to_le_bytes());
+            link_payload.extend_from_slice(link.uri.as_bytes());
+            for span in &link.spans {
+                link_payload.extend_from_slice(&span.row.to_le_bytes());
+                link_payload.extend_from_slice(&span.start_column.to_le_bytes());
+                link_payload.extend_from_slice(&span.end_column.to_le_bytes());
+            }
+        }
+    }
+    let section_count = 7 + usize::from(links.is_some()) + usize::from(clipboard_payload.is_some());
     let glyph_offset = FRAME_HEADER_BYTES + SECTION_HEADER_BYTES * section_count;
     let style_offset = glyph_offset + glyph_definitions.len();
     let replacement_offset = style_offset + style_definitions.len();
@@ -467,6 +488,9 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
     if let Some(bytes) = &clipboard_payload {
         packet.extend_from_slice(bytes);
     }
+
+    let link_offset = packet.len();
+    packet.extend_from_slice(&link_payload);
 
     put_u32(&mut packet, 0, FRAME_MAGIC);
     put_u16(&mut packet, 4, 1);
@@ -529,6 +553,13 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         put_u32(&mut packet, 180, clipboard_offset as u32);
         put_u32(&mut packet, 184, bytes.len() as u32);
         put_u32(&mut packet, 188, 1);
+    }
+    if let Some(links) = links {
+        let link_header = 176 + usize::from(clipboard_payload.is_some()) * SECTION_HEADER_BYTES;
+        put_u16(&mut packet, link_header, LINK_TARGETS);
+        put_u32(&mut packet, link_header + 4, link_offset as u32);
+        put_u32(&mut packet, link_header + 8, link_payload.len() as u32);
+        put_u32(&mut packet, link_header + 12, links.len() as u32);
     }
     Ok(packet)
 }
@@ -684,6 +715,7 @@ mod tests {
             selection: Some(&selection),
             new_glyph_definitions: &shaped[0].definitions,
             clipboard: None,
+            links: None,
             cursor: &cursor,
         })
         .unwrap();
@@ -788,6 +820,7 @@ mod tests {
             selection: None,
             new_glyph_definitions: &[],
             clipboard: None,
+            links: None,
             cursor: &cursor,
         })
         .unwrap();
@@ -831,6 +864,7 @@ mod tests {
             selection: None,
             new_glyph_definitions: &[],
             clipboard: Some(b"copied"),
+            links: None,
             cursor: &cursor,
         })
         .unwrap();
@@ -892,6 +926,7 @@ mod tests {
             selection: snapshot.selection.as_ref(),
             new_glyph_definitions: &[],
             clipboard: snapshot.clipboard.as_deref(),
+            links: None,
             cursor: &cursor,
         })
         .unwrap();

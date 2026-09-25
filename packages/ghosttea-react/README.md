@@ -9,6 +9,33 @@ paths. Create one runtime per renderer window, provide it through
 
 Import `@vibecook/ghosttea-react/styles.css` once in the renderer entrypoint.
 
+## Terminal links
+
+Provide `platform.openExternal(url)` to enable Command-hover/click on macOS
+and Ctrl-hover/click elsewhere. Links are underlined per pane, and a successful
+click is consumed before TUI mouse reporting. Modifier release, window blur,
+dragging, and changing terminal output cancel an in-progress link click. The
+underline overlay works with both WebGPU and Canvas rendering.
+
+The updated daemon supplies URL and file-path matches and explicit OSC 8
+links, including cell ranges for wrapped links and Unicode text. This includes
+Codex's `~/…` footer, absolute paths and relative source references like
+`src/main.rs:42`. The native desktop host supplies the launch cwd and home;
+OSC 7 working-directory updates take precedence for relative paths. Embedders
+using `TerminalModel` directly can supply these through `set_link_context`.
+
+`link-url = false` disables automatic matches while retaining OSC 8. Built-in
+opening accepts HTTP, HTTPS, mailto, FTP, FTPS and file destinations. File links
+open through the desktop's default application. No interaction is enabled when
+the host omits the callback or the frame producer lacks link metadata (including
+legacy logical replicas).
+
+Electron hosts use `installGhostteaLinkHost(ipcMain, shell, isTrusted)` from
+`@vibecook/ghosttea-electron/main` and expose
+`createGhostteaLinkBridge(ipcRenderer).openExternal` from the preload. The trust
+callback should admit only the app's terminal renderer URL; the helper also
+rejects subframe senders and validates URL schemes in the main process.
+
 ## Routed terminal transport
 
 The additive `transport: "routed"` mode connects one control WebSocket and one

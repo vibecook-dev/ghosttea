@@ -53,6 +53,7 @@ export interface PaletteConfigEntry {
 }
 
 export interface RendererConfig {
+  linkUrl?: boolean;
   foreground: [number, number, number];
   background: [number, number, number];
   cursor: [number, number, number];
@@ -905,6 +906,7 @@ export function isServerEvent(value: unknown): value is ServerEvent {
           renderer.backgroundOpacity >= 0 &&
           renderer.backgroundOpacity <= 1)) &&
       (renderer.backgroundOpacityCells === undefined || typeof renderer.backgroundOpacityCells === "boolean") &&
+      (renderer.linkUrl === undefined || typeof renderer.linkUrl === "boolean") &&
       typeof renderer.fontSize === "number" &&
       Number.isFinite(renderer.fontSize) &&
       renderer.fontSize > 0 &&
@@ -1095,5 +1097,20 @@ export function isServerEvent(value: unknown): value is ServerEvent {
       return candidate.requestId === 0 && Number.isSafeInteger(candidate.skipped);
     default:
       return false;
+  }
+}
+
+/** Destinations accepted by the built-in terminal link UI and Electron opener. */
+export function terminalLinkUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > 8192 || /[\s\p{Cc}]/u.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:", "mailto:", "ftp:", "ftps:", "file:"].includes(url.protocol)) return null;
+    if (url.protocol === "file:") {
+      if (!value.toLowerCase().startsWith("file://") || !url.pathname.startsWith("/")) return null;
+    } else if (url.protocol === "mailto:" ? !url.pathname : !url.hostname) return null;
+    return url.href;
+  } catch {
+    return null;
   }
 }

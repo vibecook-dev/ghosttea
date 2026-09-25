@@ -2,6 +2,7 @@ import type { SessionSummary } from "@vibecook/ghosttea-protocol";
 import { WORKSPACE_SCHEMA_VERSION, type WorkspaceDocumentV1, type WorkspaceNode } from "./workspace-model.js";
 
 export type SplitAxis = "horizontal" | "vertical";
+export type SplitSizing = "halves" | "equal";
 
 export interface PaneLeaf {
   kind: "pane";
@@ -107,10 +108,11 @@ export function insertPane(
   activePaneId: string | undefined,
   axis: SplitAxis,
   splitId: string,
+  sizing: SplitSizing = "halves",
 ): PaneNode {
   if (!root) return next;
   const active = leaves(root).find((candidate) => candidate.id === activePaneId) ?? leaves(root)[0]!;
-  return replacePane(root, active.id, {
+  const updated = replacePane(root, active.id, {
     kind: "split",
     id: splitId,
     axis,
@@ -118,6 +120,34 @@ export function insertPane(
     first: active,
     second: next,
   });
+  if (sizing === "halves") return updated;
+
+  // Find the contiguous row/column containing the new pane. A perpendicular
+  // split starts a separate group, whose surrounding geometry stays intact.
+  let group = updated;
+  let current = updated;
+  while (current.kind === "split") {
+    const child = containsPane(current.first, next.id) ? current.first : current.second;
+    if (current.axis !== axis) group = child;
+    current = child;
+  }
+  if (group.kind === "pane") return updated;
+  const [balanced] = equalizeSplitGroup(group);
+  return updateSplit(updated, group.id, () => balanced);
+}
+
+/** Count perpendicular subtrees as one column/row, preserving their own ratios. */
+function equalizeSplitGroup(split: PaneSplit): [PaneSplit, number] {
+  const [first, firstCount] =
+    split.first.kind === "split" && split.first.axis === split.axis
+      ? equalizeSplitGroup(split.first)
+      : ([split.first, 1] as const);
+  const [second, secondCount] =
+    split.second.kind === "split" && split.second.axis === split.axis
+      ? equalizeSplitGroup(split.second)
+      : ([split.second, 1] as const);
+  const count = firstCount + secondCount;
+  return [{ ...split, ratio: firstCount / count, first, second }, count];
 }
 
 export function mountSessionInPane(root: PaneNode, paneId: string, session: SessionSummary): PaneNode {

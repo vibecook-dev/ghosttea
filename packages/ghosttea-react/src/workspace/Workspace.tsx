@@ -12,7 +12,11 @@ import type { ConfigSnapshot, SessionSummary } from "@vibecook/ghosttea-protocol
 import { TerminalSurface, type TerminalMenuAction } from "../TerminalSurface.js";
 import { DEFAULT_EFFECTS, type TerminalEffects, type TerminalTheme } from "../renderers/types.js";
 import { AppearanceSettings } from "../appearance/AppearanceSettings.js";
-import type { GhostteaAppearanceUpdate, GhostteaConfigEditorBridge } from "../appearance/types.js";
+import type {
+  GhostteaAppearanceUpdate,
+  GhostteaBackdropBlurBridge,
+  GhostteaConfigEditorBridge,
+} from "../appearance/types.js";
 import { useGhostteaRuntime } from "../context.js";
 import { terminalEffectsFromConfig, terminalThemeFromConfig } from "../config.js";
 import { RemoteSessionPalette, type RemoteChoice } from "./RemoteSessionPalette.js";
@@ -37,12 +41,14 @@ import {
   updateSplit,
   type PaneNode,
   type SplitAxis,
+  type SplitSizing,
 } from "./pane-layout.js";
 import { resolveKeyEvent, routeConsumesInput } from "../bindings/action-route.js";
 import { configuredBindingsForPlatform, type GhosttyBindingEntry } from "../bindings/ghostty-bindings.js";
 import type { WorkspaceEffect } from "./hotkeys.js";
 import { PendingPromiseCache } from "./pending-cache.js";
 import { sessionsToClaim } from "./session-scope.js";
+import { createPaneFocusScheduler } from "./pane-focus.js";
 import { decodeWorkspaceDocument } from "./workspace-model.js";
 
 const DEFAULT_STORAGE_KEY = "ghosttea:workspace:v1";
@@ -83,6 +89,7 @@ export interface GhostteaWorkspacePlatform {
   saveAppearance?: (update: GhostteaAppearanceUpdate) => Promise<void>;
   /** Edit only the host's profile-owned final Ghostty overlay. */
   configEditor?: GhostteaConfigEditorBridge;
+  backdropBlur?: GhostteaBackdropBlurBridge;
   newTab?: (cwd?: string) => void;
   selectTab?: (target: "previous" | "next" | "last" | number) => void;
   closeTab?: () => void;
@@ -171,6 +178,8 @@ export interface GhostteaWorkspaceProps {
   onPaneClose?: ((context: GhostteaPaneClose) => void) | undefined;
   onActiveSessionChange?: (session: SessionSummary | undefined) => void;
   createSplitSession?: (activeSession: SessionSummary, axis: SplitAxis) => Promise<SessionSummary>;
+  /** Size new splits by halving the active pane (default) or equalizing its row/column. */
+  splitSizing?: SplitSizing;
   enableRemoteSessions?: boolean;
   active?: boolean;
   showTitlebar?: boolean;
@@ -615,6 +624,7 @@ export function GhostteaWorkspace({
   onPaneClose,
   onActiveSessionChange,
   createSplitSession,
+  splitSizing = "halves",
   enableRemoteSessions = true,
   active = true,
   showTitlebar = true,
@@ -762,15 +772,26 @@ export function GhostteaWorkspace({
     };
   }, []);
 
-  const activatePane = useCallback((paneId: string): void => {
-    setActivePaneId(paneId);
-    window.requestAnimationFrame(() => {
-      const target = Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>("[data-pane-id]") ?? []).find(
-        (element) => element.dataset.paneId === paneId,
-      );
-      target?.querySelector<HTMLTextAreaElement>(".terminal-input")?.focus({ preventScroll: true });
-    });
+  const focusPane = useCallback((paneId: string): void => {
+    const target = Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>("[data-pane-id]") ?? []).find(
+      (element) => element.dataset.paneId === paneId,
+    );
+    target?.querySelector<HTMLTextAreaElement>(".terminal-input")?.focus({ preventScroll: true });
   }, []);
+  const [paneFocus] = useState(() => createPaneFocusScheduler(window));
+  useEffect(() => paneFocus.cancel, [paneFocus]);
+  useEffect(() => {
+    if (!active) paneFocus.cancel();
+  }, [active, paneFocus]);
+
+  const activatePane = useCallback(
+    (paneId: string): void => {
+      activePaneIdRef.current = paneId;
+      setActivePaneId(paneId);
+      paneFocus.request(paneId, focusPane);
+    },
+    [focusPane, paneFocus],
+  );
 
   const activateSession = useCallback(
     (sessionId: string): void => {
@@ -807,7 +828,7 @@ export function GhostteaWorkspace({
         return;
       }
       const next = pane(layoutId("pane"), session);
-      const updated = insertPane(current, next, activePaneIdRef.current, axis, layoutId("split"));
+      const updated = insertPane(current, next, activePaneIdRef.current, axis, layoutId("split"), splitSizing);
       // Commit the ref synchronously so multiple agent/session callbacks in
       // one React turn compose instead of each splitting the same stale tree.
       layoutRef.current = updated;
@@ -816,7 +837,7 @@ export function GhostteaWorkspace({
       setOperationError(undefined);
       activatePane(next.id);
     },
-    [activatePane, terminalRuntime],
+    [activatePane, splitSizing, terminalRuntime],
   );
 
   const newSplit = useCallback(
@@ -1238,6 +1259,7 @@ export function GhostteaWorkspace({
           onClose={() => setAppearanceSettingsOpen(false)}
           {...(platform.saveAppearance ? { onSave: platform.saveAppearance } : {})}
           {...(platform.configEditor ? { configEditor: platform.configEditor } : {})}
+          {...(platform.backdropBlur ? { backdropBlur: platform.backdropBlur } : {})}
           onPreview={setConfigPreview}
         />
       ) : null}

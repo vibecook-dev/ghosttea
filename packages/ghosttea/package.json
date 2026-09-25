@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Typed browser client for the Ghosttea terminal service.",
   "license": "MIT",
   "author": "James Yong",
@@ -38,7 +38,7 @@
     "provenance": true
   },
   "dependencies": {
-    "@vibecook/ghosttea-protocol": "0.11.1"
+    "@vibecook/ghosttea-protocol": "0.12.0"
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",

@@ -15,7 +15,11 @@ export default defineConfig({
     // Sandboxed preloads may only require Electron and built-in modules.
     // Bundle our narrow clipboard bridge instead of leaving a workspace
     // package import for Electron's restricted preload loader.
-    plugins: [externalizeDepsPlugin({ exclude: ["@vibecook/ghosttea-electron"] })],
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ["@vibecook/ghosttea-electron", "@vibecook/ghosttea-protocol"],
+      }),
+    ],
     build: {
       rollupOptions: {
         input: resolve("src/preload/index.ts"),

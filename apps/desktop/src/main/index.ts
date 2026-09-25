@@ -9,12 +9,14 @@ import {
   GhostteaElectronBackend,
   GhostteaConfigDocumentConflictError,
   installGhostteaClipboardHost,
+  installGhostteaLinkHost,
   installGhostteaEditShortcuts,
   type GhostteaElectronBackendOptions,
 } from "@vibecook/ghosttea-electron/main";
 import { LEGACY_PROFILE_ENV, PROFILE_ENV, desktopProfile } from "./profile";
 import { orderNativeTabs } from "./native-tab-order";
 import { DesktopTabRegistry, type SessionOwnerTransfer } from "./tab-registry";
+import { loadBackdropBlur, saveBackdropBlur } from "./backdrop-blur";
 import {
   appearanceUpdateMismatches,
   appearanceBlock,
@@ -48,6 +50,8 @@ if (profile.name !== "default") {
   process.env.GHOSTTEA_TRUFFLE_STATE_DIR = profile.truffleState;
 }
 const terminalConfigPath = join(app.getPath("userData"), "config.ghostty");
+const backdropBlurPath = join(app.getPath("userData"), "backdrop-blur.json");
+let backdropBlur = loadBackdropBlur(backdropBlurPath);
 const DEFAULT_TERMINAL_CONFIG = [
   "# Ghosttea application overrides (Ghostty-compatible syntax).",
   "# Your existing Ghostty config files are imported before this file.",
@@ -63,6 +67,7 @@ const ownsProfile = app.requestSingleInstanceLock({ profile: profile.name });
 if (!ownsProfile) app.quit();
 
 const clipboardHost = installGhostteaClipboardHost(ipcMain, clipboard);
+installGhostteaLinkHost(ipcMain, shell, (sender) => trustedManagedConfigEditorSender(sender, sender.mainFrame));
 
 ipcMain.on("terminal-context-menu", (event, canCopy: boolean) => {
   const window = BrowserWindow.fromWebContents(event.sender);
@@ -121,6 +126,27 @@ ipcMain.on("terminal-reload-config", (event) => {
 ipcMain.handle("terminal-save-appearance", async (event, payload: unknown) => {
   await requireManagedConfigEditor(event);
   await saveManagedAppearance(validateAppearanceUpdate(payload));
+});
+
+function requireBackdropBlurSender(event: Electron.IpcMainInvokeEvent): void {
+  if (process.platform !== "darwin" || !trustedManagedConfigEditorSender(event.sender, event.senderFrame)) {
+    throw new Error("Background blur is unavailable for this window");
+  }
+}
+
+ipcMain.handle("terminal-backdrop-blur-load", (event) => {
+  requireBackdropBlurSender(event);
+  return backdropBlur;
+});
+
+ipcMain.handle("terminal-backdrop-blur-save", (event, enabled: unknown) => {
+  requireBackdropBlurSender(event);
+  backdropBlur = saveBackdropBlur(backdropBlurPath, enabled);
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.setVibrancy(backdropBlur ? "under-window" : null);
+    window.webContents.send("terminal-backdrop-blur-changed", backdropBlur);
+  }
+  return backdropBlur;
 });
 
 ipcMain.handle("terminal-config-editor-load", async (event) => {
@@ -670,6 +696,9 @@ async function createWindow(options: CreateWindowOptions = {}): Promise<BrowserW
     // later config reload can lower background-opacity without recreating it.
     backgroundColor: process.platform === "darwin" ? "#00000000" : "#282c34",
     transparent: process.platform === "darwin",
+    ...(process.platform === "darwin"
+      ? { ...(backdropBlur ? { vibrancy: "under-window" as const } : {}), visualEffectState: "active" as const }
+      : {}),
     // A transparent macOS window leaves the default titlebar surface visually
     // empty. Extend content into it so the renderer can paint a visible bar,
     // while hiddenInset keeps the native traffic-light controls available.

@@ -18,6 +18,7 @@ import {
   type TerminalShaderEffect,
 } from "./types.js";
 import { graphemeCellWidth, splitGraphemes } from "../cell-width.js";
+import { backgroundRunBounds } from "./background-geometry.js";
 import { rowsForDamage } from "./render-damage.js";
 import { SHADER_EFFECT_WGSL } from "./shader-effects.js";
 
@@ -554,6 +555,7 @@ function geometryCacheKey(
   return [
     view.sessionEpoch.toString(),
     view.layoutEpoch.toString(),
+    view.cols,
     hasNativeRows ? "native" : "fallback",
     rows.map((row) => `${row}:${view.rowRevisions[row]?.toString() ?? "-"}`).join(","),
     [
@@ -1514,12 +1516,14 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       for (const run of view.nativeStyleRows[row] ?? []) {
         const style = styleFor(run.styleId);
         if (!style.background) continue;
+        const bounds = backgroundRunBounds(run, row, view.cols, rowCount, scale, viewportWidth, viewportHeight);
+        if (!bounds) continue;
         pushRectangle(
           rectangleVertices,
-          (ORIGIN_X + run.cellStart * CELL_WIDTH) * scale,
-          (ORIGIN_Y + row * LINE_HEIGHT) * scale,
-          run.cellSpan * CELL_WIDTH * scale,
-          LINE_HEIGHT * scale,
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
           style.background,
           viewportWidth,
           viewportHeight,
@@ -1767,12 +1771,14 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       for (const run of view.nativeStyleRows[row] ?? []) {
         const style = styleFor(run.styleId);
         if (!style.background) continue;
+        const bounds = backgroundRunBounds(run, row, view.cols, rowCount, scale, viewportWidth, viewportHeight);
+        if (!bounds) continue;
         pushRectangle(
           rectangleVertices,
-          (ORIGIN_X + run.cellStart * CELL_WIDTH) * scale,
-          (ORIGIN_Y + row * LINE_HEIGHT) * scale,
-          run.cellSpan * CELL_WIDTH * scale,
-          LINE_HEIGHT * scale,
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
           style.background,
           viewportWidth,
           viewportHeight,

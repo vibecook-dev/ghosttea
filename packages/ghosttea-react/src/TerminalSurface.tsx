@@ -1,3 +1,4 @@
+import { useTerminalLinks } from "./use-terminal-links.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
@@ -103,6 +104,7 @@ function TerminalSurfaceSession({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const gridRef = useRef({ cols: session.cols, rows: session.rows });
+  const links = useTerminalLinks(terminalRuntime, session.handle, inputRef, gridRef, platform, visible);
   const controlsResizeRef = useRef(controlsResize);
   const clientReadWriteRef = useRef(clientReadWrite);
   const [viewId] = useState(() => crypto.randomUUID());
@@ -110,7 +112,7 @@ function TerminalSurfaceSession({
   const selectionAnchorRef = useRef<CellPoint | null>(null);
   const selectionRef = useRef<{ anchor: CellPoint; focus: CellPoint } | null>(null);
   const selectionAllRef = useRef(false);
-  const pointerModeRef = useRef<"mouse" | "selection" | null>(null);
+  const pointerModeRef = useRef<"mouse" | "selection" | "link" | null>(null);
   const wheelDeltaRef = useRef(0);
   const pendingScrollRowsRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
@@ -580,6 +582,13 @@ function TerminalSurfaceSession({
   const onPointerDown = (event: PointerEvent<HTMLTextAreaElement>): void => {
     onActivate?.();
     event.currentTarget.focus({ preventScroll: true });
+    if (links.begin(event)) {
+      pointerModeRef.current = "link";
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const mouseTracking = terminalRuntime.isMouseTracking(session.handle);
     const localSelection = !interactive || usesLocalSelection(mouseTracking, event.shiftKey);
     if (event.button === 2 && localSelection) return;
@@ -606,6 +615,7 @@ function TerminalSurfaceSession({
   };
 
   const onPointerMove = (event: PointerEvent<HTMLTextAreaElement>): void => {
+    links.move(event);
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
     if (pointerModeRef.current === "mouse") {
       const button = event.buttons & 1 ? 1 : event.buttons & 4 ? 3 : event.buttons & 2 ? 2 : 0;
@@ -628,7 +638,11 @@ function TerminalSurfaceSession({
 
   const onPointerUp = (event: PointerEvent<HTMLTextAreaElement>): void => {
     stopSelectionAutoScroll();
-    if (pointerModeRef.current === "mouse") {
+    if (pointerModeRef.current === "link") {
+      links.finish(event);
+      event.preventDefault();
+      event.stopPropagation();
+    } else if (pointerModeRef.current === "mouse") {
       sendMouse(event, "release", mouseButton(event.button));
     } else if (pointerModeRef.current === "selection" && selectionRef.current) {
       const { anchor, focus } = selectionRef.current;
@@ -730,6 +744,9 @@ function TerminalSurfaceSession({
       <textarea
         ref={inputRef}
         className="terminal-input"
+        style={links.hoveredLink ? { cursor: "pointer" } : undefined}
+        title={links.hoveredLink?.uri}
+        data-terminal-link={links.hoveredLink?.uri}
         autoCapitalize="off"
         autoComplete="off"
         spellCheck={false}
@@ -741,6 +758,7 @@ function TerminalSurfaceSession({
           setInputFocused(true);
         }}
         onBlur={() => {
+          links.clear();
           restoreInputFocusRef.current = !document.hasFocus();
           setInputFocused(false);
           releaseForwardedKeys();
@@ -750,6 +768,10 @@ function TerminalSurfaceSession({
         onPaste={onPaste}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
+        onPointerLeave={links.leave}
+        onLostPointerCapture={() => {
+          if (pointerModeRef.current === "link") links.clear();
+        }}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
@@ -765,6 +787,24 @@ function TerminalSurfaceSession({
           if (!event.nativeEvent.isComposing) event.currentTarget.value = "";
         }}
       />
+      {links.hoveredLink ? (
+        <div className="terminal-link-overlay" aria-hidden="true">
+          {links.hoveredLink.spans.map((span, index) => (
+            <span
+              key={index}
+              style={{
+                left: ORIGIN_X + span.startColumn * CELL_WIDTH,
+                top: ORIGIN_Y + (span.row + 1) * LINE_HEIGHT - 3,
+                width: (span.endColumn - span.startColumn) * CELL_WIDTH,
+                backgroundColor: `rgb(${theme.foreground
+                  .slice(0, 3)
+                  .map((channel) => Math.round(channel * 255))
+                  .join(" ")})`,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
       {scrollbarScrollable ? (
         <div
           className={`terminal-scrollbar${scrollbarVisible ? " is-visible" : ""}`}
