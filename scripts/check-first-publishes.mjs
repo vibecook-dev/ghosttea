@@ -91,7 +91,16 @@ async function packageExists(name) {
 const crates = publishedCrates();
 const packages = publishedPackages();
 requireSameArtifacts("crates", crates, workflowPublishes("publish-crate-if-missing.sh"));
-requireSameArtifacts("npm packages", packages, workflowPublishes("publish-npm-package-if-missing.sh"));
+// The npm packages have no second list to reconcile: the workflow runs one
+// publisher without arguments, and it publishes `publishedPackages()`, the
+// manifests' own answer. What can still drift is the workflow calling it.
+if (!/^\s*run: node scripts\/publish-npm-packages\.mjs\s*$/m.test(workflow)) {
+  console.error(
+    "publish-release.yml does not run `node scripts/publish-npm-packages.mjs` without arguments, " +
+      "so it would not publish every npm package the manifests declare.",
+  );
+  process.exit(1);
+}
 
 // Sequentially, and deliberately: crates.io rate-limits its API, and a gate
 // that trips that limit reports an outage instead of an answer.

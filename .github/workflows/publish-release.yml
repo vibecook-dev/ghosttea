@@ -215,10 +215,19 @@ jobs:
       vars.OIDC_RELEASE_ENABLED == 'true'
     # npm provenance requires a GitHub-hosted runner.
     runs-on: macos-15
-    timeout-minutes: 45
+    # Most of this job is waiting for the registries to serve what it uploaded:
+    # up to the budget below per crate and per layer of npm packages. A job
+    # that times out stops behind another approval, like any other failure.
+    timeout-minutes: 120
     environment: release
     env:
       RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      # How long each publisher waits for an upload to become resolvable before
+      # failing the release. npm took up to 4 minutes 9 seconds to serve a
+      # 0.12.0 package, when the publishers still allowed about two and a half.
+      # A retry tag runs this file with the release tag's scripts, so this is
+      # where a retry would wait longer.
+      REGISTRY_VISIBILITY_TIMEOUT_MINUTES: 20
     permissions:
       contents: read
       id-token: write
@@ -299,22 +308,13 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth-truffle.outputs.token }}
         run: scripts/publish-crate-if-missing.sh ghosttea-truffle
 
-      # The daemon platform packages publish before everything else and the
-      # resolver publishes last: each publish waits until the registry can
-      # resolve it, so `@vibecook/ghosttead` can never exist at a version
-      # whose optional dependencies do not.
+      # Every package the manifests publish, each once npm resolves the
+      # workspace packages it depends on at this version, so
+      # `@vibecook/ghosttead` can never exist at a version whose optional
+      # dependencies do not. The order comes from the manifests; `--plan`
+      # prints it.
       - name: Publish npm packages
-        run: |
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead-darwin-arm64
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead-win32-x64
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-native-tabs
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-protocol
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-frame
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-client
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-electron
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-react
-          scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead
+        run: node scripts/publish-npm-packages.mjs
 
   # Creating the release used to be a manual step after this workflow finished,
   # and 0.4.0 shipped to both registries while the release page kept showing

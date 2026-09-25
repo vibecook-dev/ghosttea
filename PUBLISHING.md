@@ -35,21 +35,23 @@ Publish Rust crates in dependency order:
 6. `ghosttea`
 7. `ghosttea-truffle`
 
-Publish npm packages in dependency order. The binary packages go first and
-the resolver goes last: every publish waits until the registry can resolve
-it, so `@vibecook/ghosttead` never exists at a version whose optional
-dependencies do not.
+Publish npm packages in dependency order. `scripts/publish-npm-packages.mjs`
+derives it from the manifests: each package publishes once npm resolves every
+workspace package it depends on at the release version, so
+`@vibecook/ghosttead` never exists at a version whose optional dependencies do
+not, and no package names a dependency npm cannot install. A package waits
+only for its own dependencies, so the release waits for npm once per layer of
+the graph rather than once per package. `node scripts/publish-npm-packages.mjs
+--plan` prints the order without publishing anything. It is currently:
 
-1. `@vibecook/ghosttead-darwin-arm64`
-2. `@vibecook/ghosttead-win32-x64`
-3. `@vibecook/ghosttea-native-tabs`
-4. `@vibecook/ghosttea-protocol`
-5. `@vibecook/ghosttea-frame`
-6. `@vibecook/ghosttea`
-7. `@vibecook/ghosttea-client`
-8. `@vibecook/ghosttea-electron`
-9. `@vibecook/ghosttea-react`
-10. `@vibecook/ghosttead`
+1. `@vibecook/ghosttea-frame`, `@vibecook/ghosttea-native-tabs`,
+   `@vibecook/ghosttea-protocol`, `@vibecook/ghosttead-darwin-arm64`, and
+   `@vibecook/ghosttead-win32-x64`
+2. `@vibecook/ghosttea` and `@vibecook/ghosttea-client`, after
+   `@vibecook/ghosttea-protocol`; `@vibecook/ghosttead`, after both binary
+   packages
+3. `@vibecook/ghosttea-electron` and `@vibecook/ghosttea-react`, after the
+   packages they are built on
 
 ## Binary staging
 
@@ -263,22 +265,16 @@ cargo publish --locked --package ghosttea-truffle
 ```
 
 The npm manifests enable provenance for trusted CI publishing. Disable it only
-for the first local publish, which has no CI identity:
+for the first local publish, which has no CI identity. With no arguments the
+publisher uploads every package npm does not already hold at this version, in
+dependency order. Naming packages uploads only those, and whatever they depend
+on must already resolve:
 
 ```sh
 export NPM_CONFIG_PROVENANCE=false
 export npm_config_cache=/private/tmp/ghosttea-npm-release-cache
 
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead-darwin-arm64
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead-win32-x64
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-native-tabs
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-protocol
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-frame
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-client
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-electron
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttea-react
-scripts/publish-npm-package-if-missing.sh @vibecook/ghosttead
+node scripts/publish-npm-packages.mjs
 
 unset NPM_CONFIG_PROVENANCE npm_config_cache
 ```
@@ -312,6 +308,12 @@ environment's tag-only deployment rule instead of allowing `main` to publish.
 Every publish step skips artifacts a registry already holds, so only the
 missing remainder ships. If the retry itself exposes another workflow defect,
 fix it and increment the retry number; never move either tag.
+
+Only the workflow file travels with a retry. The scripts it runs come from the
+release tag's tree like everything else, so a fix to a publisher reaches the
+next release, not this one. What the workflow passes to them does travel:
+`REGISTRY_VISIBILITY_TIMEOUT_MINUTES` is set there so that a retry can wait
+longer on a slow registry.
 
 ## The GitHub release
 
@@ -392,4 +394,14 @@ The publish helpers safely skip an exact version that already exists, making a
 workflow rerun resumable after partial registry success. They never overwrite
 or replace a published artifact. After an upload succeeds, they wait for the
 exact version to become publicly resolvable so ordinary registry propagation
-does not produce a false release failure.
+does not produce a false release failure: for up to
+`REGISTRY_VISIBILITY_TIMEOUT_MINUTES`, which the workflow sets to 20.
+
+That margin is deliberate. npm accepts an upload well before it records the
+version: during 0.12.0 each package's `time[version]` trailed the accepted
+upload by 56 seconds to 4 minutes 9 seconds. The helpers then allowed about two
+and a half minutes, so four of the ten packages failed after publishing
+successfully, and each failure cost a rerun and another approval of the
+`release` environment. A publish npm refuses because it already holds the
+version — an earlier attempt's upload, accepted but not yet recorded — is
+waited for the same way instead of failing.
