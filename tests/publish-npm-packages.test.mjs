@@ -14,8 +14,7 @@ const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 
 // How long npm took to record each 0.12.0 upload: the registry's
-// `time["0.12.0"]` minus the job log's `+ name@version` line. The resolver
-// published last, in a later run, and stands in at the slowest of the others.
+// `time["0.12.0"]` minus the job log's `+ name@version` line.
 const NPM_0_12_0 = {
   "@vibecook/ghosttead-darwin-arm64": 158 * SECOND,
   "@vibecook/ghosttead-win32-x64": 77 * SECOND,
@@ -26,7 +25,7 @@ const NPM_0_12_0 = {
   "@vibecook/ghosttea-client": 127 * SECOND,
   "@vibecook/ghosttea-electron": 249 * SECOND,
   "@vibecook/ghosttea-react": 248 * SECOND,
-  "@vibecook/ghosttead": 249 * SECOND,
+  "@vibecook/ghosttead": 56 * SECOND,
 };
 
 /**
@@ -81,7 +80,7 @@ test("publishes every package once, each only after everything it depends on res
 });
 
 test("waits once per layer of the dependency graph, not once per package", async () => {
-  // One package at a time, 0.12.0's delays add up to 24 minutes of waiting.
+  // One package at a time, 0.12.0's delays add up to 21 minutes of waiting.
   const npm = simulatedNpm({ delays: NPM_0_12_0 });
   await publishPlan(fullPlan(), "0.12.0", npm);
   assert.ok(npm.clock.now() < 10 * MINUTE, `took ${npm.clock.now() / MINUTE} minutes`);
