@@ -2,14 +2,14 @@ GHOSTTEA iOS THIRD-PARTY NOTICES
 ================================
 
 This file is generated from the reviewed iOS release dependency graph.
-CycloneDX SHA-256: 98860a360b9cead014c413a813e4b2e4b673ce2de054a3ebda08352fcb2f7725
+CycloneDX SHA-256: be5713a39ecb1300ec9c5f41db8010e63fe0de4697e9c64f6e3966ac357d9b43
 Components: 108
 Unique license documents: 97
 
 COMPONENT INDEX
 ===============
 
-ghosttea-apple-ffi 0.11.1
+ghosttea-apple-ffi 0.12.0
   License: MIT
   Documents: LICENSE-081
 
@@ -165,31 +165,31 @@ getrandom 0.3.4
   License: MIT OR Apache-2.0
   Documents: LICENSE-015, LICENSE-066
 
-ghosttea-config 0.11.1
+ghosttea-config 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-core 0.11.1
+ghosttea-core 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-ffi 0.11.1
+ghosttea-ffi 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-font-fixture-ffi 0.11.1
+ghosttea-font-fixture-ffi 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-text 0.11.1
+ghosttea-text 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-vt-sys 0.11.1
+ghosttea-vt-sys 0.12.0
   License: MIT
   Documents: LICENSE-081
 
-ghosttea-vt 0.11.1
+ghosttea-vt 0.12.0
   License: MIT
   Documents: LICENSE-081
 
@@ -5645,7 +5645,7 @@ in this Software without prior written authorization of the copyright holder.
 ================================================================================
 LICENSE-081 · LICENSE, TRUFFLE-LICENSE
 SHA-256: d5988fd09ab1f97d46de9b2678a4fd2950286601f0a5995e739ac926c5a8eae0
-Used by: Truffle Swift 2cf5732bbeda8e3a2b9c3e444f471f303b6b8040, ghosttea-apple-ffi 0.11.1, ghosttea-config 0.11.1, ghosttea-core 0.11.1, ghosttea-ffi 0.11.1, ghosttea-font-fixture-ffi 0.11.1, ghosttea-text 0.11.1, ghosttea-vt 0.11.1, ghosttea-vt-sys 0.11.1
+Used by: Truffle Swift 2cf5732bbeda8e3a2b9c3e444f471f303b6b8040, ghosttea-apple-ffi 0.12.0, ghosttea-config 0.12.0, ghosttea-core 0.12.0, ghosttea-ffi 0.12.0, ghosttea-font-fixture-ffi 0.12.0, ghosttea-text 0.12.0, ghosttea-vt 0.12.0, ghosttea-vt-sys 0.12.0
 --------------------------------------------------------------------------------
 MIT License
 

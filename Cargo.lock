@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-apple-ffi"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "ghosttea-ffi",
  "ghosttea-font-fixture-ffi",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-config"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "libc",
  "serde",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-core"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "ghosttea-text",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-ffi"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "ghosttea-config",
  "ghosttea-core",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-font-fixture-ffi"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "ghosttea-text",
  "serde_json",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-text"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "fontdb",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-truffle"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -755,14 +755,14 @@ dependencies = [
 
 [[package]]
 name = "ghosttea-vt"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "ghosttea-vt-sys",
 ]
 
 [[package]]
 name = "ghosttea-vt-sys"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "cc",
  "serde",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "ghosttead"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "dotenvy",

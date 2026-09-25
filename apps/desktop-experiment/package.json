@@ -1,6 +1,6 @@
 {
   "name": "ghosttea-desktop-experiment",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "An isolated Ghosttea desktop experimentation application.",
   "author": "James Yong",
   "license": "MIT",
@@ -23,11 +23,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vibecook/ghosttea": "0.11.1",
-    "@vibecook/ghosttea-electron": "0.11.1",
-    "@vibecook/ghosttea-frame": "0.11.1",
-    "@vibecook/ghosttea-protocol": "0.11.1",
-    "@vibecook/ghosttea-react": "0.11.1",
+    "@vibecook/ghosttea": "0.12.0",
+    "@vibecook/ghosttea-electron": "0.12.0",
+    "@vibecook/ghosttea-frame": "0.12.0",
+    "@vibecook/ghosttea-protocol": "0.12.0",
+    "@vibecook/ghosttea-react": "0.12.0",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

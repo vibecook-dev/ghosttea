@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttead",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Prebuilt Ghosttea terminal daemon, resolved to the binary for the current platform.",
   "license": "MIT",
   "author": "James Yong",
@@ -48,8 +48,8 @@
     "prepublishOnly": "npm run build"
   },
   "optionalDependencies": {
-    "@vibecook/ghosttead-darwin-arm64": "0.11.1",
-    "@vibecook/ghosttead-win32-x64": "0.11.1"
+    "@vibecook/ghosttead-darwin-arm64": "0.12.0",
+    "@vibecook/ghosttead-win32-x64": "0.12.0"
   },
   "devDependencies": {
     "@types/node": "26.1.1",

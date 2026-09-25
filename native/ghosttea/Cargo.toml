@@ -14,10 +14,10 @@ anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 portable-pty = "0.9"
-ghosttea-vt = { version = "0.11.1", path = "crates/ghosttea-vt" }
-ghosttea-config = { version = "0.11.1", path = "crates/ghosttea-config" }
-ghosttea-core = { version = "0.11.1", path = "crates/ghosttea-core" }
-ghosttea-text = { version = "0.11.1", path = "crates/ghosttea-text" }
+ghosttea-vt = { version = "0.12.0", path = "crates/ghosttea-vt" }
+ghosttea-config = { version = "0.12.0", path = "crates/ghosttea-config" }
+ghosttea-core = { version = "0.12.0", path = "crates/ghosttea-core" }
+ghosttea-text = { version = "0.12.0", path = "crates/ghosttea-text" }
 serde.workspace = true
 serde_json.workspace = true
 subtle.workspace = true

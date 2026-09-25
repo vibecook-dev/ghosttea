@@ -3,6 +3,106 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.12.0 - 2026-09-25
+
+### Added
+
+- Terminal frames carry link targets in a new TRF1 section 12: explicit OSC 8
+  destinations, plus URLs and file or folder paths matched in the visible text,
+  each with the viewport cell spans it covers, including wrapped and Unicode
+  text. OSC 8 destinations take precedence over URL-looking labels.
+  `@vibecook/ghosttea-frame` exports `decodeLinkTargets` with the
+  `TerminalLink` and `TerminalLinkSpan` types.
+- React hosts that supply `platform.openExternal(url)` get modifier links:
+  holding Command on macOS, or Ctrl elsewhere, underlines the link under the
+  pointer, and a click opens it. A successful click is consumed before TUI
+  mouse reporting; releasing the modifier, window blur, dragging, and changing
+  terminal output cancel an in-progress click. The underline overlay works with
+  both WebGPU and Canvas rendering. The runtime also exposes
+  `links(sessionHandle)`, `openLink(uri)`, and a `link-targets` event.
+- Path matching recognizes absolute paths, `~/`, `./`, `../`, `$HOME/`, and
+  `$PWD/` prefixes, quoted paths containing spaces, the `~/…` directory in
+  Codex's footer, and relative source references such as `src/main.rs:42:10`
+  or `../shared/lib.rs#L42`. A line or column suffix is highlighted but is not
+  part of the opened `file://` URL. Relative paths resolve against the shell's
+  latest OSC 7 working directory, falling back to the session's launch
+  directory, and `~` against the launch environment's `HOME` (or
+  `USERPROFILE`). Embedders driving `TerminalModel` directly supply that
+  context with `TerminalModel::set_link_context`.
+- Electron hosts open links through `installGhostteaLinkHost` from
+  `@vibecook/ghosttea-electron/main` and `createGhostteaLinkBridge` from
+  `@vibecook/ghosttea-electron/preload`. The main-process handler rejects
+  subframe senders and any sender its trust callback refuses, and both sides
+  validate destinations with the new `terminalLinkUrl` from
+  `@vibecook/ghosttea-protocol`, which accepts only `http`, `https`, `mailto`,
+  `ftp`, `ftps`, and absolute `file://` URLs. File links open in the operating
+  system's default application.
+- `link-url` is now applied configuration, default `true`. `link-url = false`
+  turns off automatic URL and path matches while OSC 8 links stay clickable,
+  an empty value restores the default, and an invalid value is diagnosed as an
+  error. Clients receive it as the optional `renderer.linkUrl`.
+- `GhostteaWorkspace` accepts `splitSizing`. `"halves"`, the default, splits
+  the active pane in two; `"equal"` rebalances the row or column that receives
+  the new pane so its members share it equally, counting a perpendicular
+  subtree as one member that keeps its own ratios. `SplitSizing` is exported
+  from `@vibecook/ghosttea-react/workspace`.
+- `GhostteaWorkspacePlatform.backdropBlur` accepts an optional
+  `GhostteaBackdropBlurBridge` (`load`, `save`, `subscribe`), exported from
+  `@vibecook/ghosttea-react/workspace`. When a host supplies one, Appearance
+  settings shows a Background blur switch. The desktop application uses it for
+  a native macOS window blur that is on by default, persisted per profile, and
+  applied to every open window as soon as it changes.
+
+### Changed
+
+- Local sessions report their launch working directory as `cwd` from creation,
+  instead of `null` until the shell reports one with OSC 7. Terminal metadata
+  falls back to it the same way.
+
+### Fixed
+
+- Rapid cross-pane activation no longer lets a stale request move focus. A
+  workspace keeps one pending animation-frame focus request, replaces it on the
+  next activation, and cancels it when the workspace deactivates or unmounts.
+- A pane remounted by a split reclaims the resize seat it held. A split
+  re-parents the active pane's surface under a new view id, and a local
+  session's legacy `control-changed` frame cannot report an empty seat, so the
+  split pane stopped following resizes. The runtime now clears its cached
+  controller when one of its own views detaches while holding the seat, and
+  offers the seat to the session's remaining views.
+- A pane hidden by a zoom resizes again when the zoom lifts. Releasing control
+  no longer clears the view's control epoch: the daemon had kept the seat all
+  along, and the missing epoch made the reclaim fail the
+  one-claim-per-attachment guard.
+- WebGPU rendering extends edge-cell backgrounds through the canvas padding and
+  any fractional trailing cell. Edges come from the committed frame's grid
+  rather than the canvas size, and the original rectangle is expanded rather
+  than overlaid, so translucent backgrounds are not blended twice.
+- The prebuilt `ghosttead` daemons build against rustls 0.23.45, which fixes
+  RUSTSEC-2026-0285 (TLS 1.3 handshake messages accepted across encryption
+  level boundaries) in the TLS stack under the Truffle mesh transport, and
+  against chacha20 0.10.2 in place of the yanked 0.10.1. Crates.io consumers
+  resolve their own versions.
+
+### Compatibility
+
+- This is a 0.x minor release because adding public fields to Rust structs is
+  source-breaking for downstream exhaustive struct literals, the same reason
+  0.10.0 was one. `ghosttea_core::frame::TextSnapshot.links` and
+  `ghosttea_config::RendererConfig.link_url` are new. Update such literals to
+  set them; `links: None` encodes a frame without link targets.
+- The wire stays compatible. Section 12 is additive and TRF1 remains version
+  1: the 0.11.x decoders (TypeScript `decodeFrame`, the React render worker,
+  and Swift `RetainedTRF1State`) select sections by kind and skip it.
+  Configuration JSON stays compatible in both directions: `link_url` has a
+  serde default of `true` when `linkUrl` is absent, and 0.11.x clients
+  validate only the renderer fields they know.
+- Link targets need a 0.12.0 daemon. Producers without link metadata,
+  including older daemons and logical replicas, omit section 12, and their
+  terminals show no links.
+- `platform.openExternal` is optional. Without it the runtime reports no
+  links, so they never surface: nothing is underlined or opened.
+
 ## 0.11.1 - 2026-08-23
 
 ### Added
