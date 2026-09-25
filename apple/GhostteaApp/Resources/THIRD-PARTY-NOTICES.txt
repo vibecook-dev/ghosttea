@@ -2,7 +2,7 @@ GHOSTTEA iOS THIRD-PARTY NOTICES
 ================================
 
 This file is generated from the reviewed iOS release dependency graph.
-CycloneDX SHA-256: ea3a13626dc4b4555bcd64f7df2623d602688fa9088413bd57bc6fa7ae34e176
+CycloneDX SHA-256: 98860a360b9cead014c413a813e4b2e4b673ce2de054a3ebda08352fcb2f7725
 Components: 108
 Unique license documents: 97
 
@@ -273,11 +273,11 @@ rustls-pki-types 1.15.0
   License: MIT OR Apache-2.0
   Documents: LICENSE-028, LICENSE-057
 
-rustls-webpki 0.103.13
+rustls-webpki 0.103.15
   License: ISC
   Documents: LICENSE-034
 
-rustls 0.23.42
+rustls 0.23.45
   License: Apache-2.0 OR ISC OR MIT
   Documents: LICENSE-041, LICENSE-046, LICENSE-062
 
@@ -2529,7 +2529,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ================================================================================
 LICENSE-034 · LICENSE
 SHA-256: 5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
-Used by: rustls-webpki 0.103.13
+Used by: rustls-webpki 0.103.15
 --------------------------------------------------------------------------------
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
@@ -2877,7 +2877,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 LICENSE-041 · LICENSE-MIT
 SHA-256: 709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c
-Used by: rustls 0.23.42
+Used by: rustls 0.23.45
 --------------------------------------------------------------------------------
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
 
@@ -3043,7 +3043,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 LICENSE-046 · LICENSE-ISC
 SHA-256: 7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4
-Used by: rustls 0.23.42
+Used by: rustls 0.23.45
 --------------------------------------------------------------------------------
 ISC License (ISC)
 Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com>
@@ -3877,7 +3877,7 @@ limitations under the License.
 ================================================================================
 LICENSE-062 · LICENSE-APACHE
 SHA-256: a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
-Used by: base64 0.22.1, bitflags 1.3.2, bitflags 2.13.1, cc 1.2.67, cfg-if 1.0.4, core-foundation 0.9.4, core-foundation-sys 0.8.7, core-graphics 0.22.3, core-graphics-types 0.1.3, core-text 19.2.0, errno 0.3.14, fastrand 2.4.1, filetime 0.2.27, find-msvc-tools 0.1.9, httparse 1.10.1, log 0.4.33, once_cell 1.21.4, percent-encoding 2.3.2, pkg-config 0.3.33, ring 0.17.14, roxmltree 0.20.0, rustix 1.1.4, rustls 0.23.42, smallvec 1.15.2, swash 0.2.9, tar 0.4.45, tempfile 3.27.0, ttf-parser 0.25.1, unicode-segmentation 1.13.3, unicode-width 0.2.2, version_check 0.9.5, xattr 1.6.1, yazi 0.2.1, zeno 0.3.3
+Used by: base64 0.22.1, bitflags 1.3.2, bitflags 2.13.1, cc 1.2.67, cfg-if 1.0.4, core-foundation 0.9.4, core-foundation-sys 0.8.7, core-graphics 0.22.3, core-graphics-types 0.1.3, core-text 19.2.0, errno 0.3.14, fastrand 2.4.1, filetime 0.2.27, find-msvc-tools 0.1.9, httparse 1.10.1, log 0.4.33, once_cell 1.21.4, percent-encoding 2.3.2, pkg-config 0.3.33, ring 0.17.14, roxmltree 0.20.0, rustix 1.1.4, rustls 0.23.45, smallvec 1.15.2, swash 0.2.9, tar 0.4.45, tempfile 3.27.0, ttf-parser 0.25.1, unicode-segmentation 1.13.3, unicode-width 0.2.2, version_check 0.9.5, xattr 1.6.1, yazi 0.2.1, zeno 0.3.3
 --------------------------------------------------------------------------------
                               Apache License
                         Version 2.0, January 2004

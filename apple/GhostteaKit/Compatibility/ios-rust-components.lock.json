@@ -10,7 +10,7 @@
       "pkg:cargo/ghosttea-font-fixture-ffi@0.11.1"
     ]
   },
-  "cargoLockSha256": "477713035f0a7e626f656342601697e0492ad36ce3e868ec46a74efa42e39065",
+  "cargoLockSha256": "d6149eef8737d0748a069410d052debe633e9ed00268029b022aefdef6e93a3e",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
@@ -666,12 +666,12 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls-webpki@0.103.13",
+      "ref": "pkg:cargo/rustls-webpki@0.103.15",
       "name": "rustls-webpki",
-      "version": "0.103.13",
+      "version": "0.103.15",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "ISC",
-      "checksum": "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e",
+      "checksum": "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2",
       "dependencies": [
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
@@ -679,18 +679,18 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls@0.23.42",
+      "ref": "pkg:cargo/rustls@0.23.45",
       "name": "rustls",
-      "version": "0.23.42",
+      "version": "0.23.45",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "Apache-2.0 OR ISC OR MIT",
-      "checksum": "3c54fcab019b409d04215d3a17cb438fd7fbf192ee61461f20f4fe18704bc138",
+      "checksum": "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634",
       "dependencies": [
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls-webpki@0.103.13",
+        "pkg:cargo/rustls-webpki@0.103.15",
         "pkg:cargo/subtle@2.6.1",
         "pkg:cargo/zeroize@1.9.0"
       ]
@@ -961,7 +961,7 @@
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/percent-encoding@2.3.2",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls@0.23.42",
+        "pkg:cargo/rustls@0.23.45",
         "pkg:cargo/ureq-proto@0.6.0",
         "pkg:cargo/utf8-zero@0.8.1",
         "pkg:cargo/webpki-roots@1.0.8"
