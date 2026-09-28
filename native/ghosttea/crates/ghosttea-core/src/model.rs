@@ -590,9 +590,9 @@ impl TerminalModel {
                 .rows
                 .iter()
                 .map(|row| {
-                    row.as_ref()
-                        .map(|cached| cached.shaped.clone())
-                        .unwrap_or_default()
+                    // Every visible slot is populated above. Borrow its vectors
+                    // through frame assembly instead of cloning all cached rows.
+                    &row.as_ref().expect("visible row has been shaped").shaped
                 })
                 .collect();
             let mut new_definitions = BTreeMap::<u32, GlyphDefinition>::new();

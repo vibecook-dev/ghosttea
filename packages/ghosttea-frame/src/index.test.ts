@@ -39,6 +39,20 @@ function fixture(): ArrayBuffer {
 }
 
 describe("decodeFrame", () => {
+  it("decodes only a bounded frame view without copying its sections", () => {
+    const packet = new Uint8Array(fixture());
+    const envelope = new Uint8Array(packet.length + 23);
+    envelope.set(packet, 11);
+    const payload = envelope.subarray(11, 11 + packet.length);
+    const frame = decodeFrame(payload);
+    expect(decodeAccessibilityRows(frame.sections[0]!)).toEqual([{ row: 0, text: "hello" }]);
+    expect(frame.sections[0]!.bytes.buffer).toBe(envelope.buffer);
+    expect(frame.sections[0]!.bytes.byteOffset).toBe(11 + FRAME_HEADER_BYTES + SECTION_HEADER_BYTES);
+    // Bytes after the payload belong to the envelope, not to this frame.
+    new DataView(payload.buffer, payload.byteOffset).setUint32(72, packet.length, true);
+    expect(() => decodeFrame(payload)).toThrow(/section out of bounds/);
+  });
+
   it("decodes a strict absolute text snapshot", () => {
     const frame = decodeFrame(fixture());
     expect(frame.sessionHandle).toBe(7n);

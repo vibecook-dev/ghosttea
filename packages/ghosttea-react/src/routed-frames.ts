@@ -76,7 +76,7 @@ export interface RoutedExpectedLayout {
 export interface RoutedFramesTransportOptions {
   socketFactory?: (url: string) => WebSocket;
   applyFrame: (
-    packet: ArrayBuffer,
+    packet: ArrayBuffer | Uint8Array,
     identity: RoutedTrfIdentity,
     expectedLayout?: RoutedExpectedLayout,
     glyphNamespace?: string,
@@ -139,11 +139,6 @@ const socketClosing = 2;
 
 function exactStamp(left: RoutedSceneContentStamp | undefined, right: RoutedSceneContentStamp): boolean {
   return left !== undefined && compareRoutedSceneContent(left, right) === 0;
-}
-
-function copyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = bytes.slice();
-  return copy.buffer as ArrayBuffer;
 }
 
 function capacitiesFitWithin(accepted: RoutedReceiverCapacities, advertised: RoutedReceiverCapacities): boolean {
@@ -535,12 +530,7 @@ export class RoutedFramesTransport {
     }
     try {
       this.#emit({ type: "frames-state", activationId: header.activationId, state: "applying" });
-      this.#applyFrame(
-        copyArrayBuffer(payload),
-        activation.identity!,
-        undefined,
-        header.resultContent.sceneEpoch.cellBootId,
-      );
+      this.#applyFrame(payload, activation.identity!, undefined, header.resultContent.sceneEpoch.cellBootId);
       activation.appliedContent = header.resultContent;
       this.#returnCredit(connection, header.activationId, chargedBytes);
       this.#sceneApplied(connection, activation);

@@ -133,6 +133,41 @@ function oneGlyphFrame(handle: bigint, pixel: number): ArrayBuffer {
   return buffer;
 }
 
+function textFrame(lines: string[], sequence: bigint, reset = false): ArrayBuffer {
+  const texts = lines.map((line) => new TextEncoder().encode(line));
+  const offset = FRAME_HEADER_BYTES + 32;
+  const rowBytes = 2 + texts.reduce((sum, text) => sum + 18 + text.length, 0);
+  const buffer = new ArrayBuffer(offset + rowBytes + 8);
+  const v = new DataView(buffer);
+  v.setUint32(0, FRAME_MAGIC, true);
+  v.setUint16(4, FRAME_PROTOCOL_VERSION, true);
+  v.setUint16(6, FrameFlag.FullSnapshot | (reset ? FrameFlag.CatalogReset : 0), true);
+  for (const at of [8, 16, 24, 32, 48]) v.setBigUint64(at, 1n, true);
+  v.setBigUint64(40, sequence, true);
+  v.setUint16(56, 80, true);
+  v.setUint16(58, lines.length, true);
+  v.setUint16(60, 2, true);
+  v.setUint16(FRAME_HEADER_BYTES, SectionKind.RowReplacements, true);
+  v.setUint16(FRAME_HEADER_BYTES + 2, 1, true);
+  v.setUint32(FRAME_HEADER_BYTES + 4, offset, true);
+  v.setUint32(FRAME_HEADER_BYTES + 8, rowBytes, true);
+  v.setUint32(FRAME_HEADER_BYTES + 12, lines.length, true);
+  v.setUint16(FRAME_HEADER_BYTES + 16, SectionKind.CursorState, true);
+  v.setUint32(FRAME_HEADER_BYTES + 20, offset + rowBytes, true);
+  v.setUint32(FRAME_HEADER_BYTES + 24, 8, true);
+  v.setUint32(FRAME_HEADER_BYTES + 28, 1, true);
+  v.setUint16(offset, lines.length, true);
+  let at = offset + 2;
+  for (const [row, text] of texts.entries()) {
+    v.setUint16(at, row, true);
+    v.setBigUint64(at + 2, sequence, true);
+    v.setUint32(at + 10, text.length, true);
+    new Uint8Array(buffer).set(text, at + 18);
+    at += 18 + text.length;
+  }
+  return buffer;
+}
+
 vi.mock("./renderers/canvas-renderer.js", () => ({
   CanvasTerminalRenderer: class {
     readonly kind = "canvas2d" as const;
@@ -168,6 +203,59 @@ describe("terminal render worker surfaces", () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("composes scrolling before a paint and fences reset, layout and selection changes", async () => {
+    const raf: FrameRequestCallback[] = [];
+    const scope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback) => raf.push(callback),
+    };
+    vi.stubGlobal("self", scope);
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown) => scope.onmessage?.({ data } as MessageEvent);
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const paints: Array<{ full: boolean; rows: number[]; scrollRows?: number }> = [];
+    renderer.renderBatch.mockImplementation((entries) => {
+      for (const { view } of entries) {
+        const damage = (view as unknown as import("./renderers/types.js").RenderView).damage!;
+        paints.push({ ...damage, rows: [...damage.rows] });
+      }
+      return [];
+    });
+    const paint = async () => {
+      raf.splice(0).forEach((callback) => callback(0));
+      await settle();
+      return paints.at(-1)!;
+    };
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    dispatch({ type: "mount", surfaceId: "a", sessionHandle: "1", canvas: {} });
+    await settle();
+    dispatch({ type: "frame", packet: textFrame(["a", "b", "c", "d", "e"], 1n) });
+    expect((await paint()).full).toBe(true);
+    dispatch({ type: "frame", packet: textFrame(["b", "c", "d", "e", "f"], 2n) });
+    dispatch({ type: "frame", packet: textFrame(["c", "d", "e", "f", "g"], 3n) });
+    expect(await paint()).toMatchObject({ full: false, scrollRows: 2 });
+    expect(paints.at(-1)!.rows).toEqual(expect.arrayContaining([3, 4]));
+    dispatch({
+      type: "selection",
+      sessionHandle: "1",
+      surfaceId: "a",
+      selection: { anchor: { row: 2, column: 0 }, focus: { row: 3, column: 4 } },
+    });
+    expect(await paint()).toMatchObject({ full: false, rows: [2, 3] });
+    dispatch({ type: "frame", packet: textFrame(["d", "e", "f", "g", "h"], 4n) });
+    expect((await paint()).full).toBe(true);
+    dispatch({ type: "selection", sessionHandle: "1", surfaceId: "a", selection: null });
+    await paint();
+    dispatch({ type: "frame", packet: textFrame(["e", "f", "g", "h", "i"], 5n, true) });
+    expect((await paint()).full).toBe(true);
+    const layout = textFrame(["f", "g", "h", "i", "j"], 6n);
+    new DataView(layout).setBigUint64(32, 2n, true);
+    dispatch({ type: "frame", packet: layout });
+    expect((await paint()).full).toBe(true);
+    renderer.renderBatch.mockImplementation(() => []);
+  });
 
   it("isolates glyph pixels and GPU IDs across engines and a dropped session", async () => {
     const scope = {

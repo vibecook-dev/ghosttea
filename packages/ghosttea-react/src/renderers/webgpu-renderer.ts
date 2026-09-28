@@ -22,7 +22,7 @@ import { backgroundRunBounds } from "./background-geometry.js";
 import { rowsForDamage } from "./render-damage.js";
 import { SHADER_EFFECT_WGSL } from "./shader-effects.js";
 
-const ATLAS_SIZE = 2048;
+import { AtlasBatchFullError, AtlasCapacityError, GlyphAtlasPages, type GlyphLocation } from "./glyph-atlas.js";
 const GEOMETRY_CACHE_LIMIT = 8;
 const FONT_STACK = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
@@ -204,88 +204,37 @@ class DynamicVertexBuffer {
   }
 }
 
-interface GlyphLocation {
-  u0: number;
-  v0: number;
-  u1: number;
-  v1: number;
-  cells: number;
-}
-
 class FallbackGlyphAtlas {
-  readonly #texture: GPUTexture;
-  readonly #sampler: GPUSampler;
-  readonly #bindGroup: GPUBindGroup;
-  readonly #cache = new Map<string, GlyphLocation>();
+  readonly pages: GlyphAtlasPages<string>;
   readonly #scratch = new OffscreenCanvas(1, 1);
-  #x = 1;
-  #y = 1;
-  #rowHeight = 0;
   #uploadBytes = 0;
   #uploadCalls = 0;
-  #generation = 0;
 
   constructor(
     readonly device: GPUDevice,
     bindGroupLayout: GPUBindGroupLayout,
   ) {
-    this.#texture = device.createTexture({
-      label: "terminal glyph atlas",
-      size: [ATLAS_SIZE, ATLAS_SIZE],
-      format: "rgba8unorm",
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
-    this.#sampler = device.createSampler({ minFilter: "linear", magFilter: "linear" });
-    this.#bindGroup = device.createBindGroup({
-      label: "terminal glyph atlas bindings",
-      layout: bindGroupLayout,
-      entries: [
-        { binding: 0, resource: this.#texture.createView() },
-        { binding: 1, resource: this.#sampler },
-      ],
-    });
+    this.pages = new GlyphAtlasPages(device, bindGroupLayout, "terminal diagnostic glyph atlas", "rgba8unorm", 1);
   }
 
   get bindGroup(): GPUBindGroup {
-    return this.#bindGroup;
+    return this.pages.bindGroup;
   }
-
   get generation(): number {
-    return this.#generation;
+    return this.pages.generation;
   }
 
   prepare(values: Iterable<string>, dpr: number): void {
     const scale = Math.max(1, Math.min(3, dpr));
-    const all = [...new Set(values)].filter((value) => value.trim().length > 0);
-    const missing = all.filter((value) => !this.#cache.has(`${scale.toFixed(2)}:${value}`));
-    if (this.#fits(missing, scale, this.#x, this.#y, this.#rowHeight)) return;
-    this.#cache.clear();
-    this.#generation += 1;
-    this.#x = 1;
-    this.#y = 1;
-    this.#rowHeight = 0;
-    if (!this.#fits(all, scale, this.#x, this.#y, this.#rowHeight)) {
-      throw new Error("The diagnostic glyph atlas cannot fit the text visible in one frame");
-    }
-  }
-
-  #fits(values: Iterable<string>, scale: number, startX: number, startY: number, startRowHeight: number): boolean {
-    let x = startX;
-    let y = startY;
-    let rowHeight = startRowHeight;
-    for (const value of values) {
-      const width = Math.max(1, Math.ceil(CELL_WIDTH * graphemeCellWidth(value) * scale));
-      const height = Math.max(1, Math.ceil(LINE_HEIGHT * scale));
-      if (x + width + 1 > ATLAS_SIZE) {
-        x = 1;
-        y += rowHeight + 1;
-        rowHeight = 0;
-      }
-      if (y + height + 1 > ATLAS_SIZE) return false;
-      x += width + 1;
-      rowHeight = Math.max(rowHeight, height);
-    }
-    return true;
+    this.pages.prepare(
+      [...new Set(values)]
+        .filter((value) => value.trim().length > 0)
+        .map((value) => ({
+          key: `${scale.toFixed(2)}:${value}`,
+          width: Math.max(1, Math.ceil(CELL_WIDTH * graphemeCellWidth(value) * scale)),
+          height: Math.max(1, Math.ceil(LINE_HEIGHT * scale)),
+        })),
+    );
   }
 
   glyph(grapheme: string, dpr: number): GlyphLocation | undefined {
@@ -293,20 +242,10 @@ class FallbackGlyphAtlas {
     const scale = Math.max(1, Math.min(3, dpr));
     const cells = graphemeCellWidth(grapheme);
     const key = `${scale.toFixed(2)}:${grapheme}`;
-    const cached = this.#cache.get(key);
+    const cached = this.pages.get(key);
     if (cached) return cached;
-
     const width = Math.max(1, Math.ceil(CELL_WIDTH * cells * scale));
     const height = Math.max(1, Math.ceil(LINE_HEIGHT * scale));
-    if (this.#x + width + 1 > ATLAS_SIZE) {
-      this.#x = 1;
-      this.#y += this.#rowHeight + 1;
-      this.#rowHeight = 0;
-    }
-    if (this.#y + height + 1 > ATLAS_SIZE) {
-      throw new Error("Temporary glyph atlas exhausted");
-    }
-
     this.#scratch.width = width;
     this.#scratch.height = height;
     const context = this.#scratch.getContext("2d", { willReadFrequently: true });
@@ -317,47 +256,28 @@ class FallbackGlyphAtlas {
     context.textBaseline = "top";
     context.fillText(grapheme, 0, Math.max(0, Math.floor((height - 15 * scale) / 2)));
     const image = context.getImageData(0, 0, width, height);
-    this.device.queue.writeTexture(
-      { texture: this.#texture, origin: [this.#x, this.#y] },
-      image.data,
-      { bytesPerRow: width * 4, rowsPerImage: height },
-      [width, height],
-    );
+    const { location, texture, origin } = this.pages.insert(key, width, height, cells);
+    this.device.queue.writeTexture({ texture, origin }, image.data, { bytesPerRow: width * 4, rowsPerImage: height }, [
+      width,
+      height,
+    ]);
     this.#uploadBytes += image.data.byteLength;
     this.#uploadCalls += 1;
-    const location: GlyphLocation = {
-      u0: this.#x / ATLAS_SIZE,
-      v0: this.#y / ATLAS_SIZE,
-      u1: (this.#x + width) / ATLAS_SIZE,
-      v1: (this.#y + height) / ATLAS_SIZE,
-      cells,
-    };
-    this.#cache.set(key, location);
-    this.#x += width + 1;
-    this.#rowHeight = Math.max(this.#rowHeight, height);
     return location;
   }
 
   destroy(): void {
-    this.#texture.destroy();
+    this.pages.destroy();
   }
-
   uploadMetrics(): { bytes: number; calls: number } {
     return { bytes: this.#uploadBytes, calls: this.#uploadCalls };
   }
 }
 
 class NativeGlyphAtlas {
-  readonly #texture: GPUTexture;
-  readonly #sampler: GPUSampler;
-  readonly #bindGroup: GPUBindGroup;
-  readonly #cache = new Map<number, GlyphLocation>();
-  #x = 1;
-  #y = 1;
-  #rowHeight = 0;
+  readonly pages: GlyphAtlasPages<number>;
   #uploadBytes = 0;
   #uploadCalls = 0;
-  #generation = 0;
 
   constructor(
     readonly device: GPUDevice,
@@ -365,104 +285,48 @@ class NativeGlyphAtlas {
     readonly label: string,
     readonly format: "r8unorm" | "rgba8unorm",
   ) {
-    this.#texture = device.createTexture({
-      label,
-      size: [ATLAS_SIZE, ATLAS_SIZE],
-      format,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
-    this.#sampler = device.createSampler({ minFilter: "linear", magFilter: "linear" });
-    this.#bindGroup = device.createBindGroup({
-      label: `${label} bindings`,
-      layout: bindGroupLayout,
-      entries: [
-        { binding: 0, resource: this.#texture.createView() },
-        { binding: 1, resource: this.#sampler },
-      ],
-    });
+    // At most 16 MiB mono + 32 MiB color + 16 MiB diagnostic pages. Empty
+    // formats allocate no textures. The ordinary ASCII working set uses 4 MiB.
+    this.pages = new GlyphAtlasPages(device, bindGroupLayout, label, format, format === "r8unorm" ? 4 : 2);
   }
 
   get bindGroup(): GPUBindGroup {
-    return this.#bindGroup;
+    return this.pages.bindGroup;
   }
-
   get generation(): number {
-    return this.#generation;
+    return this.pages.generation;
   }
 
   prepare(definitions: Iterable<GlyphDefinition>): void {
-    const all = new Map<number, GlyphDefinition>();
-    const missing = new Map<number, GlyphDefinition>();
-    for (const definition of definitions) {
-      all.set(definition.id, definition);
-      if (!this.#cache.has(definition.id)) missing.set(definition.id, definition);
-    }
-    if (this.#fits(missing.values(), this.#x, this.#y, this.#rowHeight)) return;
-    this.#cache.clear();
-    this.#generation += 1;
-    this.#x = 1;
-    this.#y = 1;
-    this.#rowHeight = 0;
-    if (!this.#fits(all.values(), this.#x, this.#y, this.#rowHeight)) {
-      throw new Error(`${this.label} cannot fit the glyphs visible in one frame`);
-    }
-  }
-
-  #fits(definitions: Iterable<GlyphDefinition>, startX: number, startY: number, startRowHeight: number): boolean {
-    let x = startX;
-    let y = startY;
-    let rowHeight = startRowHeight;
-    for (const { width, height } of definitions) {
-      if (width + 2 > ATLAS_SIZE || height + 2 > ATLAS_SIZE) return false;
-      if (x + width + 1 > ATLAS_SIZE) {
-        x = 1;
-        y += rowHeight + 1;
-        rowHeight = 0;
-      }
-      if (y + height + 1 > ATLAS_SIZE) return false;
-      x += width + 1;
-      rowHeight = Math.max(rowHeight, height);
-    }
-    return true;
+    this.pages.prepare(
+      Array.from(definitions, (definition) => ({
+        key: definition.id,
+        width: definition.width,
+        height: definition.height,
+      })),
+    );
   }
 
   glyph(definition: GlyphDefinition): GlyphLocation {
-    const cached = this.#cache.get(definition.id);
+    const cached = this.pages.get(definition.id);
     if (cached) return cached;
     const { width, height } = definition;
-    if (this.#x + width + 1 > ATLAS_SIZE) {
-      this.#x = 1;
-      this.#y += this.#rowHeight + 1;
-      this.#rowHeight = 0;
-    }
-    if (this.#y + height + 1 > ATLAS_SIZE) throw new Error(`${this.label} exhausted`);
-    const pixels = definition.pixels;
+    const { location, texture, origin } = this.pages.insert(definition.id, width, height, 0);
     const bytesPerPixel = this.format === "r8unorm" ? 1 : 4;
     this.device.queue.writeTexture(
-      { texture: this.#texture, origin: [this.#x, this.#y] },
-      pixels,
+      { texture, origin },
+      definition.pixels,
       { bytesPerRow: width * bytesPerPixel, rowsPerImage: height },
       [width, height],
     );
-    this.#uploadBytes += pixels.byteLength;
+    this.#uploadBytes += definition.pixels.byteLength;
     this.#uploadCalls += 1;
-    const location: GlyphLocation = {
-      u0: this.#x / ATLAS_SIZE,
-      v0: this.#y / ATLAS_SIZE,
-      u1: (this.#x + width) / ATLAS_SIZE,
-      v1: (this.#y + height) / ATLAS_SIZE,
-      cells: 0,
-    };
-    this.#cache.set(definition.id, location);
-    this.#x += width + 1;
-    this.#rowHeight = Math.max(this.#rowHeight, height);
     return location;
   }
 
   destroy(): void {
-    this.#texture.destroy();
+    this.pages.destroy();
   }
-
   uploadMetrics(): { bytes: number; calls: number } {
     return { bytes: this.#uploadBytes, calls: this.#uploadCalls };
   }
@@ -485,6 +349,9 @@ interface WebGpuSurface extends PixelSize {
   geometryCache: Map<string, CachedGeometry>;
   geometryCandidates: Map<string, true>;
   sceneValid: boolean;
+  sceneHadSelection: boolean;
+  sceneHadOverhang: boolean;
+  sceneCursorRow: number | null;
 }
 
 interface EffectPass {
@@ -1040,6 +907,8 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
   readonly #colorAtlas: NativeGlyphAtlas;
   readonly #fallbackAtlas: FallbackGlyphAtlas;
   #performanceMeasurementEnabled = false;
+  #submission: { queueSubmits: number; surfaceIds: string[] } = { queueSubmits: 0, surfaceIds: [] };
+  #scrollScratch: GPUTexture | undefined;
 
   private constructor(
     readonly device: GPUDevice,
@@ -1249,6 +1118,9 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       geometryCache: new Map(),
       geometryCandidates: new Map(),
       sceneValid: false,
+      sceneHadSelection: false,
+      sceneHadOverhang: false,
+      sceneCursorRow: null,
     };
     this.#surfaces.set(id, surface);
     this.#configure(surface);
@@ -1268,6 +1140,10 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     surface.cursorBuffer.destroy();
     clearGeometryCache(surface);
     this.#surfaces.delete(id);
+    if (this.#surfaces.size === 0) {
+      this.#scrollScratch?.destroy();
+      this.#scrollScratch = undefined;
+    }
   }
 
   resize(id: string, size: PixelSize): void {
@@ -1299,7 +1175,11 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       label: "terminal scene before Ghostty custom shaders",
       size: [Math.max(1, width), Math.max(1, height)],
       format: this.format,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_SRC |
+        GPUTextureUsage.COPY_DST,
     });
   }
 
@@ -1422,35 +1302,204 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     };
   }
 
+  submission(): { queueSubmits: number; surfaceIds: readonly string[] } {
+    return this.#submission;
+  }
+
+  #releaseAtlasBatch(): void {
+    this.#monoAtlas.pages.releaseBatch();
+    this.#colorAtlas.pages.releaseBatch();
+    this.#fallbackAtlas.pages.releaseBatch();
+  }
+
+  #prepareAtlases(view: RenderView, renderRows: readonly number[], dpr: number): void {
+    const mono = new Map<number, GlyphDefinition>();
+    const color = new Map<number, GlyphDefinition>();
+    for (const row of renderRows) {
+      for (const glyph of view.nativeRows[row] ?? []) {
+        const definition = view.glyphDefinitions.get(glyph.glyphId);
+        if (definition) (definition.format === GlyphFormat.Alpha8 ? mono : color).set(definition.id, definition);
+      }
+    }
+    this.#monoAtlas.prepare(mono.values());
+    this.#colorAtlas.prepare(color.values());
+    const fallback = !view.nativeRows.some((row) => row.length > 0);
+    if (fallback) {
+      this.#fallbackAtlas.prepare(
+        renderRows.flatMap((row) => splitGraphemes(view.rows[row] ?? "")),
+        dpr,
+      );
+    }
+    // Pin only after every format fits, so a rejected pane cannot occupy the
+    // batch budget with pages that no pending draw actually references.
+    if (mono.size > 0) this.#monoAtlas.pages.pin();
+    if (color.size > 0) this.#colorAtlas.pages.pin();
+    if (fallback && renderRows.length > 0) this.#fallbackAtlas.pages.pin();
+  }
+
   render(id: string, view: RenderView): TerminalRenderMetrics | undefined {
-    const surface = this.#surfaces.get(id);
-    if (!surface) return;
-    const encoder = this.device.createCommandEncoder({ label: `terminal frame ${id}` });
-    const metrics =
-      view.damage?.geometryChanged === false
-        ? this.#encodeCachedRender(id, view, encoder)
-        : this.#encodeRender(id, view, encoder);
-    this.device.queue.submit([encoder.finish()]);
-    if (metrics) metrics.queueSubmits = 1;
-    return metrics;
+    return this.renderBatch([{ id, view }])[0];
+  }
+
+  #canCopyScroll(surface: WebGpuSurface, view: RenderView): boolean {
+    const shift = view.damage?.scrollRows ?? 0;
+    const top = ORIGIN_Y * surface.dpr;
+    const line = LINE_HEIGHT * surface.dpr;
+    const count = view.rows.length;
+    return (
+      surface.sceneValid &&
+      !view.damage?.full &&
+      Number.isSafeInteger(shift) &&
+      shift !== 0 &&
+      Math.abs(shift) < count &&
+      !view.selection &&
+      !surface.sceneHadSelection &&
+      Number.isInteger(top) &&
+      Number.isInteger(line) &&
+      top + count * line <= surface.canvas.height
+    );
+  }
+
+  #prepareScrollScratch(entries: ReadonlyArray<{ id: string; view: RenderView }>): boolean {
+    let width = 0,
+      height = 0;
+    for (const { id, view } of entries) {
+      const surface = this.#surfaces.get(id);
+      if (!surface || !this.#canCopyScroll(surface, view)) continue;
+      width = Math.max(width, surface.canvas.width);
+      height = Math.max(height, view.rows.length * LINE_HEIGHT * surface.dpr);
+    }
+    if (width === 0) return false;
+    // One shared staging texture, never one per pane. Fall back to redraw if
+    // the batch's maximum extent would exceed this fixed memory ceiling.
+    if (width * height * 4 > 64 * 1024 * 1024) return false;
+    if (!this.#scrollScratch || this.#scrollScratch.width < width || this.#scrollScratch.height < height) {
+      this.#scrollScratch?.destroy();
+      this.#scrollScratch = this.device.createTexture({
+        label: "terminal shared scroll staging",
+        size: [width, height],
+        format: this.format,
+        usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+      });
+    }
+    return true;
+  }
+
+  #copyScroll(surface: WebGpuSurface, view: RenderView, encoder: GPUCommandEncoder): void {
+    const dy = view.damage!.scrollRows! * LINE_HEIGHT * surface.dpr;
+    const top = ORIGIN_Y * surface.dpr;
+    const size = [surface.canvas.width, view.rows.length * LINE_HEIGHT * surface.dpr - Math.abs(dy)];
+    // A texture cannot copy overlapping regions to itself. Encoder ordering
+    // lets all panes safely share this scratch texture, even within one batch.
+    encoder.copyTextureToTexture(
+      { texture: surface.sceneTexture, origin: [0, top + Math.max(0, dy)] },
+      { texture: this.#scrollScratch! },
+      size,
+    );
+    encoder.copyTextureToTexture(
+      { texture: this.#scrollScratch! },
+      { texture: surface.sceneTexture, origin: [0, top + Math.max(0, -dy)] },
+      size,
+    );
   }
 
   renderBatch(entries: ReadonlyArray<{ id: string; view: RenderView }>): Array<TerminalRenderMetrics | undefined> {
-    const active = entries.filter(({ id }) => this.#surfaces.has(id));
-    if (active.length === 0) return entries.map(() => undefined);
-    const encoder = this.device.createCommandEncoder({ label: `terminal frame batch (${active.length} panes)` });
+    this.#submission = { queueSubmits: 0, surfaceIds: [] };
+    this.#releaseAtlasBatch();
+    const prepared = entries.map(({ id, view }) => {
+      const surface = this.#surfaces.get(id);
+      const overhang =
+        view.damage?.geometryChanged === false && surface?.sceneValid
+          ? surface.sceneHadOverhang
+          : view.nativeRows.some((row) => row.some((glyph) => glyph.y < 0 || glyph.y + glyph.height > LINE_HEIGHT));
+      // Row clears cannot reconstruct cross-row alpha composition at the
+      // repair boundary. Preserve those glyphs with a complete scene redraw.
+      if (
+        view.damage &&
+        !view.damage.full &&
+        (view.damage.scrollRows || view.damage.rows.size > 0) &&
+        (overhang || surface?.sceneHadOverhang)
+      ) {
+        view = { ...view, damage: { full: true, rows: new Set(), geometryChanged: true } };
+      }
+      return { id, view, overhang };
+    });
+    const canStageScroll = this.#prepareScrollScratch(prepared);
+    let encoder: GPUCommandEncoder | undefined;
+    let pendingIds: string[] = [];
     const byId = new Map<string, TerminalRenderMetrics | undefined>();
-    for (const { id, view } of active) {
-      byId.set(
-        id,
-        view.damage?.geometryChanged === false
-          ? this.#encodeCachedRender(id, view, encoder)
-          : this.#encodeRender(id, view, encoder),
-      );
+    const submit = (): void => {
+      if (encoder && pendingIds.length > 0) {
+        this.device.queue.submit([encoder.finish()]);
+        this.#submission.queueSubmits += 1;
+        this.#submission.surfaceIds.push(...pendingIds);
+        const first = pendingIds.map((id) => byId.get(id)).find((metric) => metric !== undefined);
+        if (first) first.queueSubmits += 1;
+      }
+      encoder = undefined;
+      pendingIds = [];
+      this.#releaseAtlasBatch();
+    };
+    try {
+      for (const { id, view: originalView, overhang } of prepared) {
+        const surface = this.#surfaces.get(id);
+        if (!surface) continue;
+        let view = originalView;
+        const copyScroll = canStageScroll && this.#canCopyScroll(surface, view);
+        if (view.damage?.scrollRows) {
+          if (copyScroll) {
+            const rows = new Set(view.damage.rows);
+            const shift = view.damage.scrollRows;
+            // Repaint exposed rows, the two clipped edges and the cursor
+            // baked into the last submitted scene (possibly several frames ago).
+            rows.add(0);
+            rows.add(view.rows.length - 1);
+            for (let row = 0; row < view.rows.length; row++) {
+              if (row + shift < 0 || row + shift >= view.rows.length) rows.add(row);
+            }
+            if (surface.sceneCursorRow !== null) rows.add(surface.sceneCursorRow - shift);
+            if (effectiveCursorStyle(view) !== null) rows.add(view.cursor.y);
+            view = { ...view, damage: { ...view.damage, rows, geometryChanged: true } };
+          } else {
+            view = { ...view, damage: { full: true, rows: new Set(), geometryChanged: true } };
+          }
+        }
+        const count = Math.max(view.rows.length, view.nativeRows.length, view.nativeStyleRows.length);
+        const { rows } = rowsForDamage(count, view.damage, surface.sceneValid);
+        try {
+          try {
+            this.#prepareAtlases(view, rows, surface.dpr);
+          } catch (error) {
+            if (!(error instanceof AtlasBatchFullError) || pendingIds.length === 0) throw error;
+            // All recyclable pages are referenced by pending draws. Submit
+            // them before overwriting any texels, then retry this pane once.
+            submit();
+            this.#prepareAtlases(view, rows, surface.dpr);
+          }
+        } catch (error) {
+          if (!(error instanceof AtlasCapacityError)) throw error;
+          // Capacity failure is isolated to this pane and preserves its old
+          // scene. Other panes still submit; new content/resize can retry it.
+          console.error(`[terminal-renderer] cannot render ${id}`, error);
+          continue;
+        }
+        encoder ??= this.device.createCommandEncoder({ label: "terminal frame batch" });
+        if (copyScroll) this.#copyScroll(surface, view, encoder);
+        byId.set(
+          id,
+          view.damage?.geometryChanged === false
+            ? this.#encodeCachedRender(id, view, encoder)
+            : this.#encodeRender(id, view, encoder),
+        );
+        surface.sceneHadSelection = view.selection !== null;
+        surface.sceneHadOverhang = overhang;
+        surface.sceneCursorRow = effectiveCursorStyle(view) === null ? null : view.cursor.y;
+        pendingIds.push(id);
+      }
+      submit();
+    } finally {
+      this.#releaseAtlasBatch();
     }
-    this.device.queue.submit([encoder.finish()]);
-    const firstMetrics = [...byId.values()].find((metrics) => metrics !== undefined);
-    if (firstMetrics) firstMetrics.queueSubmits = 1;
     return entries.map(({ id }) => byId.get(id));
   }
 
@@ -1476,20 +1525,6 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       resolvedStyles.set(styleId, resolved);
       return resolved;
     };
-    const monoDefinitions = new Map<number, GlyphDefinition>();
-    const colorDefinitions = new Map<number, GlyphDefinition>();
-    for (const row of renderRows) {
-      for (const glyph of view.nativeRows[row] ?? []) {
-        const definition = view.glyphDefinitions.get(glyph.glyphId);
-        if (!definition) continue;
-        (definition.format === GlyphFormat.Rgba8Premultiplied ? colorDefinitions : monoDefinitions).set(
-          definition.id,
-          definition,
-        );
-      }
-    }
-    this.#monoAtlas.prepare(monoDefinitions.values());
-    this.#colorAtlas.prepare(colorDefinitions.values());
 
     if (!fullRedraw) {
       for (const row of renderRows) {
@@ -1554,12 +1589,6 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     pushBlockCursorBackground(rectangleVertices, view, renderRows, scale, viewportWidth, viewportHeight);
     const selectionInstanceCount = rectangleVertices.length / 10 - backgroundInstanceCount;
 
-    if (!hasNativeRows) {
-      this.#fallbackAtlas.prepare(
-        renderRows.flatMap((row) => splitGraphemes(view.rows[row] ?? "")),
-        scale,
-      );
-    }
     if (hasNativeRows) {
       for (const row of renderRows) {
         const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "");
@@ -1731,20 +1760,6 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       resolvedStyles.set(styleId, resolved);
       return resolved;
     };
-    const monoDefinitions = new Map<number, GlyphDefinition>();
-    const colorDefinitions = new Map<number, GlyphDefinition>();
-    for (const row of renderRows) {
-      for (const glyph of view.nativeRows[row] ?? []) {
-        const definition = view.glyphDefinitions.get(glyph.glyphId);
-        if (!definition) continue;
-        (definition.format === GlyphFormat.Rgba8Premultiplied ? colorDefinitions : monoDefinitions).set(
-          definition.id,
-          definition,
-        );
-      }
-    }
-    this.#monoAtlas.prepare(monoDefinitions.values());
-    this.#colorAtlas.prepare(colorDefinitions.values());
 
     if (!fullRedraw) {
       for (const row of renderRows) {
@@ -1810,12 +1825,6 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     const selectionInstanceCount = rectangleVertices.length / 10 - backgroundInstanceCount;
 
     const hasNativeRows = view.nativeRows.some((row) => row.length > 0);
-    if (!hasNativeRows) {
-      this.#fallbackAtlas.prepare(
-        renderRows.flatMap((row) => splitGraphemes(view.rows[row] ?? "")),
-        scale,
-      );
-    }
     if (hasNativeRows) {
       for (const row of renderRows) {
         const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "");

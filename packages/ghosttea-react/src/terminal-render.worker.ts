@@ -35,6 +35,7 @@ import {
 import { WebGpuTerminalRenderer } from "./renderers/webgpu-renderer.js";
 import { classifyFrame } from "./frame-sequence.js";
 import { cursorActivityChangesPixels } from "./cursor-invalidation.js";
+import { rowDamage, selectionDamageRows, shiftDamage } from "./row-damage.js";
 import {
   emptyRenderMetrics,
   type TerminalRenderCounterSnapshot,
@@ -71,7 +72,7 @@ interface SurfaceSnapshot {
   selection: CellSelection | null;
   theme: TerminalTheme;
   effects: TerminalEffects;
-  damage: { full: boolean; rows: Set<number>; geometryChanged: boolean };
+  damage: { full: boolean; rows: Set<number>; geometryChanged: boolean; scrollRows?: number };
 }
 
 interface MountedCanvas {
@@ -562,6 +563,7 @@ async function recoverDevice(info: GPUDeviceLostInfo): Promise<void> {
   try {
     const next = await rendererPromise;
     renderer = next;
+    next.setPerformanceMeasurementEnabled?.(performanceMeasurement !== undefined);
     recoveryAttempts = 0;
     recovering = false;
     for (const [id, mount] of mounts) {
@@ -647,14 +649,23 @@ async function flush(): Promise<void> {
       const metrics = backend.renderBatch
         ? backend.renderBatch(entries)
         : entries.map(({ id, view }) => backend.render(id, view));
-      for (const metric of metrics) recordLifetimeRenderMetrics(metric ?? emptyRenderMetrics());
+      const submission = backend.submission?.();
+      if (submission) {
+        lifetimeRenderer.queueSubmits += submission.queueSubmits;
+        lifetimeRenderer.presents += submission.surfaceIds.length;
+      } else {
+        for (const metric of metrics) recordLifetimeRenderMetrics(metric ?? emptyRenderMetrics());
+      }
+      const submitted = submission ? new Set(submission.surfaceIds) : undefined;
       const renderedAt = active ? performance.now() : 0;
       for (const { id } of entries) {
+        if (submitted && !submitted.has(id)) continue;
         const damage = surfaces.get(id)?.damage;
         if (!damage) continue;
         damage.full = false;
         damage.rows.clear();
         damage.geometryChanged = false;
+        delete damage.scrollRows;
       }
       if (active && performanceMeasurement === active) {
         active.scheduling.renderCalls += entries.length;
@@ -695,6 +706,7 @@ function invalidateFull(id: string): void {
   damage.full = true;
   damage.rows.clear();
   damage.geometryChanged = true;
+  delete damage.scrollRows;
   markDirty(id);
 }
 
@@ -719,6 +731,35 @@ function invalidateSessionFull(sessionHandle: string): void {
   for (const surfaceId of surfaceIdsForSession(sessionHandle)) invalidateFull(surfaceId);
 }
 
+function invalidateScroll(id: string, shift: number, rows: number[], rowCount: number): void {
+  const value = surfaces.get(id);
+  if (!value) return;
+  const damage = value.damage;
+  if (
+    !partialRenderingEnabled ||
+    damage.full ||
+    value.selection ||
+    Math.abs((damage.scrollRows ?? 0) + shift) >= rowCount
+  ) {
+    invalidateFull(id);
+    return;
+  }
+  shiftDamage(damage.rows, shift, rowCount);
+  damage.scrollRows = (damage.scrollRows ?? 0) + shift;
+  invalidateRows(id, rows, true);
+}
+
+function changeSelection(id: string, selection: CellSelection | null): void {
+  const value = surfaces.get(id);
+  if (!value || (value.selection === null && selection === null)) return;
+  const rows = selectionDamageRows(value.selection, selection, snapshots.get(value.sessionHandle)?.rows.length ?? 0);
+  value.selection = selection;
+  // Selection is anchored to the viewport, whereas pending text moves with a
+  // scroll. Avoid composing these two coordinate spaces before a paint.
+  if (value.damage.scrollRows) invalidateFull(id);
+  else invalidateRows(id, rows, true);
+}
+
 function invalidateSessionRows(sessionHandle: string, rows: Iterable<number>, geometryChanged = false): void {
   const damagedRows = [...rows];
   for (const surfaceId of surfaceIdsForSession(sessionHandle)) invalidateRows(surfaceId, damagedRows, geometryChanged);
@@ -739,7 +780,7 @@ async function mount(surfaceId: string, sessionHandle: string, canvas: Offscreen
 }
 
 function applyFrame(
-  packet: ArrayBuffer,
+  packet: ArrayBuffer | Uint8Array,
   expectedIdentity?: RoutedTrfIdentity,
   expectedLayout?: RoutedExpectedLayout,
   glyphNamespace?: string,
@@ -883,6 +924,16 @@ function applyFrame(
   const namespace = glyphNamespace === undefined ? `session:${id}:${frame.sessionEpoch}` : `cell:${glyphNamespace}`;
   const resetsCatalog =
     replacingScene || changedSession || completingResync || catalogReset || previous.glyphNamespace !== namespace;
+  const styleChanged = styleDefinitions.some((definition) => {
+    const old = previous.styleDefinitions.get(definition.id);
+    return old !== undefined && JSON.stringify(old) !== JSON.stringify(definition);
+  });
+  const canReuseRows =
+    !resetsCatalog &&
+    !styleChanged &&
+    previous.cols === frame.cols &&
+    previous.rows.length === frame.rows &&
+    previous.layoutEpoch === frame.layoutEpoch;
   const wasCatalogFallback = previous.catalogFallback;
   if (resetsCatalog) {
     // A reset replaces the retained CPU catalog, not the engine's immutable
@@ -985,7 +1036,7 @@ function applyFrame(
     ? Array.from({ length: frame.rows }, () => [] as StyleRun[])
     : previous.nativeStyleRows.slice();
   const rowRevisions = fullRows ? Array<bigint>(frame.rows).fill(0n) : previous.rowRevisions.slice();
-  const damagedRows: number[] = [];
+  let damagedRows: number[] = [];
   if (active) active.frames.rowsDecoded += replacements.length;
   for (const replacement of replacements) {
     if (replacement.revision < (rowRevisions[replacement.row] ?? 0n)) continue;
@@ -995,12 +1046,24 @@ function applyFrame(
     rowRevisions[replacement.row] = replacement.revision;
     damagedRows.push(replacement.row);
   }
+  let scrollRows = 0;
+  if (fullRows && canReuseRows) {
+    const damage = rowDamage(previous, { rows, nativeRows, nativeStyleRows });
+    scrollRows = damage.scrollRows;
+    damagedRows = damage.rows;
+    const changed = new Set(damagedRows);
+    for (let row = 0; row < rows.length; row++) {
+      if (changed.has(row)) continue;
+      nativeRows[row] = previous.nativeRows[row + scrollRows]!;
+      nativeStyleRows[row] = previous.nativeStyleRows[row + scrollRows]!;
+    }
+  }
   previous.cols = frame.cols;
   previous.rows = rows;
   previous.nativeRows = nativeRows;
   previous.nativeStyleRows = nativeStyleRows;
   previous.rowRevisions = rowRevisions;
-  const geometryChanged = damagedRows.length > 0;
+  const geometryChanged = damagedRows.length > 0 || scrollRows !== 0;
   const previousCursor = previous.cursor;
   const cursorChanged =
     nextCursor.x !== previousCursor.x ||
@@ -1025,12 +1088,14 @@ function applyFrame(
   if (clipboardText !== undefined) postToRenderer({ type: "clipboard-write", text: clipboardText });
   if (scrollbarChanged && scrollbar) postToRenderer({ type: "scrollbar-state", sessionHandle: id, scrollbar });
   if (completingResync) postToRenderer({ type: "frame-resync-complete", sessionHandle: id });
-  const requiresFullRedraw = fullRows || changedSession || completingResync;
-  if (!requiresFullRedraw && cursorChanged) damagedRows.push(previousCursor.y, nextCursor.y);
+  const requiresFullRedraw = !canReuseRows;
+  if (!requiresFullRedraw && (cursorChanged || scrollRows !== 0))
+    damagedRows.push(previousCursor.y - scrollRows, nextCursor.y);
   const hasRowDamage = damagedRows.length > 0;
   for (const surfaceId of surfaceIdsForSession(id)) {
     if (cursorChanged) scheduleCursorBlink(surfaceId, true);
     if (requiresFullRedraw) invalidateFull(surfaceId);
+    else if (scrollRows !== 0) invalidateScroll(surfaceId, scrollRows, damagedRows, rows.length);
     else if (hasRowDamage) invalidateRows(surfaceId, damagedRows, geometryChanged);
   }
   // Announced only once the frame is committed and its redraw scheduled, so a
@@ -1158,17 +1223,12 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
       scheduleShaderAnimation();
     } else if (message.type === "selection") {
       if (message.surfaceId) {
-        const target = surface(message.surfaceId, message.sessionHandle);
-        if (target.selection === null && message.selection === null) return;
-        target.selection = message.selection;
-        invalidateFull(message.surfaceId);
+        surface(message.surfaceId, message.sessionHandle);
+        changeSelection(message.surfaceId, message.selection);
       } else {
         defaults(message.sessionHandle).selection = message.selection;
         for (const surfaceId of surfaceIdsForSession(message.sessionHandle)) {
-          const target = surfaces.get(surfaceId)!;
-          if (target.selection === null && message.selection === null) continue;
-          target.selection = message.selection;
-          invalidateFull(surfaceId);
+          changeSelection(surfaceId, message.selection);
         }
       }
     } else if (message.type === "visibility") {

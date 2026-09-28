@@ -76,6 +76,8 @@ export interface RenderDamage {
   full: boolean;
   rows: ReadonlySet<number>;
   geometryChanged: boolean;
+  /** Positive moves old rows upward. Accumulated since the last submitted scene. */
+  scrollRows?: number;
 }
 
 export function effectiveCursorStyle(view: RenderView): CursorStyle | null {
@@ -103,6 +105,12 @@ export function renderedSizeChanged(current: PixelSize, next: PixelSize): boolea
   );
 }
 
+export interface RenderSubmission {
+  queueSubmits: number;
+  /** Submitted surfaces, including effects-only presentations. Not display timestamps. */
+  surfaceIds: readonly string[];
+}
+
 export interface TerminalRenderer {
   readonly kind: "webgpu" | "canvas2d";
   mount(id: string, canvas: OffscreenCanvas): void;
@@ -111,6 +119,8 @@ export interface TerminalRenderer {
   render(id: string, view: RenderView): TerminalRenderMetrics | undefined;
   renderBatch?(entries: ReadonlyArray<{ id: string; view: RenderView }>): Array<TerminalRenderMetrics | undefined>;
   setPerformanceMeasurementEnabled?(enabled: boolean): void;
+  /** Cheap accounting for the most recent render/renderBatch, independent of profiling. */
+  submission?(): RenderSubmission;
   settle?(): Promise<void>;
 }
 
