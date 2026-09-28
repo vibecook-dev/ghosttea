@@ -140,6 +140,116 @@ async function flush(): Promise<void> {
 }
 
 describe("routed terminal runtime", () => {
+  it("bounds lease timers and does not renew leases for stale status messages", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const socket = new FakeSocket();
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      websocketFactory: () => socket as unknown as WebSocket,
+      workerFactory: () => worker as unknown as Worker,
+    });
+    try {
+      const first = session("session-a", "11");
+      runtime.registerSession(first);
+      runtime.mount(first.id, first.handle, "view-a", canvas());
+      await flush();
+      socket.open();
+      socket.receive(
+        encodeRoutedMessage("ConnectionAccepted", {
+          selectedProtocolVersion: { major: 1, minor: 0 },
+          connectionSetId: "set-a",
+          channel: "control",
+          legGeneration: 1,
+          heartbeatTtlMs: 15_000,
+          protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+          capabilities: ["resume"],
+        }),
+      );
+      const { activationId } = JSON.parse(socket.sent.at(-1)!);
+      socket.receive(
+        encodeRoutedMessage("ControlLegAttached", {
+          sessionId: first.id,
+          activationId,
+          grantGenerationAccepted: 1,
+          rights: ["read"],
+        }),
+      );
+      const stamp = { sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: 1 };
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-attached",
+          attached: {
+            sessionId: first.id,
+            activationId,
+            resumeToken: "resume-a",
+            trfIdentity: { sessionHandle: "11", viewHandle: "12" },
+            outcome: { kind: "seed-required", reason: "no-cursor" },
+          },
+        },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-state",
+          activationId,
+          state: "active",
+          appliedContent: stamp,
+        },
+      });
+      const sendStatus = (sequence: number) => {
+        socket.receive(
+          encodeRoutedMessage("CellActivationStatus", {
+            sessionId: first.id,
+            activationId,
+            cellStatusSequence: sequence,
+            leaseTtlMs: 1_000,
+            acceptedContent: stamp,
+            presentation: { state: "presenting" },
+            input: { state: "allowed" },
+          }),
+        );
+        worker.emit({
+          type: "routed-frames-event",
+          event: {
+            type: "presentation-status",
+            status: {
+              activationId,
+              workerStatusSequence: sequence,
+              state: "active",
+              sceneContent: stamp,
+              leaseTtlMs: 1_000,
+            },
+          },
+        });
+      };
+      sendStatus(1);
+      expect(runtime.routedActivation(first.id)?.presentationReady).toBe(true);
+      const timerCount = vi.getTimerCount();
+      for (let sequence = 2; sequence <= 200; sequence++) sendStatus(sequence);
+      expect(vi.getTimerCount()).toBe(timerCount);
+      await vi.advanceTimersByTimeAsync(900);
+      sendStatus(200);
+      sendStatus(199);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(runtime.routedActivation(first.id)?.cellLeaseDeadline).toBe(0);
+      expect(runtime.routedActivation(first.id)?.workerLeaseDeadline).toBe(0);
+      expect(runtime.routedActivation(first.id)?.presentationReady).toBe(false);
+    } finally {
+      runtime.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("refreshes registered metadata 200ms after a routed frame commit", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);

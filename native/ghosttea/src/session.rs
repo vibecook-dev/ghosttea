@@ -790,6 +790,7 @@ pub struct Session {
 
 enum InputOperation {
     Shutdown,
+    Reply(Vec<u8>),
     Text(String),
     Paste(String),
     Key(KeyInput),
@@ -1686,7 +1687,7 @@ impl Session {
         for effect in update {
             match effect {
                 TerminalEffect::WriteToTransport(bytes) => {
-                    if let Err(error) = self.process.write(&bytes) {
+                    if let Err(error) = self.input_tx.try_send(InputOperation::Reply(bytes)) {
                         eprintln!(
                             "[ghosttea] terminal reply write failed for {}: {error:#}",
                             self.id()
@@ -2415,9 +2416,12 @@ impl Session {
     }
 
     fn execute_input(&self, operation: InputOperation) -> Result<()> {
-        let _operation = self.model_operation.lock().unwrap();
+        // The input actor serializes writes. A child may never read its PTY;
+        // holding model_operation across write_all would freeze output and exit.
+
         match operation {
             InputOperation::Shutdown => Ok(()),
+            InputOperation::Reply(bytes) => self.process.write(&bytes),
             InputOperation::Text(text) => self.process.write(text.as_bytes()),
             InputOperation::Paste(text) => {
                 let bytes = self.model.lock().unwrap().encode_paste(&text)?;
@@ -2527,6 +2531,7 @@ impl Session {
     }
 
     fn execute_scroll(&self, rows: isize) -> Result<()> {
+        let operation = self.model_operation.lock().unwrap();
         if rows == 0 {
             return Ok(());
         }
@@ -2543,16 +2548,18 @@ impl Session {
                 (Some(model.scroll(rows, RenderRequest::Damage)?), Vec::new())
             }
         };
-        if !alternate_input.is_empty() {
-            self.process.write(&alternate_input)?;
-        }
         if let Some(update) = update {
             self.execute_update(update);
+        }
+        drop(operation);
+        if !alternate_input.is_empty() {
+            self.process.write(&alternate_input)?;
         }
         Ok(())
     }
 
     fn execute_scroll_to(&self, row: usize) -> Result<()> {
+        let _operation = self.model_operation.lock().unwrap();
         let update = self
             .model
             .lock()
@@ -2668,10 +2675,9 @@ impl Session {
             let mut order = self.input_order.lock().unwrap();
             if self.input_tx.try_send(InputOperation::Interrupt).is_ok() {
                 order.record_input(false);
-            } else {
-                let _operation = self.model_operation.lock().unwrap();
-                let _ = self.process.write(b"\x03");
             }
+            // A full input queue must not delay the independent signal ladder.
+            // In particular, never fall back to a synchronous PTY write here.
         }
         let session = Arc::clone(self);
         if let Err(error) = thread::Builder::new()
@@ -2787,6 +2793,68 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn blocked_paste_does_not_hold_the_model_or_prevent_termination() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "stty -echo; exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        assert!(
+            session
+                .input_tx
+                .try_send(InputOperation::Paste("x".repeat(1024 * 1024)))
+                .is_ok()
+        );
+        // Wait for the actor to enter write_all, without depending on a fast host.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.process.writer.try_lock().is_ok() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            session.process.writer.try_lock().is_err(),
+            "paste must fill the PTY"
+        );
+        let model_available = session.model_operation.try_lock().is_ok();
+        // Also exercise the former synchronous fallback with a full input queue.
+        while session.input_tx.try_send(InputOperation::Interrupt).is_ok() {}
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_secs(1),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            model_available,
+            "a blocked write must leave the model available"
+        );
+        assert!(
+            session.has_exited(),
+            "termination must bypass a blocked input actor"
+        );
+    }
+
     /// The Windows integration fixtures create a session, then subscribe and
     /// attach before reading the marker it printed. Their programs return
     /// immediately, so the session has to outlive its child by long enough for

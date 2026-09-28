@@ -105,6 +105,34 @@ function minimalFullFrame(sessionHandle: bigint, viewHandle: bigint): ArrayBuffe
   return buffer;
 }
 
+function oneGlyphFrame(handle: bigint, pixel: number): ArrayBuffer {
+  const base = minimalFullFrame(handle, handle);
+  const old = new DataView(base);
+  const buffer = new ArrayBuffer(base.byteLength + 16 + 25);
+  const view = new DataView(buffer);
+  new Uint8Array(buffer).set(new Uint8Array(base, 0, FRAME_HEADER_BYTES + 48));
+  view.setUint16(6, FrameFlag.FullSnapshot | FrameFlag.CatalogReset, true);
+  view.setUint16(60, 4, true);
+  for (let section = 0; section < 3; section++) {
+    const offset = FRAME_HEADER_BYTES + section * 16 + 4;
+    view.setUint32(offset, old.getUint32(offset, true) + 16, true);
+  }
+  new Uint8Array(buffer).set(new Uint8Array(base, FRAME_HEADER_BYTES + 48), FRAME_HEADER_BYTES + 64);
+  const descriptor = FRAME_HEADER_BYTES + 48;
+  const payload = base.byteLength + 16;
+  view.setUint16(descriptor, SectionKind.GlyphDefinitions, true);
+  view.setUint32(descriptor + 4, payload, true);
+  view.setUint32(descriptor + 8, 25, true);
+  view.setUint32(descriptor + 12, 1, true);
+  view.setUint32(payload, 1, true);
+  view.setUint32(payload + 4, 1, true);
+  view.setUint16(payload + 8, 1, true);
+  view.setUint16(payload + 10, 1, true);
+  view.setUint32(payload + 20, 1, true);
+  view.setUint8(payload + 24, pixel);
+  return buffer;
+}
+
 vi.mock("./renderers/canvas-renderer.js", () => ({
   CanvasTerminalRenderer: class {
     readonly kind = "canvas2d" as const;
@@ -140,6 +168,45 @@ describe("terminal render worker surfaces", () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("isolates glyph pixels and GPU IDs across engines and a dropped session", async () => {
+    const scope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback): number => {
+        callback(performance.now());
+        return 1;
+      },
+    };
+    vi.stubGlobal("self", scope);
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    for (const handle of ["1", "2"]) dispatch({ type: "mount", surfaceId: handle, sessionHandle: handle, canvas: {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    dispatch({ type: "frame", packet: oneGlyphFrame(1n, 17) });
+    dispatch({ type: "frame", packet: oneGlyphFrame(2n, 231) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const glyph = (id: string) => {
+      const calls = renderer.renderBatch.mock.calls.flatMap(([entries]) => entries);
+      const entry = calls.reverse().find((entry) => entry.id === id)!;
+      return (
+        entry.view as unknown as { glyphDefinitions: Map<number, { id: number; pixels: Uint8Array }> }
+      ).glyphDefinitions.get(1)!;
+    };
+    const first = glyph("1");
+    const second = glyph("2");
+    expect(first.pixels[0]).toBe(17);
+    expect(second.pixels[0]).toBe(231);
+    expect(first.id).not.toBe(second.id);
+    dispatch({ type: "drop-session", sessionHandle: "1" });
+    dispatch({ type: "mount", surfaceId: "1", sessionHandle: "1", canvas: {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    dispatch({ type: "frame", packet: oneGlyphFrame(1n, 99) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(glyph("1").pixels[0]).toBe(99);
+    expect(glyph("1").id).not.toBe(first.id);
+  });
 
   it("mounts and redraws multiple surfaces backed by one session snapshot", async () => {
     const workerScope = {

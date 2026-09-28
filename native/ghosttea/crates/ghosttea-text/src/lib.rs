@@ -231,7 +231,7 @@ pub struct TextEngine {
     styled_faces: HashMap<FontStyle, ID>,
     face_presentations: HashMap<ID, FontPresentation>,
     fallback_order: Option<Vec<FallbackFace>>,
-    fallback_faces: HashMap<(char, FontPresentation), ID>,
+    fallback_faces: HashMap<(String, FontPresentation), Option<ID>>,
     loaded_faces: HashMap<ID, LoadedFace>,
     next_face_id: u32,
     glyph_ids: HashMap<GlyphKey, u32>,
@@ -595,14 +595,14 @@ impl TextEngine {
     }
 
     fn fallback_for(&mut self, cluster: &str, presentation: FontPresentation) -> Option<ID> {
-        let representative = cluster
+        cluster
             .chars()
             .find(|character| !is_ignorable(*character))?;
-        let cache_key = (representative, presentation);
-        if let Some(face) = self.fallback_faces.get(&cache_key)
-            && self.face_supports(*face, cluster).unwrap_or(false)
-        {
-            return Some(*face);
+        // Cache misses too, keyed by the entire cluster: a missing combining
+        // sequence must not poison a supported base character (or vice versa).
+        let cache_key = (cluster.to_owned(), presentation);
+        if let Some(face) = self.fallback_faces.get(&cache_key) {
+            return *face;
         }
         let faces = self.fallback_order.clone().unwrap_or_else(|| {
             self.database
@@ -627,9 +627,10 @@ impl TextEngine {
                     .find(|face| self.face_supports(face.id, cluster).unwrap_or(false))
             })
             .map(|face| face.id);
-        if let Some(face) = found {
-            self.fallback_faces.insert(cache_key, face);
+        if self.fallback_faces.len() >= 4_096 {
+            self.fallback_faces.clear();
         }
+        self.fallback_faces.insert(cache_key, found);
         found
     }
 
@@ -1013,6 +1014,21 @@ mod tests {
             .with_presentation(FontPresentation::Text),
         ];
         TextEngine::from_fonts(fonts, TextMetrics::default(), RASTER_SCALE).unwrap()
+    }
+
+    #[test]
+    fn remembers_missing_fallbacks_without_poisoning_other_clusters() {
+        let mut engine = TextEngine::discover().unwrap();
+        let missing = "\u{10ffff}";
+        assert_eq!(engine.fallback_for(missing, FontPresentation::Text), None);
+        assert_eq!(
+            engine
+                .fallback_faces
+                .get(&(missing.into(), FontPresentation::Text)),
+            Some(&None)
+        );
+        assert_eq!(engine.fallback_for(missing, FontPresentation::Text), None);
+        assert!(engine.fallback_for("a", FontPresentation::Text).is_some());
     }
 
     #[test]

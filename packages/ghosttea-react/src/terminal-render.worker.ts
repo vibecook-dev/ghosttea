@@ -50,6 +50,7 @@ interface SessionSnapshot {
   nativeRows: GlyphInstance[][];
   nativeStyleRows: StyleRun[][];
   glyphDefinitions: Map<number, GlyphDefinition>;
+  glyphNamespace: string;
   glyphPixelBytes: number;
   styleDefinitions: Map<number, StyleDefinition>;
   rowRevisions: bigint[];
@@ -106,7 +107,9 @@ const MAX_PERFORMANCE_SAMPLES = 100_000;
 const FRAME_CREDIT_BATCH_BYTES = 4 * 1024 * 1024;
 const FRAME_CREDIT_MAX_DELAY_MS = 8;
 const snapshots = new Map<string, SessionSnapshot>();
-const sharedGlyphDefinitions = new Map<number, { definition: GlyphDefinition; references: number }>();
+const sharedGlyphDefinitions = new Map<string, { definition: GlyphDefinition; references: number }>();
+// Renderer IDs never repeat while the GPU atlas survives, even after a cell restart.
+let nextRendererGlyphId = 1;
 let sharedGlyphPixelBytes = 0;
 let retainedStyleDefinitions = 0;
 const surfaces = new Map<string, SurfaceSnapshot>();
@@ -335,6 +338,7 @@ function emptySessionSnapshot(): SessionSnapshot {
     nativeRows: [],
     nativeStyleRows: [],
     glyphDefinitions: new Map(),
+    glyphNamespace: "",
     glyphPixelBytes: 0,
     styleDefinitions: new Map(),
     rowRevisions: [],
@@ -360,11 +364,12 @@ function snapshot(sessionHandle: string): SessionSnapshot {
 
 function clearSessionCatalog(session: SessionSnapshot): void {
   for (const glyphId of session.glyphDefinitions.keys()) {
-    const shared = sharedGlyphDefinitions.get(glyphId);
+    const key = `${session.glyphNamespace}:${glyphId}`;
+    const shared = sharedGlyphDefinitions.get(key);
     if (!shared) continue;
     shared.references -= 1;
     if (shared.references <= 0) {
-      sharedGlyphDefinitions.delete(glyphId);
+      sharedGlyphDefinitions.delete(key);
       sharedGlyphPixelBytes -= shared.definition.pixels.byteLength;
     }
   }
@@ -377,13 +382,14 @@ function clearSessionCatalog(session: SessionSnapshot): void {
 function installGlyphDefinitions(session: SessionSnapshot, definitions: readonly GlyphDefinition[]): void {
   for (const decoded of definitions) {
     if (session.glyphDefinitions.has(decoded.id)) continue;
-    let shared = sharedGlyphDefinitions.get(decoded.id);
+    const key = `${session.glyphNamespace}:${decoded.id}`;
+    let shared = sharedGlyphDefinitions.get(key);
     const pixelBytes = shared?.definition.pixels.byteLength ?? decoded.pixels.byteLength;
     if (shared) {
       shared.references += 1;
     } else {
-      shared = { definition: decoded, references: 1 };
-      sharedGlyphDefinitions.set(decoded.id, shared);
+      shared = { definition: { ...decoded, id: nextRendererGlyphId++ }, references: 1 };
+      sharedGlyphDefinitions.set(key, shared);
       sharedGlyphPixelBytes += decoded.pixels.byteLength;
     }
     session.glyphDefinitions.set(decoded.id, shared.definition);
@@ -729,6 +735,7 @@ function applyFrame(
   packet: ArrayBuffer,
   expectedIdentity?: RoutedTrfIdentity,
   expectedLayout?: RoutedExpectedLayout,
+  glyphNamespace?: string,
 ): RoutedAppliedFrame | undefined {
   const active = performanceMeasurement;
   const applyStarted = active ? performance.now() : 0;
@@ -864,13 +871,18 @@ function applyFrame(
     throw new Error("transfer scrollback layout does not match TRF1");
   }
   if (active) active.frames.glyphDefinitions += glyphDefinitions.length;
-  const resetsCatalog = replacingScene || changedSession || completingResync || catalogReset;
+  // Routed frames name the process incarnation. Legacy/direct streams are
+  // isolated by session epoch because they cannot prove a shared engine.
+  const namespace = glyphNamespace === undefined ? `session:${id}:${frame.sessionEpoch}` : `cell:${glyphNamespace}`;
+  const resetsCatalog =
+    replacingScene || changedSession || completingResync || catalogReset || previous.glyphNamespace !== namespace;
   const wasCatalogFallback = previous.catalogFallback;
   if (resetsCatalog) {
     previous.rows = [];
     previous.nativeRows = [];
     previous.nativeStyleRows = [];
     clearSessionCatalog(previous);
+    previous.glyphNamespace = namespace;
     previous.rowRevisions = [];
     const catalogFits =
       glyphCatalogFits(
@@ -880,6 +892,7 @@ function applyFrame(
         sharedGlyphPixelBytes,
         glyphDefinitions,
         GLYPH_CATALOG_BUDGET,
+        (glyphId) => `${namespace}:${glyphId}`,
       ) &&
       definitionCatalogFits(
         previous.styleDefinitions,
@@ -909,6 +922,7 @@ function applyFrame(
         sharedGlyphPixelBytes,
         glyphDefinitions,
         GLYPH_CATALOG_BUDGET,
+        (glyphId) => `${namespace}:${glyphId}`,
       ) &&
       definitionCatalogFits(
         previous.styleDefinitions,
@@ -1031,8 +1045,8 @@ function applyFrame(
 }
 
 const routedFrames = new RoutedFramesTransport({
-  applyFrame: (packet, identity, expectedLayout) => {
-    const applied = applyFrame(packet, identity, expectedLayout);
+  applyFrame: (packet, identity, expectedLayout, glyphNamespace) => {
+    const applied = applyFrame(packet, identity, expectedLayout, glyphNamespace);
     if (!applied) throw new Error("routed TRF1 frame was not applied");
     return applied;
   },
@@ -1132,12 +1146,16 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
       scheduleShaderAnimation();
     } else if (message.type === "selection") {
       if (message.surfaceId) {
-        surface(message.surfaceId, message.sessionHandle).selection = message.selection;
+        const target = surface(message.surfaceId, message.sessionHandle);
+        if (target.selection === null && message.selection === null) return;
+        target.selection = message.selection;
         invalidateFull(message.surfaceId);
       } else {
         defaults(message.sessionHandle).selection = message.selection;
         for (const surfaceId of surfaceIdsForSession(message.sessionHandle)) {
-          surfaces.get(surfaceId)!.selection = message.selection;
+          const target = surfaces.get(surfaceId)!;
+          if (target.selection === null && message.selection === null) continue;
+          target.selection = message.selection;
           invalidateFull(surfaceId);
         }
       }

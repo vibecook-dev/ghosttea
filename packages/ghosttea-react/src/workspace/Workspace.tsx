@@ -182,6 +182,8 @@ export interface GhostteaWorkspaceProps {
   splitSizing?: SplitSizing;
   enableRemoteSessions?: boolean;
   active?: boolean;
+  /** Host visibility without remounting panes or changing split geometry. */
+  paneVisibility?: Readonly<Record<string, boolean>> | undefined;
   showTitlebar?: boolean;
   claimExistingSessions?: boolean;
   initialCwd?: string;
@@ -400,7 +402,7 @@ function WorkspacePane({
         active={active}
         {...(platform.platform ? { platform: platform.platform } : {})}
         visible={workspaceActive && !hiddenByZoom}
-        controlsResize={!hiddenByZoom}
+        controlsResize={workspaceActive && !hiddenByZoom}
         onActivate={onActivate}
         readClipboard={platform.readClipboard}
         {...(active && platform.setCanCopy ? { onCopyAvailabilityChange: platform.setCanCopy } : {})}
@@ -418,6 +420,7 @@ interface SplitViewProps {
   node: PaneNode;
   activePaneId: string;
   workspaceActive: boolean;
+  paneVisibility?: Readonly<Record<string, boolean>> | undefined;
   zoomedPaneId: string | null;
   platform: GhostteaWorkspacePlatform;
   theme: TerminalTheme;
@@ -435,6 +438,7 @@ function SplitView({
   node,
   activePaneId,
   workspaceActive,
+  paneVisibility,
   zoomedPaneId,
   platform,
   theme,
@@ -471,7 +475,7 @@ function SplitView({
         active={workspaceActive && node.id === activePaneId}
         zoomed={node.id === zoomedPaneId}
         hiddenByZoom={zoomedPaneId !== null && node.id !== zoomedPaneId}
-        workspaceActive={workspaceActive}
+        workspaceActive={workspaceActive && paneVisibility?.[node.id] !== false}
         platform={platform}
         theme={theme}
         effects={effects}
@@ -551,6 +555,7 @@ function SplitView({
           node: node.first,
           activePaneId,
           workspaceActive,
+          paneVisibility,
           zoomedPaneId,
           platform,
           theme,
@@ -595,6 +600,7 @@ function SplitView({
           node: node.second,
           activePaneId,
           workspaceActive,
+          paneVisibility,
           zoomedPaneId,
           platform,
           theme,
@@ -627,6 +633,7 @@ export function GhostteaWorkspace({
   splitSizing = "halves",
   enableRemoteSessions = true,
   active = true,
+  paneVisibility,
   showTitlebar = true,
   claimExistingSessions = true,
   initialCwd,
@@ -1213,6 +1220,7 @@ export function GhostteaWorkspace({
               node={layout}
               activePaneId={activePaneId}
               workspaceActive={active}
+              paneVisibility={paneVisibility}
               zoomedPaneId={zoomedPaneId}
               platform={platform}
               theme={resolvedTheme}

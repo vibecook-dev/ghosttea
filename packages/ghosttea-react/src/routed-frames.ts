@@ -79,6 +79,7 @@ export interface RoutedFramesTransportOptions {
     packet: ArrayBuffer,
     identity: RoutedTrfIdentity,
     expectedLayout?: RoutedExpectedLayout,
+    glyphNamespace?: string,
   ) => RoutedAppliedFrame;
   emit: (event: RoutedFramesTransportEvent) => void;
   creditReturned?: (bytes: number) => void;
@@ -524,7 +525,7 @@ export class RoutedFramesTransport {
     chargedBytes: number,
   ): void {
     if (
-      payload.byteLength > connection.accepted!.protocolLimits.maxPresentationChunkBytes ||
+      payload.byteLength > connection.accepted!.protocolLimits.maxUrgentPresentationUnitBytes ||
       !header.resultContent ||
       header.baseContent === undefined ||
       (header.baseContent !== null && !exactStamp(activation.appliedContent, header.baseContent))
@@ -534,7 +535,12 @@ export class RoutedFramesTransport {
     }
     try {
       this.#emit({ type: "frames-state", activationId: header.activationId, state: "applying" });
-      this.#applyFrame(copyArrayBuffer(payload), activation.identity!);
+      this.#applyFrame(
+        copyArrayBuffer(payload),
+        activation.identity!,
+        undefined,
+        header.resultContent.sceneEpoch.cellBootId,
+      );
       activation.appliedContent = header.resultContent;
       this.#returnCredit(connection, header.activationId, chargedBytes);
       this.#sceneApplied(connection, activation);
@@ -662,7 +668,12 @@ export class RoutedFramesTransport {
     }
     try {
       this.#emit({ type: "frames-state", activationId: header.activationId, state: "applying" });
-      this.#applyFrame(staging.bytes.buffer as ArrayBuffer, activation.identity!, staging.targetLayout);
+      this.#applyFrame(
+        staging.bytes.buffer as ArrayBuffer,
+        activation.identity!,
+        staging.targetLayout,
+        staging.resultContent.sceneEpoch.cellBootId,
+      );
       activation.appliedContent = staging.resultContent;
       this.#releaseTransfer(activation);
       this.#sceneApplied(connection, activation);

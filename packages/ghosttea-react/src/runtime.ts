@@ -258,6 +258,8 @@ interface RoutedActivationRuntime {
   start?: Promise<void>;
   attachTimer?: number;
   renewalTimer?: number;
+  cellLeaseTimer?: number;
+  workerLeaseTimer?: number;
   framesResume?: Promise<void>;
   recoveryAttempts: number;
   preAuthRemints: { control: number; frames: number };
@@ -1584,6 +1586,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     delete entry.attachTimer;
     if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
     delete entry.renewalTimer;
+    if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+    delete entry.cellLeaseTimer;
+    if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+    delete entry.workerLeaseTimer;
     delete entry.ticket;
   }
 
@@ -1701,9 +1707,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "cell-status") {
       const entry = this.#routedByActivation.get(event.status.activationId);
       if (!entry || event.status.sessionId !== entry.sessionId) return;
+      const previousSequence = entry.state.lastCellStatusSequence;
       this.#transitionRouted(entry, { type: "cell-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastCellStatusSequence;
-      window.setTimeout(() => {
+      if (sequence === previousSequence) return;
+      if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+      entry.cellLeaseTimer = window.setTimeout(() => {
+        delete entry.cellLeaseTimer;
         if (entry.state.lastCellStatusSequence !== sequence) return;
         this.#transitionRouted(entry, { type: "cell-lease-expired" });
       }, event.status.leaseTtlMs);
@@ -1842,9 +1852,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "presentation-status") {
       const entry = this.#routedByActivation.get(event.status.activationId);
       if (!entry) return;
+      const previousSequence = entry.state.lastWorkerStatusSequence;
       this.#transitionRouted(entry, { type: "presentation-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastWorkerStatusSequence;
-      window.setTimeout(() => {
+      if (sequence === previousSequence) return;
+      if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+      entry.workerLeaseTimer = window.setTimeout(() => {
+        delete entry.workerLeaseTimer;
         if (entry.state.lastWorkerStatusSequence !== sequence) return;
         this.#transitionRouted(entry, { type: "worker-lease-expired" });
       }, event.status.leaseTtlMs);
@@ -2032,6 +2046,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     delete entry.attachTimer;
     if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
     delete entry.renewalTimer;
+    if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+    delete entry.cellLeaseTimer;
+    if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+    delete entry.workerLeaseTimer;
     delete entry.ticket;
     const delay = Math.min(2_000, 100 * 2 ** Math.max(0, entry.recoveryAttempts - 1));
     window.setTimeout(() => {
@@ -3042,6 +3060,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     for (const entry of this.#routedBySession.values()) {
       if (entry.attachTimer !== undefined) window.clearTimeout(entry.attachTimer);
       if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
+      if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+      if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
     }
     this.#routedBySession.clear();
     this.#routedByActivation.clear();
