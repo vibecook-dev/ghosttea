@@ -208,6 +208,186 @@ describe("terminal render worker surfaces", () => {
     expect(glyph("1").id).not.toBe(first.id);
   });
 
+  it.each(["catalog reset", "resync"])(
+    "reuses GPU IDs through a direct %s and releases removed glyphs",
+    async (kind) => {
+      const scope = {
+        onmessage: null as ((event: MessageEvent) => void) | null,
+        postMessage: vi.fn(),
+        requestAnimationFrame: (callback: FrameRequestCallback): number => {
+          callback(performance.now());
+          return 1;
+        },
+      };
+      vi.stubGlobal("self", scope);
+      await import("./terminal-render.worker.js");
+      const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
+      const settle = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+      const definitions = () => {
+        const entry = renderer.renderBatch.mock.calls.flatMap(([entries]) => entries).at(-1)!;
+        return (entry.view as unknown as { glyphDefinitions: Map<number, { id: number }> }).glyphDefinitions;
+      };
+      const send = async (sequence: bigint, withGlyph = true, epoch = 1n) => {
+        const packet = withGlyph ? oneGlyphFrame(11n, 17) : minimalFullFrame(11n, 11n);
+        const view = new DataView(packet);
+        view.setUint16(6, FrameFlag.FullSnapshot | (kind === "catalog reset" ? FrameFlag.CatalogReset : 0), true);
+        view.setBigUint64(24, epoch, true);
+        view.setBigUint64(40, sequence, true);
+        if (kind === "resync") dispatch({ type: "expect-full", sessionHandle: "11" });
+        dispatch({ type: "frame", packet });
+        await settle();
+      };
+      dispatch({ type: "renderer-config", forceCanvasFallback: true });
+      dispatch({ type: "mount", surfaceId: "11", sessionHandle: "11", canvas: {} });
+      await settle();
+      await send(1n);
+      const firstId = definitions().get(1)!.id;
+      for (let sequence = 2n; sequence <= 5n; sequence++) {
+        await send(sequence);
+        expect(definitions().get(1)!.id).toBe(firstId);
+      }
+      await send(6n, false);
+      expect(definitions().size).toBe(0);
+      await send(7n);
+      const reintroducedId = definitions().get(1)!.id;
+      expect(reintroducedId).not.toBe(firstId);
+      // Reusing a handle with a new engine epoch must not reuse its GPU identity.
+      await send(1n, true, 2n);
+      expect(definitions().get(1)!.id).not.toBe(reintroducedId);
+    },
+  );
+
+  it("keeps native glyph identity stable across full frames from the same cell", async () => {
+    const scope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback): number => {
+        callback(performance.now());
+        return 1;
+      },
+    };
+    const sockets: FakeRoutedSocket[] = [];
+    vi.stubGlobal("self", scope);
+    vi.stubGlobal(
+      "WebSocket",
+      class extends FakeRoutedSocket {
+        constructor(_url: string) {
+          super();
+          sockets.push(this);
+        }
+      },
+    );
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    dispatch({ type: "mount", surfaceId: "11", sessionHandle: "11", canvas: {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const protectedBase = {
+      v: 1 as const,
+      iss: "fieldd" as const,
+      alg: "HS256" as const,
+      kid: { cellBootId: "cell-a", keyGeneration: 1 },
+    };
+    const transportGrant = {
+      protected: { ...protectedBase, typ: "CellTransportGrant" as const },
+      claims: {
+        audienceCellBootId: "cell-a",
+        clientId: "window-a",
+        connectionSetId: "set-a",
+        allowedChannels: ["control", "frames"] as const,
+        transportGrantGeneration: 1,
+        issuedAt: 1,
+        expiresAt: 2,
+        nonce: "nonce-a",
+      },
+      mac: "opaque",
+    };
+    const attachGrant = {
+      protected: { ...protectedBase, typ: "SessionAttachGrant" as const },
+      claims: {
+        audienceCellBootId: "cell-a",
+        clientId: "window-a",
+        sessionId: "session-a",
+        leaseEpoch: 4,
+        routeRevision: 1,
+        grantGeneration: 1,
+        rights: ["input", "read"] as const,
+        issuedAt: 1,
+        expiresAt: 2,
+      },
+      mac: "opaque",
+    };
+
+    dispatch({
+      type: "routed-frames-attach",
+      request: {
+        cellBootId: "cell-a",
+        sessionHandle: "11",
+        framesUrl: "ws://127.0.0.1/frames",
+        transportGrant,
+        attachGrant,
+        activationId: "activation-a",
+        capabilities: ["resume"],
+      },
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(
+      encodeRoutedMessage("ConnectionAccepted", {
+        selectedProtocolVersion: { major: 1, minor: 0 },
+        connectionSetId: "set-a",
+        channel: "frames",
+        legGeneration: 1,
+        heartbeatTtlMs: 15_000,
+        creditEpoch: 1,
+        initialWindows: DEFAULT_ROUTED_RECEIVER_CAPACITIES,
+        protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+        capabilities: ["resume"],
+      }),
+    );
+    socket.receive(
+      encodeRoutedMessage("FramesLegAttached", {
+        sessionId: "session-a",
+        activationId: "activation-a",
+        resumeToken: "resume-a",
+        trfIdentity: { sessionHandle: "11", viewHandle: "11" },
+        outcome: { kind: "seed-required", reason: "no-cursor" },
+      }),
+    );
+
+    const ids: number[] = [];
+    const stamp = (seq: number) => ({ sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: seq });
+    for (let seq = 1; seq <= 5; seq++) {
+      const packet = oneGlyphFrame(11n, 17);
+      new DataView(packet).setBigUint64(40, BigInt(seq), true);
+      socket.receive(
+        encodeRoutedPresentationEnvelope(
+          {
+            creditEpoch: 1,
+            activationSequence: seq,
+            sessionId: "session-a",
+            activationId: "activation-a",
+            leaseEpoch: 4,
+            kind: "trf1-frame",
+            baseContent: seq === 1 ? null : stamp(seq - 1),
+            resultContent: stamp(seq),
+          },
+          new Uint8Array(packet),
+        ).buffer as ArrayBuffer,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const entry = renderer.renderBatch.mock.calls
+        .flatMap(([entries]) => entries)
+        .reverse()
+        .find((entry) => entry.id === "11")!;
+      const defs = (entry.view as unknown as { glyphDefinitions: Map<number, { id: number }> }).glyphDefinitions;
+      ids.push(defs.get(1)!.id);
+    }
+    socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(new Set(ids).size).toBe(1);
+  });
+
   it("mounts and redraws multiple surfaces backed by one session snapshot", async () => {
     const workerScope = {
       onmessage: null as ((event: MessageEvent) => void) | null,

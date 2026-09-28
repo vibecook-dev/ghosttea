@@ -373,13 +373,17 @@ function clearSessionCatalog(session: SessionSnapshot): void {
       sharedGlyphPixelBytes -= shared.definition.pixels.byteLength;
     }
   }
-  session.glyphDefinitions.clear();
+  session.glyphDefinitions = new Map();
   session.glyphPixelBytes = 0;
   retainedStyleDefinitions -= session.styleDefinitions.size;
   session.styleDefinitions.clear();
 }
 
-function installGlyphDefinitions(session: SessionSnapshot, definitions: readonly GlyphDefinition[]): void {
+function installGlyphDefinitions(
+  session: SessionSnapshot,
+  definitions: readonly GlyphDefinition[],
+  previousDefinitions?: ReadonlyMap<number, GlyphDefinition>,
+): void {
   for (const decoded of definitions) {
     if (session.glyphDefinitions.has(decoded.id)) continue;
     const key = `${session.glyphNamespace}:${decoded.id}`;
@@ -388,7 +392,10 @@ function installGlyphDefinitions(session: SessionSnapshot, definitions: readonly
     if (shared) {
       shared.references += 1;
     } else {
-      shared = { definition: { ...decoded, id: nextRendererGlyphId++ }, references: 1 };
+      shared = {
+        definition: { ...decoded, id: previousDefinitions?.get(decoded.id)?.id ?? nextRendererGlyphId++ },
+        references: 1,
+      };
       sharedGlyphDefinitions.set(key, shared);
       sharedGlyphPixelBytes += decoded.pixels.byteLength;
     }
@@ -878,6 +885,11 @@ function applyFrame(
     replacingScene || changedSession || completingResync || catalogReset || previous.glyphNamespace !== namespace;
   const wasCatalogFallback = previous.catalogFallback;
   if (resetsCatalog) {
+    // A reset replaces the retained CPU catalog, not the engine's immutable
+    // glyph identities. Keep IDs for the overlap so the GPU can reuse its atlas.
+    // This map lives only for this replacement; removed glyphs retain no cache
+    // entry, and a new engine namespace can never inherit the old engine's IDs.
+    const previousDefinitions = previous.glyphNamespace === namespace ? previous.glyphDefinitions : undefined;
     previous.rows = [];
     previous.nativeRows = [];
     previous.nativeStyleRows = [];
@@ -904,7 +916,7 @@ function applyFrame(
     const admission = catalogAdmission(true, wasCatalogFallback, catalogFits);
     previous.catalogFallback = admission === "text-fallback";
     if (admission === "install") {
-      installGlyphDefinitions(previous, glyphDefinitions);
+      installGlyphDefinitions(previous, glyphDefinitions, previousDefinitions);
       installStyleDefinitions(previous, styleDefinitions);
     } else if (!wasCatalogFallback) {
       postToRenderer({
