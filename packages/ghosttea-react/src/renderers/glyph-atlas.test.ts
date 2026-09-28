@@ -85,4 +85,40 @@ describe("bounded glyph atlas pages", () => {
     fill(atlas, ["d"], 4);
     expect(atlas.get("d")).toBeDefined();
   });
+
+  it.each([
+    ["b", "c", "d"],
+    ["d", "c", "b"],
+    ["c", "a", "d", "b"],
+  ])("keeps prepared positions when glyphs are skipped or reordered: %s %s %s", (...order) => {
+    const { atlas, textures } = fixture(1);
+    const glyphs = [
+      { key: "a", width: 1, height: 1 },
+      { key: "b", width: 1, height: 1 },
+      { key: "c", width: 4, height: 2 },
+      { key: "d", width: 1, height: 4 },
+    ];
+    // Packing a,b,c,d fits. Repacking b,c,d after concealing a would overflow.
+    atlas.prepare(glyphs);
+    const generation = atlas.generation;
+    const origins: Record<string, [number, number]> = { a: [1, 1], b: [3, 1], c: [1, 3], d: [6, 3] };
+    const inserted = new Map<string, [number, number]>();
+    for (const key of order) {
+      const { width, height } = glyphs.find((glyph) => glyph.key === key)!;
+      inserted.set(key, atlas.insert(key, width, height, 1).origin);
+    }
+    for (const key of order) expect(inserted.get(key)).toEqual(origins[key]);
+    atlas.pin();
+    atlas.releaseBatch();
+    const oldB = atlas.get("b");
+    // A reserved but unuploaded glyph can appear in a later frame, without
+    // consuming another slot or moving any already uploaded glyph.
+    atlas.prepare(glyphs);
+    for (const { key, width, height } of glyphs) {
+      if (!atlas.get(key)) expect(atlas.insert(key, width, height, 1).origin).toEqual(origins[key]);
+    }
+    expect(atlas.get("b")).toBe(oldB);
+    expect(atlas.generation).toBe(generation);
+    expect(textures).toHaveLength(1);
+  });
 });

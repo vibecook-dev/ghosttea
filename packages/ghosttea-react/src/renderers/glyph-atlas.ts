@@ -17,16 +17,26 @@ export interface GlyphLocation {
   cells: number;
 }
 
-interface Page<K> {
+interface GlyphSlot {
+  origin: [number, number];
+  width: number;
+  height: number;
+}
+
+interface PackingPlan<K> {
+  slots: Map<K, GlyphSlot>;
+  x: number;
+  y: number;
+  rowHeight: number;
+}
+
+interface Page<K> extends PackingPlan<K> {
   texture: GPUTexture;
   bindGroup: GPUBindGroup;
   cache: Map<K, GlyphLocation>;
   generation: number;
   used: number;
   pinned: boolean;
-  x: number;
-  y: number;
-  rowHeight: number;
 }
 
 /** Lazy, bounded atlas pages. A page used by an unsubmitted draw cannot be
@@ -64,18 +74,22 @@ export class GlyphAtlasPages<K> {
     for (const glyph of input) glyphs.set(glyph.key, glyph);
     if (glyphs.size === 0) return;
     let selected: Page<K> | undefined;
+    let selectedPlan: PackingPlan<K> | undefined;
     let bestHits = -1;
     for (const page of this.#pages) {
-      if (!this.#fits(glyphs.values(), page)) continue;
+      const plan = this.#plan(glyphs.values(), page);
+      if (!plan) continue;
       let hits = 0;
       for (const key of glyphs.keys()) if (page.cache.has(key)) hits += 1;
       if (hits > bestHits || (hits === bestHits && page.used > (selected?.used ?? -1))) {
         selected = page;
+        selectedPlan = plan;
         bestHits = hits;
       }
     }
     if (!selected) {
-      if (!this.#fits(glyphs.values())) {
+      selectedPlan = this.#plan(glyphs.values());
+      if (!selectedPlan) {
         throw new AtlasCapacityError(`${this.label} cannot fit the glyphs visible in one frame`);
       }
       if (this.#pages.length === this.maxPages) {
@@ -103,6 +117,7 @@ export class GlyphAtlasPages<K> {
           ],
         }),
         cache: new Map(),
+        slots: new Map(),
         generation: ++this.#generation,
         used: 0,
         pinned: false,
@@ -112,6 +127,14 @@ export class GlyphAtlasPages<K> {
       };
       this.#pages.push(selected);
     }
+    // Commit preflight's exact positions, including glyphs geometry may skip.
+    // Removing/reordering shelf-packed rectangles can change row breaks and
+    // overflow even when the original sequence fit. Upload remains lazy.
+    const plan = selectedPlan!;
+    for (const [key, slot] of plan.slots) selected.slots.set(key, slot);
+    selected.x = plan.x;
+    selected.y = plan.y;
+    selected.rowHeight = plan.rowHeight;
     selected.used = ++this.#clock;
     this.#current = selected;
   }
@@ -120,23 +143,25 @@ export class GlyphAtlasPages<K> {
     if (this.#current) this.#current.pinned = true;
   }
 
-  #fits(glyphs: Iterable<AtlasGlyph<K>>, page?: Page<K>): boolean {
+  #plan(glyphs: Iterable<AtlasGlyph<K>>, page?: Page<K>): PackingPlan<K> | undefined {
+    const slots = new Map<K, GlyphSlot>();
     let x = page?.x ?? 1;
     let y = page?.y ?? 1;
     let rowHeight = page?.rowHeight ?? 0;
     for (const { key, width, height } of glyphs) {
-      if (page?.cache.has(key)) continue;
-      if (width + 2 > this.size || height + 2 > this.size) return false;
+      if (page?.slots.has(key)) continue;
+      if (width + 2 > this.size || height + 2 > this.size) return undefined;
       if (x + width + 1 > this.size) {
         x = 1;
         y += rowHeight + 1;
         rowHeight = 0;
       }
-      if (y + height + 1 > this.size) return false;
+      if (y + height + 1 > this.size) return undefined;
+      slots.set(key, { origin: [x, y], width, height });
       x += width + 1;
       rowHeight = Math.max(rowHeight, height);
     }
-    return true;
+    return { slots, x, y, rowHeight };
   }
 
   get(key: K): GlyphLocation | undefined {
@@ -155,23 +180,20 @@ export class GlyphAtlasPages<K> {
   } {
     const page = this.#current;
     if (!page) throw new Error(`${this.label} has not been prepared`);
-    if (page.x + width + 1 > this.size) {
-      page.x = 1;
-      page.y += page.rowHeight + 1;
-      page.rowHeight = 0;
+    const slot = page.slots.get(key);
+    if (!slot || slot.width !== width || slot.height !== height) {
+      throw new Error(`${this.label} glyph does not match its prepared reservation`);
     }
-    if (page.y + height + 1 > this.size) throw new AtlasCapacityError(`${this.label} exhausted`);
-    const origin: [number, number] = [page.x, page.y];
+    const origin = slot.origin;
+    const [x, y] = origin;
     const location = {
-      u0: page.x / this.size,
-      v0: page.y / this.size,
-      u1: (page.x + width) / this.size,
-      v1: (page.y + height) / this.size,
+      u0: x / this.size,
+      v0: y / this.size,
+      u1: (x + width) / this.size,
+      v1: (y + height) / this.size,
       cells,
     };
     page.cache.set(key, location);
-    page.x += width + 1;
-    page.rowHeight = Math.max(page.rowHeight, height);
     return { location, texture: page.texture, origin };
   }
 

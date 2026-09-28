@@ -1,3 +1,6 @@
+/// <reference types="node" />
+
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
   decodeAccessibilityRows,
@@ -171,6 +174,54 @@ describe("decodeFrame", () => {
     expect(decodeGlyphDefinitions({ kind: SectionKind.GlyphDefinitions, flags: 0, itemCount: 1, bytes })).toEqual([
       { id: 12, width: 2, height: 2, bearingX: -1, bearingY: 3, format: 0, pixels: new Uint8Array([0, 64, 128, 255]) },
     ]);
+  });
+
+  it.each(["Uint8Array", "Buffer"])("owns glyph pixels decoded from a bounded %s frame", (kind) => {
+    const payloadBytes = 4 + 20 + 4;
+    const frameBytes = FRAME_HEADER_BYTES + SECTION_HEADER_BYTES + payloadBytes;
+    const envelope = kind === "Buffer" ? Buffer.alloc(frameBytes + 23) : new Uint8Array(frameBytes + 23);
+    const payload = envelope.subarray(11, 11 + frameBytes);
+    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    view.setUint32(0, FRAME_MAGIC, true);
+    view.setUint16(4, FRAME_PROTOCOL_VERSION, true);
+    view.setUint16(60, 1, true);
+    view.setUint16(64, SectionKind.GlyphDefinitions, true);
+    view.setUint32(68, 80, true);
+    view.setUint32(72, payloadBytes, true);
+    view.setUint32(76, 1, true);
+    view.setUint32(80, 1, true);
+    view.setUint32(84, 12, true);
+    view.setUint16(88, 2, true);
+    view.setUint16(90, 2, true);
+    view.setUint32(100, 4, true);
+    payload.set([0, 64, 128, 255], 104);
+
+    const section = decodeFrame(payload).sections[0]!;
+    expect(section.bytes.buffer).toBe(envelope.buffer);
+    expect(section.bytes.byteOffset).toBe(payload.byteOffset + 80);
+    expect(section.bytes.byteLength).toBe(payloadBytes);
+    expect(section.bytes.constructor).toBe(Uint8Array);
+    const glyph = decodeGlyphDefinitions(section)[0]!;
+    expect(glyph.pixels.buffer).not.toBe(envelope.buffer);
+    expect(glyph.pixels.buffer.byteLength).toBe(4);
+    payload.fill(123, 104);
+    expect(glyph.pixels).toEqual(new Uint8Array([0, 64, 128, 255]));
+    view.setUint32(72, payloadBytes + 1, true);
+    expect(() => decodeFrame(payload)).toThrow(/section out of bounds/);
+  });
+
+  it("owns glyph pixels when a caller supplies a Buffer section directly", () => {
+    const bytes = Buffer.alloc(28);
+    bytes.writeUInt32LE(1, 0);
+    bytes.writeUInt32LE(12, 4);
+    bytes.writeUInt16LE(2, 8);
+    bytes.writeUInt16LE(2, 10);
+    bytes.writeUInt32LE(4, 20);
+    bytes.set([0, 64, 128, 255], 24);
+    const [glyph] = decodeGlyphDefinitions({ kind: SectionKind.GlyphDefinitions, flags: 0, itemCount: 1, bytes });
+    bytes.fill(123, 24);
+    expect(glyph!.pixels).toEqual(new Uint8Array([0, 64, 128, 255]));
+    expect(glyph!.pixels.buffer).not.toBe(bytes.buffer);
   });
 
   it("rejects invalid section bounds", () => {

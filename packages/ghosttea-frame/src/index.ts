@@ -127,7 +127,12 @@ function assertRange(condition: boolean, message: string): asserts condition {
 }
 
 export function decodeFrame(buffer: ArrayBuffer | Uint8Array): TerminalFrame {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  // Normalize subclasses (notably Node Buffer) without copying the frame.
+  // Sections borrow this bounded view; retained glyph pixels must still copy.
+  const bytes =
+    buffer instanceof Uint8Array
+      ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      : new Uint8Array(buffer);
   assertRange(bytes.byteLength >= FRAME_HEADER_BYTES, "truncated header");
   assertRange(bytes.byteLength <= MAX_FRAME_BYTES, "packet exceeds limit");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -268,7 +273,7 @@ export function decodeGlyphDefinitions(section: FrameSection): GlyphDefinition[]
       bearingX: view.getInt16(offset - 12, true),
       bearingY: view.getInt16(offset - 10, true),
       format,
-      pixels: section.bytes.slice(offset, offset + pixelLength),
+      pixels: new Uint8Array(section.bytes.subarray(offset, offset + pixelLength)),
     });
     offset += pixelLength;
   }
