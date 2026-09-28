@@ -359,6 +359,52 @@ afterEach(() => {
 });
 
 describe("GhostteaTerminalRuntime mount ownership", () => {
+  it.each(["ports", "routed"] as const)(
+    "records only local births on %s, not registered or listed sessions",
+    async (transport) => {
+      vi.stubGlobal("window", globalThis);
+      const control = new FakePort();
+      const runtime = new GhostteaTerminalRuntime({
+        ...(transport === "routed"
+          ? {
+              transport: "routed" as const,
+              host: {
+                openTicket: async () => {
+                  throw new Error("not mounting");
+                },
+                createSession: async () => session,
+                listSessions: async () => [session],
+              },
+            }
+          : {
+              ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+            }),
+        platform: {
+          writeClipboard: () => undefined,
+          forceCanvasFallback: () => false,
+          setForceCanvasFallback: () => undefined,
+          reload: () => undefined,
+        },
+        workerFactory: () => new FakeWorker() as unknown as Worker,
+      });
+      runtime.registerSession(session);
+      await runtime.listSessions();
+      expect(runtime.sessionCreatedHere(session.id)).toBe(false);
+      const created = await runtime.createSession({
+        executable: "/bin/sh",
+        args: [],
+        cols: 80,
+        rows: 24,
+        persistence: "keep-until-exit",
+      });
+      expect(runtime.sessionCreatedHere(created.id)).toBe(true);
+      expect(runtime.sessionCreatedHere("unknown")).toBe(false);
+      runtime.unregisterSession(created.id);
+      expect(runtime.sessionCreatedHere(created.id)).toBe(true);
+      runtime.dispose();
+    },
+  );
+
   it("refuses scrollback overrides before 1.15 and validates them before send", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();

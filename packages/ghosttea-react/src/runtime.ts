@@ -303,6 +303,7 @@ export function waitForGhostteaRendererPorts(timeoutMs = 10_000): Promise<Ghostt
 
 export class GhostteaTerminalRuntime extends EventTarget {
   readonly #worker: Worker;
+  readonly #sessionsCreatedHere = new Set<string>();
   readonly #sessionsWithInput = new Set<string>();
 
   readonly #ports: Promise<GhostteaRendererPorts> | undefined;
@@ -486,6 +487,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
    * Restored or externally created sessions must never be treated as unused from this alone. */
   sessionHasInput(sessionId: string): boolean {
     return this.#sessionsWithInput.has(sessionId);
+  }
+
+  /** A local birth receipt, never inferred from registration or an empty input history. */
+  sessionCreatedHere(sessionId: string): boolean {
+    return this.#sessionsCreatedHere.has(sessionId);
   }
 
   get rendererBackend(): string {
@@ -1113,6 +1119,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (this.#routedHost) {
       if (!this.#routedHost.createSession) throw new Error("The routed host does not provide session creation");
       const session = await this.#routedHost.createSession(options);
+      this.#sessionsCreatedHere.add(session.id);
       this.registerSession(session);
       return session;
     }
@@ -1131,6 +1138,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       options: { ...options, ...(this.#sessionOwnerId ? { ownerId: this.#sessionOwnerId } : {}) },
     });
     if (response.type !== "session-created") throw new Error("ghosttead returned an unexpected response");
+    this.#sessionsCreatedHere.add(response.session.id);
     this.registerSession(response.session);
     console.info(`[terminal-runtime] created session ${response.session.id}`);
     return response.session;
