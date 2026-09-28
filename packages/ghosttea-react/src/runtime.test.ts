@@ -2312,9 +2312,20 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     });
     await runtime.connect();
 
-    const first = runtime.mount("session", "handle", "view-1", canvas());
+    const firstCanvas = Object.assign(canvas(), { clientWidth: 642, clientHeight: 418 });
+    const first = runtime.mount("session", "handle", "view-1", firstCanvas);
+    expect(worker.messages).toContainEqual(
+      expect.objectContaining({
+        type: "mount",
+        surfaceId: "view-1",
+        size: { width: 642, height: 418, dpr: 1 },
+      }),
+    );
+    expect(runtime.sessionHasInput("session")).toBe(false);
+    runtime.paste("session", "view-1", "echo hello");
     first.dispose();
     const second = runtime.mount("session", "handle", "view-2", canvas());
+    expect(runtime.sessionHasInput("session")).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     expect(control.messages).toContainEqual({

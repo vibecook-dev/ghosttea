@@ -198,3 +198,22 @@ Architecture:
 **⌘⇧O** (`super+shift+o`) is a Ghosttea product extension (remote sessions) and is kept outside Ghostty defaults.
 
 Open / deferred Ghostty UX work (font-size protocol, search, undo, jump_to_prompt, mouse goldens, etc.) is tracked in the monorepo at [`bench/ghostty-ux/OPEN-ITEMS.md`](../../bench/ghostty-ux/OPEN-ITEMS.md).
+
+### Pane geometry and host fullscreen
+
+`splitSizing="equal"` equalizes the affected row or column after both insertion
+and removal, preserving perpendicular split groups. Hosts can supply
+`onTogglePaneZoom(paneId)` to own fullscreen presentation while Ghosttea still
+resolves the user's configured shortcut. The normal zoom remains the default.
+
+`TerminalSurface` observes its container. The canvas displays its intrinsic
+worker bitmap at device-pixel scale, clipped to that container, so an old bitmap
+cannot stretch during a resize. Mount messages include initial pixel geometry
+before a cached scene can draw; a zero-size view waits for a real size. Direct
+`runtime.mount` users can pass `{ width, height, dpr }` as the fifth argument
+when their canvas's intrinsic size differs from its intended viewport.
+
+`runtime.sessionHasInput(id)` records input attempts across view remounts in
+this renderer. It is a conservative local-lifetime signal, not proof that an
+externally created or restored session is unused. Hosts retain authority over
+session termination through `onPaneClose`.

@@ -8,6 +8,7 @@ import {
   pane,
   persistedWorkspace,
   restoreNode,
+  removePane,
   updateSplit,
   type PaneNode,
   type SplitAxis,
@@ -230,5 +231,47 @@ describe("pane meta and rehydration", () => {
       second: pane("pane-2", revived),
     });
     expect(restoreNode(savedRoot, live)).toEqual(pane("pane-1", session("one")));
+  });
+});
+
+describe("removing equally sized panes", () => {
+  it.each<SplitAxis>(["horizontal", "vertical"])("rebalances %s siblings regardless of which pane closes", (axis) => {
+    let root: PaneNode = pane("one", session("one"));
+    root = insertPane(root, pane("two", session("two")), "one", axis, "s1", "equal");
+    root = insertPane(root, pane("three", session("three")), "two", axis, "s2", "equal");
+    for (const id of ["one", "two", "three"]) {
+      const remaining = removePane(root, id, "equal")!;
+      expect(leaves(remaining)).toHaveLength(2);
+      for (const size of paneSizes(remaining))
+        expect(size[axis === "horizontal" ? "width" : "height"]).toBeCloseTo(0.5);
+    }
+    expect(removePane(root, "absent", "equal")).toBe(root);
+  });
+
+  it("preserves perpendicular groups and manually sized unrelated columns", () => {
+    let root: PaneNode = insertPane(
+      pane("a", session("a")),
+      pane("b", session("b")),
+      "a",
+      "horizontal",
+      "columns",
+      "equal",
+    );
+    root = insertPane(root, pane("c", session("c")), "b", "vertical", "rows", "equal");
+    root = insertPane(root, pane("d", session("d")), "c", "vertical", "rows2", "equal");
+    root = updateSplit(root, "columns", (split) => ({ ...split, ratio: 0.3 }));
+    const remaining = removePane(root, "c", "equal")!;
+    expect(paneSizes(remaining)).toEqual([
+      { id: "a", width: 0.3, height: 1 },
+      { id: "b", width: 0.7, height: 0.5 },
+      { id: "d", width: 0.7, height: 0.5 },
+    ]);
+  });
+
+  it("retains the existing close behavior for halves sizing", () => {
+    let root: PaneNode = insertPane(pane("a", session("a")), pane("b", session("b")), "a", "horizontal", "s1", "equal");
+    root = insertPane(root, pane("c", session("c")), "b", "horizontal", "s2", "equal");
+    const remaining = removePane(root, "c")!;
+    expect(paneSizes(remaining)[0]!.width).toBeCloseTo(1 / 3);
   });
 });

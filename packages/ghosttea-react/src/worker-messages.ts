@@ -1,5 +1,5 @@
 import type { TerminalLink } from "@vibecook/ghosttea-frame";
-import type { CellSelection, TerminalEffects, TerminalTheme } from "./renderers/types.js";
+import type { CellSelection, PixelSize, TerminalEffects, TerminalTheme } from "./renderers/types.js";
 import type { TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import type { TerminalRenderCounterSnapshot, TerminalRenderPerformanceSnapshot } from "./performance.js";
 import type { RoutedFramesAttachRequest, RoutedFramesTransportEvent } from "./routed-frames.js";
@@ -7,7 +7,7 @@ import type { RoutedFramesAttachRequest, RoutedFramesTransportEvent } from "./ro
 export type RendererToWorkerMessage =
   | { type: "renderer-config"; forceCanvasFallback: boolean }
   | { type: "partial-rendering"; enabled: boolean }
-  | { type: "mount"; surfaceId: string; sessionHandle: string; canvas: OffscreenCanvas }
+  | { type: "mount"; surfaceId: string; sessionHandle: string; canvas: OffscreenCanvas; size: PixelSize }
   | { type: "unmount"; surfaceId: string }
   | { type: "drop-session"; sessionHandle: string }
   | { type: "resize"; surfaceId: string; width: number; height: number; dpr: number }

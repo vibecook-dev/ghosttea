@@ -627,7 +627,10 @@ function scheduleShaderAnimation(): void {
 
 async function flush(): Promise<void> {
   const backend = await ensureRenderer();
-  const ids = [...dirty].filter((id) => !occluded.has(id));
+  const ids = [...dirty].filter((id) => {
+    const size = mounts.get(id)?.size;
+    return !occluded.has(id) && size !== undefined && size.width > 0 && size.height > 0;
+  });
   if (performanceMeasurement && ids.length > 0) {
     performanceMeasurement.scheduling.flushes += 1;
     appendPerformanceSample(performanceMeasurement.scheduling.panesPerFlush, ids.length);
@@ -765,11 +768,16 @@ function invalidateSessionRows(sessionHandle: string, rows: Iterable<number>, ge
   for (const surfaceId of surfaceIdsForSession(sessionHandle)) invalidateRows(surfaceId, damagedRows, geometryChanged);
 }
 
-async function mount(surfaceId: string, sessionHandle: string, canvas: OffscreenCanvas): Promise<void> {
+async function mount(
+  surfaceId: string,
+  sessionHandle: string,
+  canvas: OffscreenCanvas,
+  size: PixelSize,
+): Promise<void> {
   if (mounts.has(surfaceId)) renderer?.unmount(surfaceId);
   snapshot(sessionHandle);
   surface(surfaceId, sessionHandle);
-  const entry: MountedCanvas = { canvas, size: { width: 1, height: 1, dpr: 1 }, sessionHandle };
+  const entry: MountedCanvas = { canvas, size, sessionHandle };
   mounts.set(surfaceId, entry);
   const backend = await ensureRenderer();
   if (mounts.get(surfaceId) !== entry) return;
@@ -1138,7 +1146,7 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
   const message = event.data;
   try {
     if (message.type === "mount") {
-      void mount(message.surfaceId, message.sessionHandle, message.canvas).catch((error) => {
+      void mount(message.surfaceId, message.sessionHandle, message.canvas, message.size).catch((error) => {
         console.error("[terminal-renderer] mount failed", error);
       });
     } else if (message.type === "renderer-config") {

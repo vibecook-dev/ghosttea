@@ -164,13 +164,17 @@ export function updateSession(node: PaneNode, session: SessionSummary): PaneNode
   return { ...node, first: updateSession(node.first, session), second: updateSession(node.second, session) };
 }
 
-export function removePane(node: PaneNode, paneId: string): PaneNode | null {
+export function removePane(node: PaneNode, paneId: string, sizing: SplitSizing = "halves"): PaneNode | null {
   if (node.kind === "pane") return node.id === paneId ? null : node;
-  const first = removePane(node.first, paneId);
-  const second = removePane(node.second, paneId);
+  const first = removePane(node.first, paneId, sizing);
+  const second = removePane(node.second, paneId, sizing);
   if (!first) return second;
   if (!second) return first;
-  return { ...node, first, second };
+  if (first === node.first && second === node.second) return node;
+  const updated = { ...node, first, second };
+  const count = (child: PaneNode): number =>
+    child.kind === "split" && child.axis === node.axis ? count(child.first) + count(child.second) : 1;
+  return sizing === "equal" && count(updated) !== count(node) ? equalizeSplitGroup(updated)[0] : updated;
 }
 
 export function updateSplit(node: PaneNode, splitId: string, update: (split: PaneSplit) => PaneSplit): PaneNode {

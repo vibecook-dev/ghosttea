@@ -31,7 +31,7 @@ import {
   type TerminationSource,
 } from "@vibecook/ghosttea-protocol";
 import { FRAME_MAGIC, FrameFlag } from "@vibecook/ghosttea-frame";
-import type { CellSelection, TerminalEffects, TerminalTheme } from "./renderers/types.js";
+import type { CellSelection, PixelSize, TerminalEffects, TerminalTheme } from "./renderers/types.js";
 import type { TerminalRenderCounterSnapshot, TerminalRenderPerformanceSnapshot } from "./performance.js";
 import { FrameResyncController } from "./frame-resync.js";
 import type { RendererToWorkerMessage, WorkerToRendererMessage } from "./worker-messages.js";
@@ -303,6 +303,8 @@ export function waitForGhostteaRendererPorts(timeoutMs = 10_000): Promise<Ghostt
 
 export class GhostteaTerminalRuntime extends EventTarget {
   readonly #worker: Worker;
+  readonly #sessionsWithInput = new Set<string>();
+
   readonly #ports: Promise<GhostteaRendererPorts> | undefined;
   readonly #routedHost: GhostteaRoutedHost | undefined;
   readonly #routedReceiverCapacities: RoutedReceiverCapacities | undefined;
@@ -478,6 +480,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
   #postWorker(message: RendererToWorkerMessage, transfer: Transferable[] = []): void {
     if (this.#disposed) return;
     this.#worker.postMessage(message, transfer);
+  }
+
+  /** Whether this renderer has attempted terminal input during this session's lifetime.
+   * Restored or externally created sessions must never be treated as unused from this alone. */
+  sessionHasInput(sessionId: string): boolean {
+    return this.#sessionsWithInput.has(sessionId);
   }
 
   get rendererBackend(): string {
@@ -1283,9 +1291,15 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (response.type !== "ok") throw new Error("ghosttead rejected frame resynchronization");
   }
 
-  mount(sessionId: string, sessionHandle: string, viewId: string, canvas: HTMLCanvasElement): TerminalMount {
+  mount(
+    sessionId: string,
+    sessionHandle: string,
+    viewId: string,
+    canvas: HTMLCanvasElement,
+    initialSize?: PixelSize,
+  ): TerminalMount {
     if (this.#disposed) throw new Error("Cannot mount a disposed terminal runtime");
-    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas);
+    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas, initialSize);
     const mounted = this.#mountedCanvases.get(canvas);
     if (mounted) {
       if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
@@ -1300,11 +1314,20 @@ export class GhostteaTerminalRuntime extends EventTarget {
       return this.#createMountLease(mounted);
     }
 
+    const size: PixelSize = initialSize ?? {
+      width: canvas.clientWidth || 0,
+      height: canvas.clientHeight || 0,
+      dpr: window.devicePixelRatio || 1,
+    };
+    // Allocate the first render target at its actual size, too: the backend
+    // must not build a default 300x150 scene texture and immediately replace it.
+    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
     const offscreen = canvas.transferControlToOffscreen();
     const subscription = this.#retainFrameSubscription(sessionHandle);
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen }, [offscreen]);
+    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
     const entry: MountedCanvas = {
       canvas,
       sessionHandle,
@@ -1390,7 +1413,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     return this.#createMountLease(entry);
   }
 
-  #mountRouted(sessionId: string, sessionHandle: string, viewId: string, canvas: HTMLCanvasElement): TerminalMount {
+  #mountRouted(
+    sessionId: string,
+    sessionHandle: string,
+    viewId: string,
+    canvas: HTMLCanvasElement,
+    initialSize?: PixelSize,
+  ): TerminalMount {
     const mounted = this.#mountedCanvases.get(canvas);
     if (mounted) {
       if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
@@ -1404,10 +1433,19 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return this.#createMountLease(mounted);
     }
+    const size: PixelSize = initialSize ?? {
+      width: canvas.clientWidth || 0,
+      height: canvas.clientHeight || 0,
+      dpr: window.devicePixelRatio || 1,
+    };
+    // Allocate the first render target at its actual size, too: the backend
+    // must not build a default 300x150 scene texture and immediately replace it.
+    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
     const offscreen = canvas.transferControlToOffscreen();
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen }, [offscreen]);
+    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
     const entry: MountedCanvas = {
       canvas,
       sessionHandle,
@@ -2577,6 +2615,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   sendText(sessionId: string, viewId: string, text: string): void {
+    if (text.length > 0) this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "text", text });
       return;
@@ -2589,6 +2628,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   paste(sessionId: string, viewId: string, text: string): void {
+    if (text.length > 0) this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "paste", text });
       return;
@@ -2601,6 +2641,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   sendKey(sessionId: string, viewId: string, event: TerminalKeyEvent): void {
+    if (event.type === "down" && !["Shift", "Control", "Alt", "Meta"].includes(event.key))
+      this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "key", event });
       return;
@@ -2893,6 +2935,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   interrupt(sessionId: string, viewId: string): void {
+    this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "interrupt" });
       return;

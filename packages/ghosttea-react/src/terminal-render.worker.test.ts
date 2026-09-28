@@ -204,6 +204,43 @@ describe("terminal render worker surfaces", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("paints a cached session at its mount geometry and waits for a nonzero hidden-pane size", async () => {
+    const raf: FrameRequestCallback[] = [];
+    vi.stubGlobal("self", { postMessage: vi.fn(), requestAnimationFrame: (cb: FrameRequestCallback) => raf.push(cb) });
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown) => self.onmessage!({ data } as MessageEvent);
+    const settle = async () => {
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    };
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    dispatch({ type: "frame", packet: textFrame(["cached"], 1n) });
+    dispatch({
+      type: "mount",
+      surfaceId: "fresh",
+      sessionHandle: "1",
+      canvas: {},
+      size: { width: 643, height: 417, dpr: 2 },
+    });
+    dispatch({
+      type: "mount",
+      surfaceId: "hidden",
+      sessionHandle: "1",
+      canvas: {},
+      size: { width: 0, height: 0, dpr: 2 },
+    });
+    await settle();
+    raf.splice(0).forEach((cb) => cb(0));
+    await settle();
+    expect(renderer.resize).toHaveBeenCalledWith("fresh", { width: 643, height: 417, dpr: 2 });
+    const painted = () => renderer.renderBatch.mock.calls.flatMap(([entries]) => entries.map(({ id }) => id));
+    expect(painted()).toContain("fresh");
+    expect(painted()).not.toContain("hidden");
+    dispatch({ type: "resize", surfaceId: "hidden", width: 643, height: 417, dpr: 2 });
+    raf.splice(0).forEach((cb) => cb(0));
+    await settle();
+    expect(painted()).toContain("hidden");
+  });
+
   it("composes scrolling before a paint and fences reset, layout and selection changes", async () => {
     const raf: FrameRequestCallback[] = [];
     const scope = {
@@ -229,7 +266,13 @@ describe("terminal render worker surfaces", () => {
       return paints.at(-1)!;
     };
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    dispatch({ type: "mount", surfaceId: "a", sessionHandle: "1", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "a",
+      sessionHandle: "1",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await settle();
     dispatch({ type: "frame", packet: textFrame(["a", "b", "c", "d", "e"], 1n) });
     expect((await paint()).full).toBe(true);
@@ -270,7 +313,14 @@ describe("terminal render worker surfaces", () => {
     await import("./terminal-render.worker.js");
     const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    for (const handle of ["1", "2"]) dispatch({ type: "mount", surfaceId: handle, sessionHandle: handle, canvas: {} });
+    for (const handle of ["1", "2"])
+      dispatch({
+        type: "mount",
+        surfaceId: handle,
+        sessionHandle: handle,
+        canvas: {},
+        size: { width: 800, height: 600, dpr: 2 },
+      });
     await new Promise((resolve) => setTimeout(resolve, 0));
     dispatch({ type: "frame", packet: oneGlyphFrame(1n, 17) });
     dispatch({ type: "frame", packet: oneGlyphFrame(2n, 231) });
@@ -288,7 +338,13 @@ describe("terminal render worker surfaces", () => {
     expect(second.pixels[0]).toBe(231);
     expect(first.id).not.toBe(second.id);
     dispatch({ type: "drop-session", sessionHandle: "1" });
-    dispatch({ type: "mount", surfaceId: "1", sessionHandle: "1", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "1",
+      sessionHandle: "1",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await new Promise((resolve) => setTimeout(resolve, 0));
     dispatch({ type: "frame", packet: oneGlyphFrame(1n, 99) });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -326,7 +382,13 @@ describe("terminal render worker surfaces", () => {
         await settle();
       };
       dispatch({ type: "renderer-config", forceCanvasFallback: true });
-      dispatch({ type: "mount", surfaceId: "11", sessionHandle: "11", canvas: {} });
+      dispatch({
+        type: "mount",
+        surfaceId: "11",
+        sessionHandle: "11",
+        canvas: {},
+        size: { width: 800, height: 600, dpr: 2 },
+      });
       await settle();
       await send(1n);
       const firstId = definitions().get(1)!.id;
@@ -368,7 +430,13 @@ describe("terminal render worker surfaces", () => {
     await import("./terminal-render.worker.js");
     const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    dispatch({ type: "mount", surfaceId: "11", sessionHandle: "11", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "11",
+      sessionHandle: "11",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await new Promise((resolve) => setTimeout(resolve, 0));
     const protectedBase = {
       v: 1 as const,
@@ -490,8 +558,20 @@ describe("terminal render worker surfaces", () => {
     const dispatch = (data: unknown): void => workerScope.onmessage?.({ data } as MessageEvent);
 
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    dispatch({ type: "mount", surfaceId: "view-a", sessionHandle: "session", canvas: {} });
-    dispatch({ type: "mount", surfaceId: "view-b", sessionHandle: "session", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-a",
+      sessionHandle: "session",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-b",
+      sessionHandle: "session",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await new Promise((resolve) => setTimeout(resolve, 0));
     dispatch({ type: "force-full-redraw", sessionHandle: "session" });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -522,6 +602,7 @@ describe("terminal render worker surfaces", () => {
       surfaceId: "view-a",
       sessionHandle: "11",
       canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
     });
     await settle();
     dispatch({ type: "frame", packet: minimalFullFrame(11n, 12n) });
@@ -586,8 +667,20 @@ describe("terminal render worker surfaces", () => {
     } as const;
 
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    dispatch({ type: "mount", surfaceId: "view-local", sessionHandle: "session", canvas: {} });
-    dispatch({ type: "mount", surfaceId: "view-config", sessionHandle: "session", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-local",
+      sessionHandle: "session",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-config",
+      sessionHandle: "session",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await settle();
     dispatch({ type: "effects", surfaceId: "view-local", sessionHandle: "session", effects: localEffects });
     dispatch({ type: "effects", surfaceId: "view-config", sessionHandle: "session", effects: configEffects });
@@ -621,7 +714,13 @@ describe("terminal render worker surfaces", () => {
     const settle = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
 
     dispatch({ type: "renderer-config", forceCanvasFallback: false });
-    dispatch({ type: "mount", surfaceId: "hidden-view", sessionHandle: "session", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "hidden-view",
+      sessionHandle: "session",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await settle();
     expect(workerScope.postMessage).toHaveBeenCalledWith({ type: "renderer-status", backend: "webgpu" });
     while (animationFrames.length > 0) animationFrames.shift()!(performance.now());
@@ -656,9 +755,27 @@ describe("terminal render worker surfaces", () => {
     const settle = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
 
     dispatch({ type: "renderer-config", forceCanvasFallback: true });
-    dispatch({ type: "mount", surfaceId: "view-a", sessionHandle: "session-a", canvas: {} });
-    dispatch({ type: "mount", surfaceId: "view-b", sessionHandle: "session-a", canvas: {} });
-    dispatch({ type: "mount", surfaceId: "view-c", sessionHandle: "session-b", canvas: {} });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-a",
+      sessionHandle: "session-a",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-b",
+      sessionHandle: "session-a",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
+    dispatch({
+      type: "mount",
+      surfaceId: "view-c",
+      sessionHandle: "session-b",
+      canvas: {},
+      size: { width: 800, height: 600, dpr: 2 },
+    });
     await settle();
     renderer.renderBatch.mockClear();
 

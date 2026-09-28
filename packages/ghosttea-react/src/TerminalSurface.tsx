@@ -1,6 +1,6 @@
 import { useTerminalLinks } from "./use-terminal-links.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ClipboardEvent, KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import type { ClipboardEvent, CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import { useGhostteaRuntime } from "./context.js";
 import { terminalKeyboardLayout, terminalKeyDown, terminalKeyUp } from "./keyboard-input.js";
@@ -323,13 +323,22 @@ function TerminalSurfaceSession({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const handle = terminalRuntime.mount(session.id, session.handle, viewId, canvas);
+    const surface = canvas?.parentElement;
+    if (!canvas || !surface) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.setProperty("--ghosttea-canvas-scale", `${1 / dpr}`);
+    const handle = terminalRuntime.mount(session.id, session.handle, viewId, canvas, {
+      width: surface.clientWidth,
+      height: surface.clientHeight,
+      dpr,
+    });
     terminalRuntime.setViewInputPolicy(viewId, clientReadWriteRef.current);
     let { cols, rows } = gridRef.current;
     const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      handle.resize(entry.contentRect.width, entry.contentRect.height, window.devicePixelRatio);
+      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.style.setProperty("--ghosttea-canvas-scale", `${1 / dpr}`);
+      handle.resize(entry.contentRect.width, entry.contentRect.height, dpr);
       const nextCols = Math.max(2, Math.floor((entry.contentRect.width - ORIGIN_X * 2) / CELL_WIDTH));
       const nextRows = Math.max(1, Math.floor((entry.contentRect.height - ORIGIN_Y * 2) / LINE_HEIGHT));
       if (nextCols !== cols || nextRows !== rows) {
@@ -339,7 +348,7 @@ function TerminalSurfaceSession({
         if (controlsResizeRef.current) terminalRuntime.resize(session.id, viewId, cols, rows);
       }
     });
-    observer.observe(canvas);
+    observer.observe(surface);
     return () => {
       observer.disconnect();
       handle.dispose();
@@ -740,7 +749,15 @@ function TerminalSurfaceSession({
 
   return (
     <div className="terminal-surface">
-      <canvas ref={canvasRef} aria-label={`Terminal session ${session.id}`} />
+      <canvas
+        ref={canvasRef}
+        aria-label={`Terminal session ${session.id}`}
+        style={
+          {
+            "--ghosttea-canvas-scale": 1 / (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
+          } as CSSProperties
+        }
+      />
       <textarea
         ref={inputRef}
         className="terminal-input"
