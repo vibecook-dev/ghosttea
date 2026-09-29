@@ -495,8 +495,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
   /**
    * Whether a committed frame of this session has put something on screen in
    * this renderer: what a host that just started a program waits for before it
-   * reveals the terminal. Once true it stays true; a `session-drawn` event
-   * (`detail: { sessionId }`) announces the change.
+   * reveals the terminal. Once true it stays true while the session is
+   * registered here (a restart in place is the same session and does not draw
+   * "first" again); a `session-drawn` event (`detail: { sessionId }`) announces
+   * the change, and a session registered again announces again.
    */
   sessionHasDrawn(sessionId: string): boolean {
     return this.#sessionsDrawn.has(sessionId);
@@ -3019,6 +3021,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#remoteSessions.delete(sessionId);
     this.#controlBySession.delete(sessionId);
     this.#recoveredSessions.delete(sessionId);
+    // The worker forgets the handle's first frame with its snapshot (`drop-session`).
+    this.#sessionsDrawn.delete(sessionId);
     if (subscriptionChanged) {
       this.#frameSubscriptionVersion += 1;
       this.#syncFrameSubscriptionsInBackground();

@@ -384,6 +384,15 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     expect(drawn).toEqual([{ sessionId: session.id }]);
     expect(runtime.sessionHasDrawn(session.id)).toBe(true);
     expect(runtime.sessionHasDrawn("unknown")).toBe(false);
+    // Unregistered, the session is forgotten on both sides (the worker drops the
+    // handle's snapshot and its first frame with it); registered again, it announces again.
+    runtime.unregisterSession(session.id);
+    expect(worker.messages).toContainEqual({ type: "drop-session", sessionHandle: session.handle });
+    expect(runtime.sessionHasDrawn(session.id)).toBe(false);
+    runtime.registerSession(session);
+    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
+    expect(drawn).toEqual([{ sessionId: session.id }, { sessionId: session.id }]);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(true);
     runtime.dispose();
   });
 
