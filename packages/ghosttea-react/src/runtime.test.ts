@@ -359,6 +359,34 @@ afterEach(() => {
 });
 
 describe("GhostteaTerminalRuntime mount ownership", () => {
+  it("publishes a session's first drawn frame once, by session id, and remembers it", () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: new FakePort() as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    const drawn: unknown[] = [];
+    runtime.addEventListener("session-drawn", (event) => drawn.push((event as CustomEvent).detail));
+    runtime.registerSession(session);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(false);
+    // A handle this renderer never registered names no session.
+    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: "stranger" } }));
+    expect(drawn).toEqual([]);
+    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
+    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
+    expect(drawn).toEqual([{ sessionId: session.id }]);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(true);
+    expect(runtime.sessionHasDrawn("unknown")).toBe(false);
+    runtime.dispose();
+  });
+
   it.each(["ports", "routed"] as const)(
     "records only local births on %s, not registered or listed sessions",
     async (transport) => {

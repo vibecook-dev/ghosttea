@@ -108,6 +108,12 @@ const MAX_PERFORMANCE_SAMPLES = 100_000;
 const FRAME_CREDIT_BATCH_BYTES = 4 * 1024 * 1024;
 const FRAME_CREDIT_MAX_DELAY_MS = 8;
 const snapshots = new Map<string, SessionSnapshot>();
+/**
+ * Handles whose committed frames have put something on screen. A host that just
+ * started a program waits for this before revealing its terminal; checked only
+ * until a handle has drawn once, and forgotten with its snapshot.
+ */
+const drawnSessions = new Set<string>();
 const sharedGlyphDefinitions = new Map<string, { definition: GlyphDefinition; references: number }>();
 // Renderer IDs never repeat while the GPU atlas survives, even after a cell restart.
 let nextRendererGlyphId = 1;
@@ -417,6 +423,12 @@ function dropSessionSnapshot(sessionHandle: string): void {
   const session = snapshots.get(sessionHandle);
   if (session) clearSessionCatalog(session);
   snapshots.delete(sessionHandle);
+  drawnSessions.delete(sessionHandle);
+}
+
+/** A row replacement that shows something: a glyph to rasterize, or text that is not blank. */
+function rowShowsContent(row: { text: string; glyphs: readonly unknown[] }): boolean {
+  return row.glyphs.length > 0 || /\S/.test(row.text);
 }
 
 function defaults(sessionHandle: string): SessionPresentationDefaults {
@@ -898,6 +910,7 @@ function applyFrame(
   for (const replacement of replacements) {
     if (replacement.row >= frame.rows) throw new RangeError("Row replacement exceeds viewport");
   }
+  const firstDrawn = !drawnSessions.has(id) && replacements.some(rowShowsContent);
   const linkSection = frame.sections.find((candidate) => candidate.kind === SectionKind.LinkTargets);
   const links = linkSection ? decodeLinkTargets(linkSection, frame.cols, frame.rows) : [];
   const nextCursor = decodeCursorState(cursorSection);
@@ -1118,6 +1131,10 @@ function applyFrame(
     // recovered screen apart from a partial update of the stale one.
     fullSnapshot: fullFrame,
   });
+  if (firstDrawn) {
+    drawnSessions.add(id);
+    postToRenderer({ type: "session-drawn", sessionHandle: id });
+  }
   lifetimeFrames.applies += 1;
   counters.applies += 1;
   if (active) appendPerformanceSample(active.samples.frameApplyMs, performance.now() - applyStarted);

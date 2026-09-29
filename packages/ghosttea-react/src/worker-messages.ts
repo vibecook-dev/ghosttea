@@ -51,6 +51,12 @@ export type WorkerToRendererMessage =
       frameSequence: bigint;
       fullSnapshot: boolean;
     }
+  /**
+   * The first committed frame of this handle that put something on screen (a
+   * glyph, or text that is not blank). Posted once per handle until the handle
+   * is dropped; the runtime publishes it per session as `session-drawn`.
+   */
+  | { type: "session-drawn"; sessionHandle: string }
   | { type: "catalog-pressure"; sessionHandle: string; reason: "working-set-exceeds-budget" }
   | { type: "frame-credit"; bytes: number }
   | { type: "performance-started"; requestId: number }

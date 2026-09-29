@@ -204,6 +204,25 @@ describe("terminal render worker surfaces", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("says once per handle when a committed frame first puts something on screen", async () => {
+    const postMessage = vi.fn();
+    vi.stubGlobal("self", { postMessage, requestAnimationFrame: (_cb: FrameRequestCallback) => 1 });
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown) => self.onmessage!({ data } as MessageEvent);
+    const drawn = () => postMessage.mock.calls.filter(([message]) => message?.type === "session-drawn");
+    // A blank screen (empty and all-space rows) is committed, but has not drawn.
+    dispatch({ type: "frame", packet: textFrame(["", "   "], 1n) });
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "frame-committed", sessionHandle: "1" }));
+    expect(drawn()).toEqual([]);
+    dispatch({ type: "frame", packet: textFrame(["╭─ Codex", ""], 2n) });
+    dispatch({ type: "frame", packet: textFrame(["╭─ Codex", "› "], 3n) });
+    expect(drawn()).toEqual([[{ type: "session-drawn", sessionHandle: "1" }]]);
+    // Dropped and seen again, the handle can announce its first paint again.
+    dispatch({ type: "drop-session", sessionHandle: "1" });
+    dispatch({ type: "frame", packet: textFrame(["again"], 4n) });
+    expect(drawn()).toHaveLength(2);
+  });
+
   it("paints a cached session at its mount geometry and waits for a nonzero hidden-pane size", async () => {
     const raf: FrameRequestCallback[] = [];
     vi.stubGlobal("self", { postMessage: vi.fn(), requestAnimationFrame: (cb: FrameRequestCallback) => raf.push(cb) });

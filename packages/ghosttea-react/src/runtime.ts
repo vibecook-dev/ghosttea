@@ -305,6 +305,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   readonly #worker: Worker;
   readonly #sessionsCreatedHere = new Set<string>();
   readonly #sessionsWithInput = new Set<string>();
+  readonly #sessionsDrawn = new Set<string>();
 
   readonly #ports: Promise<GhostteaRendererPorts> | undefined;
   readonly #routedHost: GhostteaRoutedHost | undefined;
@@ -447,6 +448,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
       } else if (data.type === "frame-committed") {
         if (this.#routedHost?.getSession) this.#scheduleMetadataRefresh(data.sessionHandle);
         this.#recordCommittedFrame(data.sessionHandle, data.fullSnapshot);
+      } else if (data.type === "session-drawn") {
+        this.#recordSessionDrawn(data.sessionHandle);
       } else if (data.type === "catalog-pressure") {
         console.warn(
           `[terminal-runtime] native text catalog budget exceeded for ${data.sessionHandle}; using bounded fallback text`,
@@ -487,6 +490,16 @@ export class GhostteaTerminalRuntime extends EventTarget {
    * Restored or externally created sessions must never be treated as unused from this alone. */
   sessionHasInput(sessionId: string): boolean {
     return this.#sessionsWithInput.has(sessionId);
+  }
+
+  /**
+   * Whether a committed frame of this session has put something on screen in
+   * this renderer: what a host that just started a program waits for before it
+   * reveals the terminal. Once true it stays true; a `session-drawn` event
+   * (`detail: { sessionId }`) announces the change.
+   */
+  sessionHasDrawn(sessionId: string): boolean {
+    return this.#sessionsDrawn.has(sessionId);
   }
 
   /** A local birth receipt, never inferred from registration or an empty input history. */
@@ -2449,6 +2462,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
    * screen: a partial update repaints part of the stale one, which is exactly
    * what would thaw a pane too early.
    */
+  #recordSessionDrawn(sessionHandle: string): void {
+    const sessionId = this.#sessionByHandle.get(sessionHandle)?.id;
+    if (sessionId === undefined || this.#sessionsDrawn.has(sessionId)) return;
+    this.#sessionsDrawn.add(sessionId);
+    this.dispatchEvent(new CustomEvent("session-drawn", { detail: { sessionId } }));
+  }
+
   #recordCommittedFrame(sessionHandle: string, fullSnapshot: boolean): void {
     if (!fullSnapshot) return;
     const sessionId = this.#sessionByHandle.get(sessionHandle)?.id;
