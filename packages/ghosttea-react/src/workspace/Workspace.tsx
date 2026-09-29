@@ -35,6 +35,7 @@ import {
   pane,
   persistedWorkspace,
   removePane,
+  replaceSessionInPanes,
   resizeForPane,
   restoreNode,
   updateSession,
@@ -110,6 +111,9 @@ export interface GhostteaWorkspaceContext {
   activateSession: (sessionId: string) => void;
   mountSession: (session: SessionSummary) => void;
   placeSession: (session: SessionSummary) => void;
+  /** Atomically replace an expected session's attachments without activating, splitting or unzooming.
+   * Returns false if it is no longer attached. Safe after an asynchronous session birth. */
+  replaceSession: (expectedId: string, session: SessionSummary) => boolean;
   createSessionInActivePane: () => Promise<SessionSummary | undefined>;
   splitActive: (axis?: SplitAxis) => Promise<SessionSummary | undefined>;
 }
@@ -829,6 +833,20 @@ export function GhostteaWorkspace({
   );
   const placeSession = mountSession;
 
+  const replaceSession = useCallback(
+    (expectedId: string, session: SessionSummary): boolean => {
+      const current = layoutRef.current;
+      if (!mountedRef.current || !current) return false;
+      const updated = replaceSessionInPanes(current, expectedId, session);
+      if (updated === current) return false;
+      terminalRuntime.registerSession(session);
+      layoutRef.current = updated;
+      setLayout(updated);
+      return true;
+    },
+    [terminalRuntime],
+  );
+
   const addSession = useCallback(
     (session: SessionSummary, axis: SplitAxis = "horizontal"): void => {
       terminalRuntime.registerSession(session);
@@ -1171,6 +1189,7 @@ export function GhostteaWorkspace({
       activateSession,
       mountSession,
       placeSession,
+      replaceSession,
       createSessionInActivePane,
       splitActive: newSplit,
     }),
@@ -1184,6 +1203,7 @@ export function GhostteaWorkspace({
       newSplit,
       panes,
       placeSession,
+      replaceSession,
       sessions,
     ],
   );

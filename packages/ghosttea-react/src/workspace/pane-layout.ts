@@ -156,6 +156,14 @@ export function mountSessionInPane(root: PaneNode, paneId: string, session: Sess
   return replacePane(root, target.id, { ...target, session });
 }
 
+/** Replace only current attachments of an expected session, preserving mirrors and geometry. */
+export function replaceSessionInPanes(node: PaneNode, expectedId: string, session: SessionSummary): PaneNode {
+  if (node.kind === "pane") return node.session.id === expectedId ? { ...node, session } : node;
+  const first = replaceSessionInPanes(node.first, expectedId, session);
+  const second = replaceSessionInPanes(node.second, expectedId, session);
+  return first === node.first && second === node.second ? node : { ...node, first, second };
+}
+
 /** @deprecated Use mountSessionInPane; panes no longer own or move sessions. */
 export const placeSessionInPane = mountSessionInPane;
 

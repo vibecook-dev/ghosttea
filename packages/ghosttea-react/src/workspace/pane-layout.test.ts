@@ -9,6 +9,7 @@ import {
   persistedWorkspace,
   restoreNode,
   removePane,
+  replaceSessionInPanes,
   updateSplit,
   type PaneNode,
   type SplitAxis,
@@ -273,5 +274,42 @@ describe("removing equally sized panes", () => {
     root = insertPane(root, pane("c", session("c")), "b", "horizontal", "s2", "equal");
     const remaining = removePane(root, "c")!;
     expect(paneSizes(remaining)[0]!.width).toBeCloseTo(1 / 3);
+  });
+});
+
+describe("conditional session replacement", () => {
+  it("replaces mirrored attachments without changing pane ids, split ratios, or siblings", () => {
+    const old = session("ended");
+    const other = pane("other", session("working"));
+    const root = {
+      kind: "split" as const,
+      id: "outer",
+      axis: "horizontal" as const,
+      ratio: 0.3,
+      first: pane("one", old),
+      second: {
+        kind: "split" as const,
+        id: "inner",
+        axis: "vertical" as const,
+        ratio: 0.7,
+        first: other,
+        second: pane("mirror", old),
+      },
+    };
+    const shell = session("fresh");
+    const next = replaceSessionInPanes(root, "ended", shell);
+    expect(next).toEqual({
+      ...root,
+      first: pane("one", shell),
+      second: { ...root.second, second: pane("mirror", shell) },
+    });
+    if (next.kind !== "split" || next.second.kind !== "split") throw new Error("lost layout");
+    expect(next.second.first).toBe(other);
+    expect(replaceSessionInPanes(next, "ended", session("too-late"))).toBe(next);
+  });
+
+  it("does not overwrite a pane reassigned while the replacement was being born", () => {
+    const root = pane("same-pane", session("newly-selected-agent"));
+    expect(replaceSessionInPanes(root, "ended", session("fresh"))).toBe(root);
   });
 });
