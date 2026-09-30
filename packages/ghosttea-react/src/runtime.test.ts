@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { unknownSessionActivity, type ConfigSnapshot, type SessionSummary } from "@vibecook/ghosttea-protocol";
 import { GhostteaTerminalRuntime } from "./runtime";
+import { syncSurfaceFocus } from "./TerminalSurface";
 
 class FakeWorker extends EventTarget {
   readonly messages: unknown[] = [];
@@ -1504,6 +1505,59 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     expect(claims()).toHaveLength(1);
     expect(resizes()).toHaveLength(2);
     expect(resizes().at(-1)).toMatchObject({ viewId: "view-1", cols: 67, rows: 18 });
+    runtime.dispose();
+  });
+
+  it("alternates focus a hundred times between an authority and a mirror without the mirror claiming (TP-R4)", async () => {
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    runtime.mount(session.id, session.handle, "authority", canvas());
+    runtime.mount(session.id, session.handle, "mirror", canvas());
+    await flushMicrotasks();
+    // The surfaces' claim effects: the controller claims, the mirror releases.
+    runtime.claimResizeControl(session.handle, "authority", 80, 24);
+    runtime.releaseResizeControl("mirror");
+
+    const authority = { sessionHandle: session.handle, viewId: "authority", cols: 80, rows: 24 };
+    const mirror = { sessionHandle: session.handle, viewId: "mirror", cols: 120, rows: 40 };
+    const authorityPolicy = { takeGeometryOnFocus: true, controlsResize: true, interactive: true };
+    const mirrorPolicy = { takeGeometryOnFocus: true, controlsResize: false, interactive: true };
+    let authorityFocused = false;
+    let mirrorFocused = false;
+    for (let index = 0; index < 100; index += 1) {
+      if (index % 2 === 0) {
+        syncSurfaceFocus(runtime, mirror, false, mirrorFocused, mirrorPolicy);
+        mirrorFocused = false;
+        syncSurfaceFocus(runtime, authority, true, authorityFocused, authorityPolicy);
+        authorityFocused = true;
+      } else {
+        syncSurfaceFocus(runtime, authority, false, authorityFocused, authorityPolicy);
+        authorityFocused = false;
+        syncSurfaceFocus(runtime, mirror, true, mirrorFocused, mirrorPolicy);
+        mirrorFocused = true;
+      }
+      runtime.resize(session.id, "mirror", 120 + (index % 3), 40);
+    }
+
+    const geometry = control.messages.filter(
+      (message) => message.type === "focus-and-resize" || message.type === "resize",
+    );
+    expect(geometry.filter((message) => message.viewId === "mirror")).toEqual([]);
+    // One claim for the authority's attachment; its takes are claims, and a
+    // claim is made once per attachment.
+    expect(geometry).toEqual([expect.objectContaining({ type: "focus-and-resize", viewId: "authority" })]);
     runtime.dispose();
   });
 

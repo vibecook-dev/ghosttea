@@ -195,6 +195,12 @@ export interface GhostteaWorkspaceProps {
   initialCwd?: string;
   onSessionsChange?: (sessionIds: readonly string[]) => void;
   resizeCommitPolicy?: GhostteaResizeCommitPolicy;
+  /**
+   * Take a session's geometry seat whenever one of its panes gains focus
+   * (`TerminalSurface`'s `takeGeometryOnFocus`), so the pane focused last
+   * sizes the PTY across windows and devices. Off by default.
+   */
+  takeGeometryOnFocus?: boolean;
 }
 
 interface InitialWorkspace {
@@ -332,6 +338,7 @@ interface WorkspacePaneProps {
   zoomed: boolean;
   hiddenByZoom: boolean;
   workspaceActive: boolean;
+  takeGeometryOnFocus: boolean;
   platform: GhostteaWorkspacePlatform;
   theme: TerminalTheme;
   effects: TerminalEffects;
@@ -349,6 +356,7 @@ function WorkspacePane({
   zoomed,
   hiddenByZoom,
   workspaceActive,
+  takeGeometryOnFocus,
   platform,
   theme,
   effects,
@@ -409,6 +417,7 @@ function WorkspacePane({
         {...(platform.platform ? { platform: platform.platform } : {})}
         visible={workspaceActive && !hiddenByZoom}
         controlsResize={workspaceActive && !hiddenByZoom}
+        takeGeometryOnFocus={takeGeometryOnFocus}
         onActivate={onActivate}
         readClipboard={platform.readClipboard}
         {...(active && platform.setCanCopy ? { onCopyAvailabilityChange: platform.setCanCopy } : {})}
@@ -426,6 +435,7 @@ interface SplitViewProps {
   node: PaneNode;
   activePaneId: string;
   workspaceActive: boolean;
+  takeGeometryOnFocus: boolean;
   paneVisibility?: Readonly<Record<string, boolean>> | undefined;
   zoomedPaneId: string | null;
   platform: GhostteaWorkspacePlatform;
@@ -444,6 +454,7 @@ function SplitView({
   node,
   activePaneId,
   workspaceActive,
+  takeGeometryOnFocus,
   paneVisibility,
   zoomedPaneId,
   platform,
@@ -482,6 +493,7 @@ function SplitView({
         zoomed={node.id === zoomedPaneId}
         hiddenByZoom={zoomedPaneId !== null && node.id !== zoomedPaneId}
         workspaceActive={workspaceActive && paneVisibility?.[node.id] !== false}
+        takeGeometryOnFocus={takeGeometryOnFocus}
         platform={platform}
         theme={theme}
         effects={effects}
@@ -561,6 +573,7 @@ function SplitView({
           node: node.first,
           activePaneId,
           workspaceActive,
+          takeGeometryOnFocus,
           paneVisibility,
           zoomedPaneId,
           platform,
@@ -606,6 +619,7 @@ function SplitView({
           node: node.second,
           activePaneId,
           workspaceActive,
+          takeGeometryOnFocus,
           paneVisibility,
           zoomedPaneId,
           platform,
@@ -646,6 +660,7 @@ export function GhostteaWorkspace({
   initialCwd,
   onSessionsChange,
   resizeCommitPolicy,
+  takeGeometryOnFocus = false,
 }: GhostteaWorkspaceProps) {
   const Sidebar = sidebar;
   const terminalRuntime = useGhostteaRuntime();
@@ -1247,6 +1262,7 @@ export function GhostteaWorkspace({
               node={layout}
               activePaneId={activePaneId}
               workspaceActive={active}
+              takeGeometryOnFocus={takeGeometryOnFocus}
               paneVisibility={paneVisibility}
               zoomedPaneId={zoomedPaneId}
               platform={platform}

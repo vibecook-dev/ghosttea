@@ -9,6 +9,7 @@ import {
   type SessionSummary,
 } from "@vibecook/ghosttea-protocol";
 import { GhostteaTerminalRuntime, type GhostteaRoutedHost, type RoutedGeometryHolderChange } from "./runtime";
+import { syncSurfaceFocus, type SurfaceFocusPolicy } from "./TerminalSurface";
 
 class FakeWorker extends EventTarget {
   readonly messages: unknown[] = [];
@@ -1765,6 +1766,85 @@ describe("routed geometry take", () => {
       expect(readOnly.verbs()).toHaveLength(0);
     } finally {
       readOnly.runtime.dispose();
+    }
+  });
+});
+
+describe("focus and the routed geometry seat (TP-R4)", () => {
+  const authority = { sessionHandle: "11", viewId: "authority", cols: 80, rows: 24 };
+  const mirror = { sessionHandle: "11", viewId: "mirror", cols: 120, rows: 40 };
+
+  /** A hundred focus moves between the two surfaces, driven as TerminalSurface drives the runtime. */
+  function alternateFocus(
+    runtime: GhostteaTerminalRuntime,
+    authorityPolicy: SurfaceFocusPolicy,
+    mirrorPolicy: SurfaceFocusPolicy,
+  ): void {
+    let authorityFocused = false;
+    let mirrorFocused = false;
+    for (let index = 0; index < 100; index += 1) {
+      if (index % 2 === 0) {
+        syncSurfaceFocus(runtime, mirror, false, mirrorFocused, mirrorPolicy);
+        mirrorFocused = false;
+        syncSurfaceFocus(runtime, authority, true, authorityFocused, authorityPolicy);
+        authorityFocused = true;
+      } else {
+        syncSurfaceFocus(runtime, authority, false, authorityFocused, authorityPolicy);
+        authorityFocused = false;
+        syncSurfaceFocus(runtime, mirror, true, mirrorFocused, mirrorPolicy);
+        mirrorFocused = true;
+      }
+      // A mirror's own surface never asks to resize; the runtime refuses it anyway.
+      runtime.resize("session-a", "mirror", 120 + (index % 3), 40);
+    }
+  }
+
+  async function authorityAndMirror(): Promise<RoutedSeatHarness> {
+    const seat = await routedSeat({ views: ["authority", "mirror"] });
+    // The surfaces' claim effects: the controller claims, the mirror releases.
+    seat.runtime.claimResizeControl("11", "authority", 80, 24);
+    seat.runtime.releaseResizeControl("mirror");
+    seat.reply("GeometryCommitted", {
+      holder: holder("window-1", "authority", 1),
+      geometryRevision: 1,
+      cols: 80,
+      rows: 24,
+    });
+    return seat;
+  }
+
+  it("never lets the mirror claim, take or resize, even when its host opts in", async () => {
+    const seat = await authorityAndMirror();
+    try {
+      alternateFocus(
+        seat.runtime,
+        { takeGeometryOnFocus: true, controlsResize: true, interactive: true },
+        // `controlsResize: false` alone keeps the mirror off the seat.
+        { takeGeometryOnFocus: true, controlsResize: false, interactive: true },
+      );
+      const verbs = seat.verbs();
+      expect(verbs.filter((message) => JSON.stringify(message).includes('"mirror"'))).toEqual([]);
+      // The authority's claim, then one take per focus gain, each of its own seat.
+      expect(verbs).toHaveLength(51);
+      for (const message of verbs) {
+        expect(message).toMatchObject({ type: "ClaimGeometry", claimant: { viewId: "authority" } });
+      }
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("turns no focus into geometry when the host has not opted in", async () => {
+    const seat = await authorityAndMirror();
+    try {
+      alternateFocus(
+        seat.runtime,
+        { takeGeometryOnFocus: false, controlsResize: true, interactive: true },
+        { takeGeometryOnFocus: false, controlsResize: false, interactive: true },
+      );
+      expect(seat.verbs()).toHaveLength(1);
+    } finally {
+      seat.runtime.dispose();
     }
   });
 });
