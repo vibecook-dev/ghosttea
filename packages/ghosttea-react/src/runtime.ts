@@ -1819,7 +1819,16 @@ export class GhostteaTerminalRuntime extends EventTarget {
         cols: event.committed.cols,
         rows: event.committed.rows,
       });
-      this.dispatchEvent(new CustomEvent("routed-geometry", { detail: { sessionId: entry.sessionId, ...event } }));
+      this.dispatchEvent(
+        new CustomEvent("routed-geometry", {
+          detail: {
+            sessionId: entry.sessionId,
+            type: event.type,
+            ...(event.activationId === undefined ? {} : { activationId: event.activationId }),
+            committed: event.committed,
+          },
+        }),
+      );
       return;
     }
     if (event.type === "geometry-refused") {
@@ -1834,7 +1843,15 @@ export class GhostteaTerminalRuntime extends EventTarget {
           ...(previous?.rows === undefined ? {} : { rows: previous.rows }),
         });
       }
-      this.dispatchEvent(new CustomEvent("routed-geometry-refused", { detail: event }));
+      this.dispatchEvent(
+        new CustomEvent("routed-geometry-refused", {
+          detail: {
+            type: event.type,
+            ...(event.activationId === undefined ? {} : { activationId: event.activationId }),
+            refused: event.refused,
+          },
+        }),
+      );
       return;
     }
     if (event.type === "transport-closed") {

@@ -591,4 +591,163 @@ describe("main-thread routed control transport", () => {
     expect(events.at(-1)).toMatchObject({ type: "geometry-committed", activationId: activationB });
     transport.dispose();
   });
+
+  it("gives a refused release its own refusal instead of the next request's reply", () => {
+    const { socket, events, transport } = twoActivationTransport();
+    expect(transport.releaseGeometry("activation-a", release("activation-a", "session-a"))).toBe(true);
+    const sent = socket.sent.slice(-2).map((text) => JSON.parse(text) as { type: string; sequence?: number });
+    expect(sent.map((message) => message.type)).toEqual(["ReleaseGeometry", "LegHeartbeat"]);
+    expect(transport.claimGeometry("activation-b", claim("activation-b", "session-b"), "claim-b")).toBe(true);
+
+    // The holder moved on before the release arrived: the cell refuses it.
+    socket.receive(
+      encodeRoutedMessage("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: { clientId: "client-z", viewId: "view-z", holderGeneration: 3 },
+        geometryRevision: 7,
+      }),
+    );
+    socket.receive(encodeRoutedMessage("LegHeartbeatAck", { sequence: sent[1]!.sequence! }));
+    socket.receive(
+      encodeRoutedMessage("GeometryCommitted", {
+        holder: { clientId: "client-a", viewId: "view-b", holderGeneration: 1 },
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      }),
+    );
+
+    const replies = events.filter((event) => event.type === "geometry-refused" || event.type === "geometry-committed");
+    expect(replies).toMatchObject([
+      { type: "geometry-refused", activationId: "activation-a", request: { kind: "release" } },
+      { type: "geometry-committed", activationId: "activation-b", request: { kind: "claim", context: "claim-b" } },
+    ]);
+    transport.dispose();
+  });
+
+  it("settles a silent release on its fence, so a later refusal reaches its own request", () => {
+    const { socket, events, transport } = twoActivationTransport();
+    transport.releaseGeometry("activation-a", release("activation-a", "session-a"));
+    const fence = JSON.parse(socket.sent.at(-1)!) as { type: string; sequence: number };
+    expect(fence.type).toBe("LegHeartbeat");
+    transport.claimGeometry("activation-b", claim("activation-b", "session-b"), "claim-b");
+
+    // The release succeeded silently; the fence's ack proves it before the
+    // claim's refusal arrives.
+    socket.receive(encodeRoutedMessage("LegHeartbeatAck", { sequence: fence.sequence }));
+    socket.receive(
+      encodeRoutedMessage("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: { clientId: "client-z", viewId: "view-z", holderGeneration: 3 },
+        geometryRevision: 8,
+      }),
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      type: "geometry-refused",
+      activationId: "activation-b",
+      request: { kind: "claim", context: "claim-b" },
+      refused: { code: "SEAT_HELD" },
+    });
+    transport.dispose();
+  });
+
+  it("hands a claim's and a transfer's context back with the reply each one earns", () => {
+    const { socket, events, transport } = twoActivationTransport();
+    const takeContext = { take: 1 };
+    transport.claimGeometry("activation-a", claim("activation-a", "session-a"));
+    transport.transferGeometry(
+      "activation-a",
+      {
+        sessionId: "session-a",
+        activationId: "activation-a",
+        leaseEpoch: 1,
+        from: { clientId: "client-z", viewId: "view-z", holderGeneration: 3 },
+        to: { clientId: "client-a", viewId: "view-a" },
+        expectRevision: 7,
+        cols: 100,
+        rows: 30,
+      },
+      takeContext,
+    );
+    socket.receive(
+      encodeRoutedMessage("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: { clientId: "client-z", viewId: "view-z", holderGeneration: 3 },
+        geometryRevision: 7,
+      }),
+    );
+    socket.receive(
+      encodeRoutedMessage("GeometryCommitted", {
+        holder: { clientId: "client-a", viewId: "view-a", holderGeneration: 4 },
+        geometryRevision: 8,
+        cols: 100,
+        rows: 30,
+      }),
+    );
+
+    const replies = events.filter((event) => event.type === "geometry-refused" || event.type === "geometry-committed");
+    expect(replies).toHaveLength(2);
+    expect(replies[0]).toMatchObject({ activationId: "activation-a", request: { kind: "claim" } });
+    expect(replies[0]).not.toHaveProperty("request.context");
+    expect(replies[1]).toMatchObject({ activationId: "activation-a", request: { kind: "transfer" } });
+    expect((replies[1] as { request?: { context?: unknown } }).request?.context).toBe(takeContext);
+    transport.dispose();
+  });
 });
+
+function twoActivationTransport(): {
+  socket: FakeSocket;
+  events: RoutedControlTransportEvent[];
+  transport: RoutedControlTransport;
+} {
+  const socket = new FakeSocket();
+  const events: RoutedControlTransportEvent[] = [];
+  const transport = new RoutedControlTransport({
+    socketFactory: () => socket as unknown as WebSocket,
+    emit: (event) => events.push(event),
+  });
+  attach(transport);
+  transport.attach({
+    cellBootId,
+    controlUrl: "ws://127.0.0.1/control",
+    transportGrant,
+    attachGrant: { ...attachGrant, claims: { ...attachGrant.claims, sessionId: "session-b" } },
+    activationId: "activation-b",
+    initialDemand: { mode: "live" },
+  });
+  socket.open();
+  socket.receive(
+    encodeRoutedMessage("ConnectionAccepted", {
+      selectedProtocolVersion: { major: 1, minor: 0 },
+      connectionSetId: "set-a",
+      channel: "control",
+      legGeneration: 1,
+      heartbeatTtlMs: 15_000,
+      protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+      capabilities: ["resume"],
+    }),
+  );
+  return { socket, events, transport };
+}
+
+function release(activationId: string, sessionId: string) {
+  return {
+    sessionId,
+    activationId,
+    leaseEpoch: 1,
+    holder: { clientId: "client-a", viewId: "view-a", holderGeneration: 1 },
+  };
+}
+
+function claim(activationId: string, sessionId: string) {
+  return {
+    sessionId,
+    activationId,
+    leaseEpoch: 1,
+    claimant: { clientId: "client-a", viewId: "view-b" },
+    cols: 80,
+    rows: 24,
+    expectRevision: 0,
+  };
+}
