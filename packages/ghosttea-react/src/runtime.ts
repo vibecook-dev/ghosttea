@@ -18,6 +18,7 @@ import {
   type RemoteSessionLifecycle,
   type RemoteViewRecord,
   type RoutedGeometryHolder,
+  type RoutedGeometryRefused,
   type RoutedReceiverCapacities,
   type RoutedSessionAttachGrant,
   type RoutedTerminalOpenTicket,
@@ -289,6 +290,10 @@ interface RoutedActivationRuntime {
    * mints: a seat this client holds stays its own through a recovery.
    */
   clientId?: string;
+  /** Serial of the latest take asked for this session; only the latest take retries. */
+  takeSerial: number;
+  /** A take asked before the control leg could carry it, sent when the leg attaches. */
+  queuedTake?: { viewId: string; serial: number };
   replacesActivationId?: string;
   viewIds: Set<string>;
   start?: Promise<void>;
@@ -327,6 +332,37 @@ function sameGeometryHolder(
 ): boolean {
   if (a === undefined || b === undefined) return a === b;
   return a.clientId === b.clientId && a.viewId === b.viewId && a.holderGeneration === b.holderGeneration;
+}
+
+/** A take's context on the control leg: which view and take it is, and the seat state it was built on. */
+class RoutedGeometryTake {
+  readonly viewId: string;
+  readonly serial: number;
+  readonly attempt: 0 | 1;
+  readonly basisHolder: RoutedGeometryHolderRecord | undefined;
+  readonly basisRevision: number;
+
+  constructor(viewId: string, serial: number, attempt: 0 | 1, basis: RoutedGeometryState | undefined) {
+    this.viewId = viewId;
+    this.serial = serial;
+    this.attempt = attempt;
+    this.basisHolder = basis?.holder;
+    this.basisRevision = basis?.revision ?? 0;
+  }
+}
+
+/** Refusals that describe the seat as it is, so a take built on older news can retry against them. */
+const RETRYABLE_TAKE_REFUSALS = new Set(["SEAT_HELD", "STALE_REVISION", "NOT_HOLDER"]);
+
+/**
+ * Whether a take's refusal names a seat other than the one the take was built
+ * on. A refusal that repeats the take's own view of the seat (a cell that does
+ * not allow the take at all) would only be refused again.
+ */
+function takeRefusalNamesNews(refused: RoutedGeometryRefused, take: RoutedGeometryTake): boolean {
+  if (!RETRYABLE_TAKE_REFUSALS.has(refused.code) || refused.geometryRevision === undefined) return false;
+  const holder = refused.currentHolder === undefined ? undefined : geometryHolderRecord(refused.currentHolder);
+  return refused.geometryRevision !== take.basisRevision || !sameGeometryHolder(holder, take.basisHolder);
 }
 
 const FRAME_SUBSCRIPTION_ACK_TIMEOUT_MS = 10_000;
@@ -1633,6 +1669,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       sessionHandle,
       state: initialRoutedActivation(sessionId, activationId, inputPolicy),
       viewIds: new Set([viewId]),
+      takeSerial: 0,
       recoveryAttempts: 0,
       preAuthRemints: { control: 0, frames: 0 },
       protocolFailures: { control: 0, frames: 0 },
@@ -1860,6 +1897,17 @@ export class GhostteaTerminalRuntime extends EventTarget {
           ...(previousGeometry.rows === undefined ? {} : { rows: previousGeometry.rows }),
         });
       }
+      // A take asked before the leg could carry it goes out now. It decides
+      // the seat, so the plain claims below would only draw refusals.
+      const queuedTake = entry.queuedTake;
+      delete entry.queuedTake;
+      if (
+        queuedTake !== undefined &&
+        queuedTake.serial === entry.takeSerial &&
+        this.#sendRoutedTake(entry, queuedTake.viewId, queuedTake.serial, 0)
+      ) {
+        return;
+      }
       const geometry = this.#routedGeometry.get(entry.sessionId);
       for (const viewId of entry.viewIds) {
         const view = this.#views.get(viewId);
@@ -1942,6 +1990,18 @@ export class GhostteaTerminalRuntime extends EventTarget {
           ...(previous?.cols === undefined ? {} : { cols: previous.cols }),
           ...(previous?.rows === undefined ? {} : { rows: previous.rows }),
         });
+      }
+      // A take refused on stale news retries once against the seat the
+      // refusal names; only the session's latest take does.
+      const take = event.request?.context instanceof RoutedGeometryTake ? event.request.context : undefined;
+      if (
+        entry &&
+        take &&
+        take.attempt === 0 &&
+        take.serial === entry.takeSerial &&
+        takeRefusalNamesNews(event.refused, take)
+      ) {
+        this.#sendRoutedTake(entry, take.viewId, take.serial, 1);
       }
       this.dispatchEvent(
         new CustomEvent("routed-geometry-refused", {
@@ -2332,6 +2392,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const entry = this.#routedBySession.get(sessionId);
     if (!entry) return;
     entry.viewIds.delete(viewId);
+    if (entry.queuedTake?.viewId === viewId) delete entry.queuedTake;
     if (entry.viewIds.size > 0) {
       const anyWritable =
         this.#routedHost?.encodeInput !== undefined &&
@@ -2963,6 +3024,107 @@ export class GhostteaTerminalRuntime extends EventTarget {
     });
   }
 
+  /**
+   * Send a take of the seat for `viewId`, built on the holder this runtime
+   * last saw. False when it cannot go out: no ticket or attached control leg,
+   * no `geometry` right, or the view no longer asks for resize control.
+   */
+  #sendRoutedTake(entry: RoutedActivationRuntime, viewId: string, serial: number, attempt: 0 | 1): boolean {
+    const ticket = entry.ticket;
+    const view = this.#views.get(viewId);
+    if (
+      !ticket ||
+      !entry.state.controlAttached ||
+      !entry.state.rights.includes("geometry") ||
+      !entry.viewIds.has(viewId) ||
+      !view?.resizeControlRequested ||
+      view.desiredCols === undefined ||
+      view.desiredRows === undefined
+    ) {
+      return false;
+    }
+    const clientId = ticket.attachGrant.claims.clientId;
+    const geometry = this.#routedGeometry.get(entry.sessionId);
+    const holder = geometry?.holder;
+    const context = new RoutedGeometryTake(viewId, serial, attempt, geometry);
+    const lease = {
+      sessionId: entry.sessionId,
+      activationId: entry.state.activationId,
+      leaseEpoch: ticket.attachGrant.claims.leaseEpoch ?? 0,
+    };
+    const expectRevision = geometry?.revision ?? 0;
+    const cols = view.desiredCols;
+    const rows = view.desiredRows;
+    if (holder === undefined || (holder.clientId === clientId && holder.viewId === viewId)) {
+      // An empty seat is claimed; a claim of the view's own seat is committed
+      // by the cell as a resize (at the same size, the PTY is left alone).
+      return (
+        this.#routedControl?.claimGeometry(
+          entry.state.activationId,
+          { ...lease, claimant: { clientId, viewId }, cols, rows, expectRevision },
+          context,
+        ) ?? false
+      );
+    }
+    return (
+      this.#routedControl?.transferGeometry(
+        entry.state.activationId,
+        { ...lease, from: { ...holder }, to: { clientId, viewId }, expectRevision, cols, rows },
+        context,
+      ) ?? false
+    );
+  }
+
+  /**
+   * Take the session's geometry seat for `viewId`: the host's policy verb.
+   *
+   * Focus is a scheduling fact. The runtime never turns it into geometry;
+   * the host decides when a view takes the seat. VibeField's rule (DS-D5) is
+   * that the pane focused last holds the PTY's cols×rows, on any device, last
+   * write wins, and `TerminalSurface`'s `takeGeometryOnFocus` applies it.
+   *
+   * On the routed transport the take is built on the holder this runtime last
+   * saw (`geometryHolder`):
+   * - an empty seat draws a `ClaimGeometry`;
+   * - a seat this view holds draws a `ClaimGeometry` of its own seat, which
+   *   the cell commits as a resize;
+   * - a seat held by another view, of this client or another, draws one
+   *   `TransferGeometry {from: holder, to: {clientId, viewId}, expectRevision,
+   *   cols, rows}`, with `clientId` from this session's attach grant.
+   *
+   * A `SEAT_HELD`, `STALE_REVISION` or `NOT_HOLDER` refusal that names a
+   * different holder or revision is retried once against what it names. A
+   * second refusal stands, and the host may take again on the next focus.
+   * Only the session's latest take retries. A take asked before the control
+   * leg attaches is sent when it attaches, unless the view's focus ends first.
+   * Without the grant's `geometry` right nothing is sent.
+   *
+   * On the port-pair transport this is `claimResizeControl`, which never
+   * displaces another view.
+   *
+   * Like `claimResizeControl`, it leaves the view asking for resize control:
+   * its later grid changes resize the PTY while it holds the seat, until
+   * `releaseResizeControl`.
+   */
+  takeResizeControl(sessionHandle: string, viewId: string, cols: number, rows: number): void {
+    if (!this.#routedHost) {
+      this.claimResizeControl(sessionHandle, viewId, cols, rows);
+      return;
+    }
+    const view = this.#views.get(viewId);
+    const session = this.#sessionByHandle.get(sessionHandle);
+    const entry = session ? this.#routedBySession.get(session.id) : undefined;
+    if (!view || !entry || view.sessionId !== entry.sessionId || !entry.viewIds.has(viewId)) return;
+    view.desiredCols = cols;
+    view.desiredRows = rows;
+    view.resizeControlRequested = true;
+    entry.takeSerial += 1;
+    const serial = entry.takeSerial;
+    delete entry.queuedTake;
+    if (this.#sendRoutedTake(entry, viewId, serial, 0)) return;
+    if (!entry.state.controlAttached) entry.queuedTake = { viewId, serial };
+  }
+
   claimResizeControl(sessionHandle: string, viewId: string, cols: number, rows: number): void {
     const view = this.#views.get(viewId);
     if (view) {
@@ -2986,6 +3148,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     view.resizeControlRequested = false;
     if (this.#routedHost) {
       const entry = this.#routedBySession.get(view.sessionId);
+      if (entry?.queuedTake?.viewId === viewId) delete entry.queuedTake;
       const geometry = this.#routedGeometry.get(view.sessionId);
       const ticket = entry?.ticket;
       const holder = geometry?.holder;
@@ -3053,7 +3216,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (!session) return;
     if (this.#routedHost) {
       const entry = this.#routedBySession.get(session.id);
-      if (entry) this.#declareRoutedDemand(entry);
+      if (!entry) return;
+      // The focus that asked for a take still waiting on the leg has ended.
+      if (!focused && entry.queuedTake?.viewId === viewId) delete entry.queuedTake;
+      this.#declareRoutedDemand(entry);
       return;
     }
     this.#sendViewInput(

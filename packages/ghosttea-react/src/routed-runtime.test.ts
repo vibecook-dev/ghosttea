@@ -1524,3 +1524,247 @@ describe("routed geometry seat", () => {
     }
   });
 });
+
+describe("routed geometry take", () => {
+  const seatHeldByWindow2 = {
+    code: "SEAT_HELD",
+    currentHolder: holder("window-2", "remote-view", 2),
+    geometryRevision: 5,
+  };
+
+  it("claims an empty seat with one ClaimGeometry", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toEqual([
+        expect.objectContaining({
+          type: "ClaimGeometry",
+          activationId: seat.activationId,
+          claimant: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 0,
+          cols: 80,
+          rows: 24,
+        }),
+      ]);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("takes a seat another client holds with one TransferGeometry from the holder it last saw", async () => {
+    const seat = await routedSeat();
+    try {
+      // The holder is learned the ordinary way: a plain claim refused SEAT_HELD.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(1);
+
+      seat.runtime.takeResizeControl("11", "view-a", 100, 30);
+      expect(seat.verbs().slice(1)).toEqual([
+        {
+          type: "TransferGeometry",
+          sessionId: "session-a",
+          activationId: seat.activationId,
+          leaseEpoch: 4,
+          from: holder("window-2", "remote-view", 2),
+          to: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 5,
+          cols: 100,
+          rows: 30,
+        },
+      ]);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 3),
+        geometryRevision: 6,
+        cols: 100,
+        rows: 30,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-1", "view-a", 3),
+        revision: 6,
+        local: true,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("moves the seat from this client's other view with a transfer", async () => {
+    const seat = await routedSeat({ views: ["view-a", "view-b"] });
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-b", 90, 28);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-1", "view-a", 1),
+          to: { clientId: "window-1", viewId: "view-b" },
+          expectRevision: 1,
+          cols: 90,
+          rows: 28,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("re-asserts a seat this view holds with a claim the cell commits as a resize", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "ClaimGeometry",
+          claimant: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 1,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("retries once against the seat a refusal names, then lets the second refusal stand", async () => {
+    const seat = await routedSeat();
+    try {
+      // Nothing seen yet: the take claims, and the refusal names the holder.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-2", "remote-view", 2),
+          expectRevision: 5,
+        }),
+      );
+
+      // A third client took the seat in between: the retry is refused and stands.
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-3", "phone-view", 7),
+        geometryRevision: 6,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.runtime.geometryHolder("11")?.holder).toEqual(holder("window-3", "phone-view", 7));
+
+      // The next take starts from the seat that refusal named.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs().at(-1)).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-3", "phone-view", 7),
+          expectRevision: 6,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("does not retry a refusal that repeats the seat the take was built on or names none", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      // A cell that does not allow a take to the caller refuses it with the
+      // seat unchanged; asking again would only be refused again.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 5,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", { code: "DESTINATION_INELIGIBLE" });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("retries only the session's latest take", async () => {
+    const seat = await routedSeat({ views: ["view-a", "view-b"] });
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.runtime.takeResizeControl("11", "view-b", 80, 24);
+      expect(seat.verbs()).toHaveLength(2);
+
+      // view-a's take is refused with news, but view-b asked later: no retry.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+
+      // view-b's take, refused the same way, retries.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual(
+        expect.objectContaining({ type: "TransferGeometry", to: { clientId: "window-1", viewId: "view-b" } }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("sends a take asked before the control leg attaches when it attaches, in place of the plain claims", async () => {
+    const seat = await routedSeat({ attach: false });
+    try {
+      seat.runtime.setFocused("11", "view-a", true, 80, 24);
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toHaveLength(0);
+
+      attachControl(seat);
+      expect(seat.verbs()).toHaveLength(1);
+      // It is the take, not a plain claim: a refusal naming a holder draws the transfer.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(expect.objectContaining({ type: "TransferGeometry" }));
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("drops a queued take when its view's focus ends, and sends nothing without the geometry right", async () => {
+    const queued = await routedSeat({ attach: false });
+    try {
+      queued.runtime.setFocused("11", "view-a", true, 80, 24);
+      queued.runtime.takeResizeControl("11", "view-a", 80, 24);
+      queued.runtime.setFocused("11", "view-a", false, 80, 24);
+      attachControl(queued);
+      // The view still asks for resize control, so the attach sends its plain
+      // claim, and a plain claim's refusal is not retried.
+      expect(queued.verbs()).toHaveLength(1);
+      queued.reply("GeometryRefused", seatHeldByWindow2);
+      expect(queued.verbs()).toHaveLength(1);
+    } finally {
+      queued.runtime.dispose();
+    }
+
+    const readOnly = await routedSeat({ rights: ["input", "read"] });
+    try {
+      readOnly.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(readOnly.verbs()).toHaveLength(0);
+    } finally {
+      readOnly.runtime.dispose();
+    }
+  });
+});

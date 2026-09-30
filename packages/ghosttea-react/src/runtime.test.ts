@@ -1952,6 +1952,57 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     runtime.dispose();
   });
 
+  it("treats a take as a claim on the port-pair transport, so it never displaces another pane", async () => {
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    runtime.mount(session.id, session.handle, "view-1", canvas());
+    await flushMicrotasks();
+    const controlState = (controller: unknown, controlRevision: number): void => {
+      control.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            requestId: 0,
+            type: "control-state",
+            sessionId: session.id,
+            controller,
+            controlRevision,
+            cols: 80,
+            rows: 24,
+            layoutEpoch: 2,
+          },
+        }),
+      );
+    };
+    const claims = (): Record<string, unknown>[] =>
+      control.messages.filter((message) => message.type === "focus-and-resize");
+
+    // Another pane holds the seat: the legacy wire has no transfer, and a
+    // claim never takes a held seat, so the take claims nothing.
+    controlState({ viewId: "other-pane", controlEpoch: 3 }, 5);
+    runtime.takeResizeControl(session.handle, "view-1", 80, 24);
+    expect(claims()).toHaveLength(0);
+
+    // Released, the view that asked takes the empty seat as a claim would.
+    controlState(null, 6);
+    expect(claims()).toHaveLength(1);
+    expect(claims().at(-1)).toMatchObject({ viewId: "view-1", cols: 80, rows: 24, expectedControlRevision: 6 });
+    // The routed seat reader has nothing to say about a port-pair session.
+    expect(runtime.geometryHolder(session.handle)).toBeUndefined();
+    runtime.dispose();
+  });
+
   it("never claims control away from another pane, and retries when it is released", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();
