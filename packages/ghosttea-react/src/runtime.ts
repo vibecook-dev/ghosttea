@@ -204,6 +204,8 @@ interface ViewRuntimeState {
   claimedEpoch: number | undefined;
   /** Control revision that claim was made against, for the cleared-controller retry. */
   claimedRevision: number;
+  /** Serial of this view's latest routed claim or take: only the reply to it decides whether its grid landed. */
+  routedGeometrySerial: number;
 }
 
 /** A session's lifecycle as this client currently believes it. */
@@ -337,17 +339,40 @@ function sameGeometryHolder(
 /** A take's context on the control leg: which view and take it is, and the seat state it was built on. */
 class RoutedGeometryTake {
   readonly viewId: string;
+  /** The view's request serial this take was sent under. */
+  readonly viewSerial: number;
+  /** The session's take serial. */
   readonly serial: number;
   readonly attempt: 0 | 1;
   readonly basisHolder: RoutedGeometryHolderRecord | undefined;
   readonly basisRevision: number;
 
-  constructor(viewId: string, serial: number, attempt: 0 | 1, basis: RoutedGeometryState | undefined) {
+  constructor(
+    viewId: string,
+    viewSerial: number,
+    serial: number,
+    attempt: 0 | 1,
+    basis: RoutedGeometryState | undefined,
+  ) {
     this.viewId = viewId;
+    this.viewSerial = viewSerial;
     this.serial = serial;
     this.attempt = attempt;
     this.basisHolder = basis?.holder;
     this.basisRevision = basis?.revision ?? 0;
+  }
+}
+
+/** A plain claim's context: the view that sent it, under which serial, and whether it re-sends a grid that did not land. */
+class RoutedGeometryClaim {
+  readonly viewId: string;
+  readonly viewSerial: number;
+  readonly trailing: boolean;
+
+  constructor(viewId: string, viewSerial: number, trailing: boolean) {
+    this.viewId = viewId;
+    this.viewSerial = viewSerial;
+    this.trailing = trailing;
   }
 }
 
@@ -1513,6 +1538,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       lastAttachmentEpoch: undefined,
       claimedEpoch: undefined,
       claimedRevision: 0,
+      routedGeometrySerial: 0,
     };
     this.#views.set(viewId, view);
     const remote = this.#remoteSessions.get(sessionId);
@@ -1633,6 +1659,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       lastAttachmentEpoch: undefined,
       claimedEpoch: undefined,
       claimedRevision: 0,
+      routedGeometrySerial: 0,
     });
     const activation = this.#routedBySession.get(sessionId);
     if (activation) activation.viewIds.add(viewId);
@@ -1967,6 +1994,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         cols: event.committed.cols,
         rows: event.committed.rows,
       });
+      this.#trailRoutedResize(entry, event.request?.context, undefined);
       this.dispatchEvent(
         new CustomEvent("routed-geometry", {
           detail: {
@@ -2003,6 +2031,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       ) {
         this.#sendRoutedTake(entry, take.viewId, take.serial, 1);
       }
+      if (entry) this.#trailRoutedResize(entry, event.request?.context, event.refused.code);
       this.dispatchEvent(
         new CustomEvent("routed-geometry-refused", {
           detail: {
@@ -3008,20 +3037,58 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#postWorker({ type: "partial-rendering", enabled });
   }
 
-  #claimRoutedGeometry(entry: RoutedActivationRuntime, viewId: string, cols: number, rows: number): void {
+  #claimRoutedGeometry(
+    entry: RoutedActivationRuntime,
+    viewId: string,
+    cols: number,
+    rows: number,
+    trailing = false,
+  ): void {
     const ticket = entry.ticket;
     const view = this.#views.get(viewId);
     if (!ticket || !view?.resizeControlRequested || !entry.state.rights.includes("geometry")) return;
     const geometry = this.#routedGeometry.get(entry.sessionId);
-    this.#routedControl?.claimGeometry(entry.state.activationId, {
-      sessionId: entry.sessionId,
-      activationId: entry.state.activationId,
-      leaseEpoch: ticket.attachGrant.claims.leaseEpoch ?? 0,
-      claimant: { clientId: ticket.attachGrant.claims.clientId, viewId },
-      cols,
-      rows,
-      expectRevision: geometry?.revision ?? 0,
-    });
+    const viewSerial = view.routedGeometrySerial + 1;
+    const sent = this.#routedControl?.claimGeometry(
+      entry.state.activationId,
+      {
+        sessionId: entry.sessionId,
+        activationId: entry.state.activationId,
+        leaseEpoch: ticket.attachGrant.claims.leaseEpoch ?? 0,
+        claimant: { clientId: ticket.attachGrant.claims.clientId, viewId },
+        cols,
+        rows,
+        expectRevision: geometry?.revision ?? 0,
+      },
+      new RoutedGeometryClaim(viewId, viewSerial, trailing),
+    );
+    if (sent) view.routedGeometrySerial = viewSerial;
+  }
+
+  /**
+   * Overlapping claims from one view name the same revision, so the cell
+   * commits the first and refuses the rest as stale: on a slow control leg
+   * the last grid of a resize would never land. When the reply to a view's
+   * latest claim or take (a commit, or a STALE_REVISION refusal) leaves the
+   * seat with this view at a grid other than the one it shows, that grid goes
+   * once more. Only for the holder, and never after a re-sent claim is
+   * refused.
+   */
+  #trailRoutedResize(entry: RoutedActivationRuntime, context: unknown, refusal: string | undefined): void {
+    const request =
+      context instanceof RoutedGeometryClaim || context instanceof RoutedGeometryTake ? context : undefined;
+    if (request === undefined) return;
+    if (refusal !== undefined) {
+      if (refusal !== "STALE_REVISION") return;
+      if (request instanceof RoutedGeometryClaim && request.trailing) return;
+    }
+    const view = this.#views.get(request.viewId);
+    if (!view?.resizeControlRequested || view.routedGeometrySerial !== request.viewSerial) return;
+    if (view.desiredCols === undefined || view.desiredRows === undefined) return;
+    const geometry = this.#routedGeometry.get(entry.sessionId);
+    if (!geometry || !this.#routedViewHolds(entry, geometry, request.viewId)) return;
+    if (geometry.cols === view.desiredCols && geometry.rows === view.desiredRows) return;
+    this.#claimRoutedGeometry(entry, request.viewId, view.desiredCols, view.desiredRows, true);
   }
 
   /**
@@ -3046,7 +3113,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const clientId = ticket.attachGrant.claims.clientId;
     const geometry = this.#routedGeometry.get(entry.sessionId);
     const holder = geometry?.holder;
-    const context = new RoutedGeometryTake(viewId, serial, attempt, geometry);
+    const viewSerial = view.routedGeometrySerial + 1;
+    const context = new RoutedGeometryTake(viewId, viewSerial, serial, attempt, geometry);
     const lease = {
       sessionId: entry.sessionId,
       activationId: entry.state.activationId,
@@ -3055,24 +3123,22 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const expectRevision = geometry?.revision ?? 0;
     const cols = view.desiredCols;
     const rows = view.desiredRows;
-    if (holder === undefined || (holder.clientId === clientId && holder.viewId === viewId)) {
-      // An empty seat is claimed; a claim of the view's own seat is committed
-      // by the cell as a resize (at the same size, the PTY is left alone).
-      return (
-        this.#routedControl?.claimGeometry(
-          entry.state.activationId,
-          { ...lease, claimant: { clientId, viewId }, cols, rows, expectRevision },
-          context,
-        ) ?? false
-      );
-    }
-    return (
-      this.#routedControl?.transferGeometry(
-        entry.state.activationId,
-        { ...lease, from: { ...holder }, to: { clientId, viewId }, expectRevision, cols, rows },
-        context,
-      ) ?? false
-    );
+    // An empty seat is claimed; a claim of the view's own seat is committed
+    // by the cell as a resize (at the same size, the PTY is left alone).
+    const sent =
+      holder === undefined || (holder.clientId === clientId && holder.viewId === viewId)
+        ? this.#routedControl?.claimGeometry(
+            entry.state.activationId,
+            { ...lease, claimant: { clientId, viewId }, cols, rows, expectRevision },
+            context,
+          )
+        : this.#routedControl?.transferGeometry(
+            entry.state.activationId,
+            { ...lease, from: { ...holder }, to: { clientId, viewId }, expectRevision, cols, rows },
+            context,
+          );
+    if (sent) view.routedGeometrySerial = viewSerial;
+    return sent ?? false;
   }
 
   /**

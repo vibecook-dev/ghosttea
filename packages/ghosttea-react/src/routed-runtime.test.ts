@@ -1502,6 +1502,99 @@ describe("routed geometry seat", () => {
     }
   });
 
+  it("lands the holder's last grid when its resize claims overlap on a slow leg", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      // Two grid changes before either is answered: both claims name revision 1.
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      seat.runtime.resize("session-a", "view-a", 110, 32);
+      expect(seat.verbs().slice(1)).toMatchObject([
+        { type: "ClaimGeometry", expectRevision: 1, cols: 100, rows: 30 },
+        { type: "ClaimGeometry", expectRevision: 1, cols: 110, rows: 32 },
+      ]);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 2,
+        cols: 100,
+        rows: 30,
+      });
+      expect(seat.verbs()).toHaveLength(3);
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-1", "view-a", 1),
+        geometryRevision: 2,
+      });
+      // The PTY is at 100x30 but the view shows 110x32: the last grid goes
+      // again, against the revision the refusal named.
+      expect(seat.verbs()).toHaveLength(4);
+      expect(seat.verbs()[3]).toMatchObject({ type: "ClaimGeometry", expectRevision: 2, cols: 110, rows: 32 });
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 3,
+        cols: 110,
+        rows: 32,
+      });
+      expect(seat.verbs()).toHaveLength(4);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("re-sends a grid that did not land once, not again when that is refused too", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      const stale = (geometryRevision: number) => ({
+        code: "STALE_REVISION",
+        currentHolder: holder("window-1", "view-a", 1),
+        geometryRevision,
+      });
+      seat.reply("GeometryRefused", stale(3));
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toMatchObject({ type: "ClaimGeometry", expectRevision: 3, cols: 100, rows: 30 });
+      seat.reply("GeometryRefused", stale(4));
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("never re-sends a refused resize while another client holds the seat", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 2,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
   it("stops tracking the seat when the session's last view leaves", async () => {
     const seat = await routedSeat();
     try {
