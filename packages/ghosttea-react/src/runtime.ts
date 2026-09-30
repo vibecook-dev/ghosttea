@@ -17,6 +17,7 @@ import {
   type RemoteHostSummary,
   type RemoteSessionLifecycle,
   type RemoteViewRecord,
+  type RoutedGeometryHolder,
   type RoutedReceiverCapacities,
   type RoutedSessionAttachGrant,
   type RoutedTerminalOpenTicket,
@@ -239,6 +240,36 @@ export interface RemoteInputSuppression {
   state: RemoteSessionRuntimeState["state"];
 }
 
+/**
+ * One routed session's geometry seat (TPv3 §6), as this runtime last saw it.
+ *
+ * The cell names the holder only in its replies to this client's own geometry
+ * verbs: a commit names the new holder, a refusal names the current one. A
+ * take by another client therefore shows here on this client's next claim,
+ * take or release, not at the moment it happens.
+ */
+export interface RoutedGeometryHolderState {
+  /** The holder, or `null` when the seat was last seen empty. */
+  holder: RoutedGeometryHolder | null;
+  /** The cell's `geometryRevision` at that point: the next claim's or take's compare-and-swap token. */
+  revision: number;
+  /** Whether the holder is this runtime's client, so that one of its own views holds the seat. */
+  local: boolean;
+}
+
+/** Detail of the runtime's `geometry-holder-changed` event. */
+export interface RoutedGeometryHolderChange {
+  sessionId: string;
+  sessionHandle: string;
+  /** `undefined` when nothing was known before. */
+  previous: RoutedGeometryHolderState | undefined;
+  /**
+   * `undefined` once the runtime stops tracking the seat: the session's last
+   * view left, or the session moved to another cell.
+   */
+  current: RoutedGeometryHolderState | undefined;
+}
+
 /** A per-view update from an event, a reconciliation, or an attach response. */
 type RemoteViewStateUpdate = Omit<RemoteViewRecord, "viewId" | "viewStateSeq"> & { viewStateSeq?: number };
 
@@ -253,6 +284,11 @@ interface RoutedActivationRuntime {
   sessionHandle: string;
   state: RoutedActivationState;
   ticket?: RoutedTerminalOpenTicket;
+  /**
+   * The attach grant's client, kept while the ticket is dropped between
+   * mints: a seat this client holds stays its own through a recovery.
+   */
+  clientId?: string;
   replacesActivationId?: string;
   viewIds: Set<string>;
   start?: Promise<void>;
@@ -267,12 +303,30 @@ interface RoutedActivationRuntime {
   protocolFailures: { control: number; frames: number };
 }
 
+interface RoutedGeometryHolderRecord {
+  clientId: string;
+  viewId: string;
+  holderGeneration: number;
+}
+
 interface RoutedGeometryState {
-  holderViewId?: string;
-  holderGeneration?: number;
+  /** The holder the cell last named, whichever client it is; absent while the seat is seen empty. */
+  holder?: RoutedGeometryHolderRecord;
   revision: number;
   cols?: number;
   rows?: number;
+}
+
+function geometryHolderRecord(holder: RoutedGeometryHolder): RoutedGeometryHolderRecord {
+  return { clientId: holder.clientId, viewId: holder.viewId, holderGeneration: holder.holderGeneration };
+}
+
+function sameGeometryHolder(
+  a: RoutedGeometryHolderRecord | undefined,
+  b: RoutedGeometryHolderRecord | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.clientId === b.clientId && a.viewId === b.viewId && a.holderGeneration === b.holderGeneration;
 }
 
 const FRAME_SUBSCRIPTION_ACK_TIMEOUT_MS = 10_000;
@@ -523,6 +577,49 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const view = this.#views.get(viewId);
     if (!view?.clientReadWrite || view.readWrite === false) return false;
     return this.#routedBySession.get(view.sessionId)?.state.inputAllowed ?? false;
+  }
+
+  /**
+   * The routed session's geometry seat as this runtime last saw it, or
+   * `undefined` before anything was seen (and always on the port-pair
+   * transport). A change of holder also fires `geometry-holder-changed`; a
+   * resize by the same holder only moves `revision`, without an event.
+   */
+  geometryHolder(sessionHandle: string): RoutedGeometryHolderState | undefined {
+    const session = this.#sessionByHandle.get(sessionHandle);
+    const entry = session ? this.#routedBySession.get(session.id) : undefined;
+    const geometry = entry ? this.#routedGeometry.get(entry.sessionId) : undefined;
+    return entry && geometry ? this.#geometryHolderState(entry, geometry) : undefined;
+  }
+
+  #geometryHolderState(entry: RoutedActivationRuntime, geometry: RoutedGeometryState): RoutedGeometryHolderState {
+    const holder = geometry.holder;
+    return {
+      holder: holder === undefined ? null : { ...holder },
+      revision: geometry.revision,
+      local: holder !== undefined && holder.clientId === entry.clientId,
+    };
+  }
+
+  /** Whether this view, under this runtime's client, holds the seat as last seen. */
+  #routedViewHolds(entry: RoutedActivationRuntime, geometry: RoutedGeometryState | undefined, viewId: string): boolean {
+    const holder = geometry?.holder;
+    return holder !== undefined && holder.viewId === viewId && holder.clientId === entry.clientId;
+  }
+
+  /** Every write of a session's seat state goes through here, so a holder change always fires its event. */
+  #setRoutedGeometry(entry: RoutedActivationRuntime, next: RoutedGeometryState | undefined): void {
+    const previous = this.#routedGeometry.get(entry.sessionId);
+    if (next === undefined) this.#routedGeometry.delete(entry.sessionId);
+    else this.#routedGeometry.set(entry.sessionId, next);
+    if ((previous === undefined) === (next === undefined) && sameGeometryHolder(previous?.holder, next?.holder)) return;
+    const detail: RoutedGeometryHolderChange = {
+      sessionId: entry.sessionId,
+      sessionHandle: entry.sessionHandle,
+      previous: previous === undefined ? undefined : this.#geometryHolderState(entry, previous),
+      current: next === undefined ? undefined : this.#geometryHolderState(entry, next),
+    };
+    this.dispatchEvent(new CustomEvent("geometry-holder-changed", { detail }));
   }
 
   #resolvePerformanceRequest(requestId: number, value: TerminalRenderPerformanceSnapshot | undefined): void {
@@ -1615,6 +1712,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#transitionRouted(entry, { type: "ticket-minted", endpointsPresent: ticket.endpoints !== undefined });
     if (!ticket.endpoints) return;
     entry.ticket = ticket;
+    entry.clientId = ticket.attachGrant.claims.clientId;
     this.#transitionRouted(entry, { type: "transport-ready" });
     this.#routedControl!.attach({
       cellBootId: ticket.route.cellBootId,
@@ -1746,14 +1844,17 @@ export class GhostteaTerminalRuntime extends EventTarget {
       });
       this.#startRoutedFrames(entry);
       const previousGeometry = this.#routedGeometry.get(entry.sessionId);
+      const previousHolder = previousGeometry?.holder;
       if (
         !event.attached.rights.includes("geometry") &&
-        previousGeometry?.holderViewId !== undefined &&
-        entry.viewIds.has(previousGeometry.holderViewId)
+        previousGeometry !== undefined &&
+        previousHolder !== undefined &&
+        this.#routedViewHolds(entry, previousGeometry, previousHolder.viewId) &&
+        entry.viewIds.has(previousHolder.viewId)
       ) {
         // The cell auto-releases a holder when renewal drops the geometry
         // right. Preserve its next CAS revision without retaining authority.
-        this.#routedGeometry.set(entry.sessionId, {
+        this.#setRoutedGeometry(entry, {
           revision: previousGeometry.revision + 1,
           ...(previousGeometry.cols === undefined ? {} : { cols: previousGeometry.cols }),
           ...(previousGeometry.rows === undefined ? {} : { rows: previousGeometry.rows }),
@@ -1764,7 +1865,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         const view = this.#views.get(viewId);
         if (
           view?.resizeControlRequested &&
-          geometry?.holderViewId !== viewId &&
+          !this.#routedViewHolds(entry, geometry, viewId) &&
           view.desiredCols !== undefined &&
           view.desiredRows !== undefined
         ) {
@@ -1812,9 +1913,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "geometry-committed") {
       const entry = event.activationId ? this.#routedByActivation.get(event.activationId) : undefined;
       if (!entry) return;
-      this.#routedGeometry.set(entry.sessionId, {
-        holderViewId: event.committed.holder.viewId,
-        holderGeneration: event.committed.holder.holderGeneration,
+      this.#setRoutedGeometry(entry, {
+        holder: geometryHolderRecord(event.committed.holder),
         revision: event.committed.geometryRevision,
         cols: event.committed.cols,
         rows: event.committed.rows,
@@ -1836,9 +1936,9 @@ export class GhostteaTerminalRuntime extends EventTarget {
       if (entry && event.refused.geometryRevision !== undefined) {
         const previous = this.#routedGeometry.get(entry.sessionId);
         const holder = event.refused.currentHolder;
-        this.#routedGeometry.set(entry.sessionId, {
+        this.#setRoutedGeometry(entry, {
           revision: event.refused.geometryRevision,
-          ...(holder === undefined ? {} : { holderViewId: holder.viewId, holderGeneration: holder.holderGeneration }),
+          ...(holder === undefined ? {} : { holder: geometryHolderRecord(holder) }),
           ...(previous?.cols === undefined ? {} : { cols: previous.cols }),
           ...(previous?.rows === undefined ? {} : { rows: previous.rows }),
         });
@@ -2071,6 +2171,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         return;
       }
       entry.ticket = ticket;
+      entry.clientId = ticket.attachGrant.claims.clientId;
       this.#routedControl?.renew(activationId, ticket.attachGrant);
       this.#scheduleRoutedRenewal(entry);
       this.#postWorker({
@@ -2115,10 +2216,6 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#transitionRouted(entry, { type: "transport-failed", recoveryExhausted: true });
       return;
     }
-    // Geometry belongs to the cell-side attach/client/view scope. Preserve it
-    // across a same-route leg replacement, but never carry its revision or
-    // holder generation to a newly routed cell.
-    if (reason === "route-stale") this.#routedGeometry.delete(entry.sessionId);
     const previousActivationId = entry.state.activationId;
     this.#routedControl?.detach(previousActivationId);
     this.#postWorker({ type: "routed-frames-detach", activationId: previousActivationId });
@@ -2150,6 +2247,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
     delete entry.workerLeaseTimer;
     delete entry.ticket;
+    // Geometry belongs to the cell-side attach/client/view scope. Preserve it
+    // across a same-route leg replacement, but never carry its revision or
+    // holder generation to a newly routed cell. Forgotten only now, once the
+    // old activation is gone, so a listener of the holder event cannot act
+    // on it.
+    if (reason === "route-stale") this.#setRoutedGeometry(entry, undefined);
     const delay = Math.min(2_000, 100 * 2 ** Math.max(0, entry.recoveryAttempts - 1));
     window.setTimeout(() => {
       if (this.#routedByActivation.get(nextActivationId) !== entry) return;
@@ -2243,7 +2346,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#transitionRouted(entry, { type: "detach" });
     this.#routedBySession.delete(sessionId);
     this.#routedByActivation.delete(entry.state.activationId);
-    this.#routedGeometry.delete(sessionId);
+    this.#setRoutedGeometry(entry, undefined);
   }
 
   /**
@@ -2885,7 +2988,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
       const entry = this.#routedBySession.get(view.sessionId);
       const geometry = this.#routedGeometry.get(view.sessionId);
       const ticket = entry?.ticket;
-      if (entry && ticket && geometry?.holderViewId === viewId && geometry.holderGeneration !== undefined) {
+      const holder = geometry?.holder;
+      if (entry && ticket && geometry && holder && this.#routedViewHolds(entry, geometry, viewId)) {
         const sent = this.#routedControl?.releaseGeometry(entry.state.activationId, {
           sessionId: view.sessionId,
           activationId: entry.state.activationId,
@@ -2893,13 +2997,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
           holder: {
             clientId: ticket.attachGrant.claims.clientId,
             viewId,
-            holderGeneration: geometry.holderGeneration,
+            holderGeneration: holder.holderGeneration,
           },
         });
         if (sent) {
           // T1 sends no success body for release. The ordered control leg and
-          // cell state machine make the next revision deterministic.
-          this.#routedGeometry.set(view.sessionId, {
+          // cell state machine make the next revision deterministic; if the
+          // seat had moved on, the cell's refusal names the holder instead.
+          this.#setRoutedGeometry(entry, {
             revision: geometry.revision + 1,
             ...(geometry.cols === undefined ? {} : { cols: geometry.cols }),
             ...(geometry.rows === undefined ? {} : { rows: geometry.rows }),

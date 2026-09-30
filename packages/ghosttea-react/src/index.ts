@@ -33,6 +33,8 @@ export {
   showsStaleScreen,
   type RemoteInputSuppression,
   type RemoteSessionRuntimeState,
+  type RoutedGeometryHolderChange,
+  type RoutedGeometryHolderState,
   type SelectionScope,
   type TerminalMount,
 } from "./runtime.js";

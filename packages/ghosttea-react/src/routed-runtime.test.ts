@@ -8,7 +8,7 @@ import {
   type RoutedTerminalOpenTicket,
   type SessionSummary,
 } from "@vibecook/ghosttea-protocol";
-import { GhostteaTerminalRuntime, type GhostteaRoutedHost } from "./runtime";
+import { GhostteaTerminalRuntime, type GhostteaRoutedHost, type RoutedGeometryHolderChange } from "./runtime";
 
 class FakeWorker extends EventTarget {
   readonly messages: unknown[] = [];
@@ -137,6 +137,102 @@ function canvas(): HTMLCanvasElement {
 
 async function flush(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}
+
+type SentMessage = Record<string, unknown> & { type: string };
+
+interface RoutedSeatHarness {
+  runtime: GhostteaTerminalRuntime;
+  socket: FakeSocket;
+  activationId: string;
+  /** Every `geometry-holder-changed` detail, in order. */
+  holderEvents: RoutedGeometryHolderChange[];
+  /** The geometry verbs sent since just before the control leg attached. */
+  verbs(): SentMessage[];
+  reply(type: "GeometryCommitted" | "GeometryRefused", body: Record<string, unknown>): void;
+  /** Acknowledge every heartbeat sent so far, settling fenced releases. */
+  ackHeartbeats(): void;
+}
+
+/** One routed session ("session-a", handle "11", client "window-1") with its control leg attached. */
+async function routedSeat(
+  options: { views?: string[]; rights?: string[]; attach?: boolean } = {},
+): Promise<RoutedSeatHarness> {
+  vi.stubGlobal("window", globalThis);
+  const worker = new FakeWorker();
+  const socket = new FakeSocket();
+  const runtime = new GhostteaTerminalRuntime({
+    transport: "routed",
+    host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+    platform: {
+      writeClipboard: () => undefined,
+      forceCanvasFallback: () => false,
+      setForceCanvasFallback: () => undefined,
+      reload: () => undefined,
+    },
+    websocketFactory: () => socket as unknown as WebSocket,
+    workerFactory: () => worker as unknown as Worker,
+  });
+  const summary = session("session-a", "11");
+  runtime.registerSession(summary);
+  for (const viewId of options.views ?? ["view-a"]) runtime.mount(summary.id, summary.handle, viewId, canvas());
+  await flush();
+  socket.open();
+  socket.receive(
+    encodeRoutedMessage("ConnectionAccepted", {
+      selectedProtocolVersion: { major: 1, minor: 0 },
+      connectionSetId: "set-a",
+      channel: "control",
+      legGeneration: 1,
+      heartbeatTtlMs: 15_000,
+      protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+      capabilities: ["resume"],
+    }),
+  );
+  const attach = JSON.parse(socket.sent.at(-1)!) as SentMessage & { activationId: string };
+  expect(attach.type).toBe("AttachControlLeg");
+  const holderEvents: RoutedGeometryHolderChange[] = [];
+  runtime.addEventListener("geometry-holder-changed", (event) => {
+    holderEvents.push((event as CustomEvent<RoutedGeometryHolderChange>).detail);
+  });
+  const start = socket.sent.length;
+  const harness: RoutedSeatHarness = {
+    runtime,
+    socket,
+    activationId: attach.activationId,
+    holderEvents,
+    verbs: () =>
+      socket.sent
+        .slice(start)
+        .map((text) => JSON.parse(text) as SentMessage)
+        .filter((message) => ["ClaimGeometry", "TransferGeometry", "ReleaseGeometry"].includes(message.type)),
+    reply: (type, body) => socket.receive(encodeRoutedMessage(type, body as never)),
+    ackHeartbeats: () => {
+      for (const text of socket.sent) {
+        const message = JSON.parse(text) as SentMessage & { sequence?: number };
+        if (message.type === "LegHeartbeat") {
+          socket.receive(encodeRoutedMessage("LegHeartbeatAck", { sequence: message.sequence! }));
+        }
+      }
+    },
+  };
+  if (options.attach !== false) attachControl(harness, options.rights);
+  return harness;
+}
+
+function attachControl(harness: RoutedSeatHarness, rights = ["geometry", "input", "read"]): void {
+  harness.socket.receive(
+    encodeRoutedMessage("ControlLegAttached", {
+      sessionId: "session-a",
+      activationId: harness.activationId,
+      grantGenerationAccepted: 1,
+      rights,
+    }),
+  );
+}
+
+function holder(clientId: string, viewId: string, holderGeneration: number) {
+  return { clientId, viewId, holderGeneration };
 }
 
 describe("routed terminal runtime", () => {
@@ -1292,5 +1388,139 @@ describe("routed terminal runtime", () => {
       },
     });
     runtime.dispose();
+  });
+});
+
+describe("routed geometry seat", () => {
+  it("tracks the holder the cell names, another client's included", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toMatchObject([
+        { type: "ClaimGeometry", claimant: { clientId: "window-1", viewId: "view-a" }, expectRevision: 0 },
+      ]);
+      expect(seat.runtime.geometryHolder("11")).toBeUndefined();
+
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-1", "view-a", 1),
+        revision: 1,
+        local: true,
+      });
+
+      // A pane on another desktop took the seat. The cell does not announce
+      // it here; this client's next verb draws the refusal that names it.
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      expect(seat.verbs().at(-1)).toMatchObject({ type: "ClaimGeometry", expectRevision: 1, cols: 100, rows: 30 });
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 2,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-2", "remote-view", 2),
+        revision: 2,
+        local: false,
+      });
+
+      // The same holder resizing moves only the revision: no event.
+      seat.runtime.resize("session-a", "view-a", 90, 30);
+      seat.reply("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 3,
+      });
+      expect(seat.runtime.geometryHolder("11")?.revision).toBe(3);
+      expect(seat.holderEvents).toEqual([
+        {
+          sessionId: "session-a",
+          sessionHandle: "11",
+          previous: undefined,
+          current: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+        },
+        {
+          sessionId: "session-a",
+          sessionHandle: "11",
+          previous: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+          current: { holder: holder("window-2", "remote-view", 2), revision: 2, local: false },
+        },
+      ]);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("clears the seat on its own release, and a refused release restores the holder the cell names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.releaseResizeControl("view-a");
+      expect(seat.verbs().at(-1)).toMatchObject({
+        type: "ReleaseGeometry",
+        holder: holder("window-1", "view-a", 1),
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({ holder: null, revision: 2, local: false });
+      seat.ackHeartbeats();
+      expect(seat.holderEvents.at(-1)?.current).toEqual({ holder: null, revision: 2, local: false });
+
+      // Claim again; another client then takes the seat unseen, so the next
+      // release names a stale holder and the cell refuses it.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs().at(-1)).toMatchObject({ type: "ClaimGeometry", expectRevision: 2 });
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 2),
+        geometryRevision: 3,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.releaseResizeControl("view-a");
+      expect(seat.runtime.geometryHolder("11")?.holder).toBeNull();
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-2", "remote-view", 5),
+        geometryRevision: 4,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-2", "remote-view", 5),
+        revision: 4,
+        local: false,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("stops tracking the seat when the session's last view leaves", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.unregisterSession("session-a");
+      expect(seat.runtime.geometryHolder("11")).toBeUndefined();
+      expect(seat.holderEvents.at(-1)).toEqual({
+        sessionId: "session-a",
+        sessionHandle: "11",
+        previous: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+        current: undefined,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
   });
 });
