@@ -98,10 +98,34 @@ incompatible message. When supplied, the encoded keystroke is sent directly
 on the main-thread control socket with no worker `postMessage` hop.
 
 Focus changes only rendering priority and demand urgency. Geometry changes
-require an explicit `controlsResize`/`claimResizeControl` path, so a focused
-mirror cannot resize the PTY. Production counters are available through
-`readPerformanceCounters()` without opening a measurement window or draining
-the GPU. The existing port-pair transport remains the default rollback path.
+require an explicit `controlsResize`/`claimResizeControl` or
+`takeResizeControl` path, so a focused mirror cannot resize the PTY.
+Production counters are available through `readPerformanceCounters()` without
+opening a measurement window or draining the GPU. The existing port-pair
+transport remains the default rollback path.
+
+Because focus is only a scheduling fact, the host decides when a view takes
+the geometry seat. `runtime.takeResizeControl(sessionHandle, viewId, cols,
+rows)` takes it for one view. On the routed transport it claims an empty seat,
+or claims the view's own seat again, which the cell commits as a resize and
+which leaves the PTY alone at the same size. When another view holds the seat,
+on this client or another, it sends one `TransferGeometry` from the holder the
+runtime last saw. A refusal that names a newer holder or revision is retried
+once against it. A take asked before the control leg attaches is sent when it
+attaches. On the port-pair transport the take is `claimResizeControl`, which
+never displaces another view. To let the pane focused last size the PTY across
+windows and devices, pass `takeGeometryOnFocus` to `TerminalSurface` or
+`GhostteaWorkspace`. A pane then takes the seat each time it gains focus, and a
+`controlsResize={false}` mirror still never does.
+
+`runtime.geometryHolder(sessionHandle)` reads the seat as this runtime last
+saw it: `{ holder, revision, local }`, where `holder` is
+`{ clientId, viewId, holderGeneration }` or `null`, and `local` means one of
+this runtime's views holds it. The `geometry-holder-changed` event reports
+each change of holder as `{ sessionId, sessionHandle, previous, current }`.
+The cell names the holder only in replies to this client's own geometry
+verbs, so another client's take shows up on this client's next claim, take or
+release.
 
 For applications that want the complete Ghostty-style desktop experience, use
 `GhostteaWorkspace` from `@vibecook/ghosttea-react/workspace` and import
