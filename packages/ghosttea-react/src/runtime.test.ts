@@ -380,8 +380,12 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     // A handle this renderer never registered names no session.
     worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: "stranger" } }));
     expect(drawn).toEqual([]);
-    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
-    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
     expect(drawn).toEqual([{ sessionId: session.id }]);
     expect(runtime.sessionHasDrawn(session.id)).toBe(true);
     expect(runtime.sessionHasDrawn("unknown")).toBe(false);
@@ -391,7 +395,9 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     expect(worker.messages).toContainEqual({ type: "drop-session", sessionHandle: session.handle });
     expect(runtime.sessionHasDrawn(session.id)).toBe(false);
     runtime.registerSession(session);
-    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }));
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
     expect(drawn).toEqual([{ sessionId: session.id }, { sessionId: session.id }]);
     expect(runtime.sessionHasDrawn(session.id)).toBe(true);
     runtime.dispose();
