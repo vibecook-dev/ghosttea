@@ -1863,6 +1863,127 @@ describe("routed geometry take", () => {
   });
 });
 
+describe("a take's refusal is its announcement", () => {
+  // The cell answers only the caller's control leg: a pane whose seat was
+  // taken hears nothing until its own next verb is refused, and that refusal
+  // names the seat. The take retries once against it, and the host never does.
+  const remote = holder("window-2", "remote-view", 4);
+  const phone = holder("window-3", "phone-view", 6);
+  const transferToViewA = (from: ReturnType<typeof holder>, expectRevision: number) => ({
+    type: "TransferGeometry",
+    sessionId: "session-a",
+    leaseEpoch: 4,
+    from,
+    to: { clientId: "window-1", viewId: "view-a" },
+    expectRevision,
+    cols: 80,
+    rows: 24,
+  });
+
+  it("STALE_REVISION: focus back on the pane that lost the seat takes it back with one transfer", async () => {
+    const seat = await routedSeat();
+    try {
+      // view-a held the seat; a pane on another desktop took it unannounced.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      // It still believes it holds the seat, so its take is a resize.
+      expect(seat.verbs()[1]).toMatchObject({
+        type: "ClaimGeometry",
+        claimant: { clientId: "window-1", viewId: "view-a" },
+        expectRevision: 1,
+      });
+      seat.reply("GeometryRefused", { code: "STALE_REVISION", currentHolder: remote, geometryRevision: 4 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual({ ...transferToViewA(remote, 4), activationId: seat.activationId });
+
+      // Refused again: the runtime gives up until the host takes again.
+      seat.reply("GeometryRefused", { code: "STALE_REVISION", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("NOT_HOLDER: a transfer from a holder that moved on goes once more, from the holder the refusal names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 3,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()[1]).toEqual({
+        ...transferToViewA(holder("window-2", "remote-view", 2), 3),
+        activationId: seat.activationId,
+      });
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual({ ...transferToViewA(phone, 6), activationId: seat.activationId });
+
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", currentHolder: remote, geometryRevision: 7 });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("SEAT_HELD: a claim of a seat thought empty goes once more as a transfer from the holder the refusal names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()[0]).toMatchObject({ type: "ClaimGeometry", expectRevision: 0 });
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: remote, geometryRevision: 4 });
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual({ ...transferToViewA(remote, 4), activationId: seat.activationId });
+
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("draws no retry from a refusal that names no seat", async () => {
+    for (const code of ["STALE_REVISION", "NOT_HOLDER", "SEAT_HELD"]) {
+      const seat = await routedSeat();
+      try {
+        seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+        seat.reply("GeometryRefused", { code });
+        expect(seat.verbs(), code).toHaveLength(1);
+      } finally {
+        seat.runtime.dispose();
+      }
+    }
+  });
+
+  it("claims, once, a seat a refusal names as empty", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: remote, geometryRevision: 4 });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      // The holder released the seat before the transfer arrived.
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", geometryRevision: 5 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toMatchObject({
+        type: "ClaimGeometry",
+        claimant: { clientId: "window-1", viewId: "view-a" },
+        expectRevision: 5,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+});
+
 describe("focus and the routed geometry seat (TP-R4)", () => {
   const authority = { sessionHandle: "11", viewId: "authority", cols: 80, rows: 24 };
   const mirror = { sessionHandle: "11", viewId: "mirror", cols: 120, rows: 40 };

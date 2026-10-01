@@ -110,13 +110,17 @@ rows)` takes it for one view. On the routed transport it claims an empty seat,
 or claims the view's own seat again, which the cell commits as a resize and
 which leaves the PTY alone at the same size. When another view holds the seat,
 on this client or another, it sends one `TransferGeometry` from the holder the
-runtime last saw. A refusal that names a newer holder or revision is retried
-once against it. A take asked before the control leg attaches is sent when it
-attaches. On the port-pair transport the take is `claimResizeControl`, which
-never displaces another view. To let the pane focused last size the PTY across
-windows and devices, pass `takeGeometryOnFocus` to `TerminalSurface` or
-`GhostteaWorkspace`. A pane then takes the seat each time it gains focus, and a
-`controlsResize={false}` mirror still never does.
+runtime last saw. The cell answers only the caller, so a pane whose seat
+another client took learns it from the refusal of its own take. A refusal that
+names a newer holder or revision is retried once against it, typically as one
+`TransferGeometry` from the holder it names. The runtime owns that one retry:
+call `takeResizeControl` once per focus gain and never retry it. A take asked
+before the control leg attaches is sent when it attaches. On the port-pair
+transport the take is `claimResizeControl`, which never displaces another
+view. To let the pane focused last size the PTY across windows and devices,
+pass `takeGeometryOnFocus` to `TerminalSurface` or `GhostteaWorkspace`. A pane
+then takes the seat each time it gains focus, and a `controlsResize={false}`
+mirror still never does.
 
 `runtime.geometryHolder(sessionHandle)` reads the seat as this runtime last
 saw it: `{ holder, revision, local }`, where `holder` is

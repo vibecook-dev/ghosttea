@@ -3158,12 +3158,20 @@ export class GhostteaTerminalRuntime extends EventTarget {
    *   `TransferGeometry {from: holder, to: {clientId, viewId}, expectRevision,
    *   cols, rows}`, with `clientId` from this session's attach grant.
    *
-   * A `SEAT_HELD`, `STALE_REVISION` or `NOT_HOLDER` refusal that names a
-   * different holder or revision is retried once against what it names. A
-   * second refusal stands, and the host may take again on the next focus.
-   * Only the session's latest take retries. A take asked before the control
-   * leg attaches is sent when it attaches, unless the view's focus ends first.
-   * Without the grant's `geometry` right nothing is sent.
+   * A refusal is the only announcement a take gets. The cell answers only the
+   * caller's control leg, so a pane whose seat another client took still
+   * believes it holds it, and its take is a resize that the cell refuses. A
+   * `SEAT_HELD`, `STALE_REVISION` or `NOT_HOLDER` refusal that names a holder
+   * or revision other than the one the take was built on is retried once,
+   * against what it names: one `TransferGeometry` from the named holder at
+   * the named revision; a claim of the view's own seat if it names this
+   * view; a `ClaimGeometry` if it names an empty seat. A refusal that repeats
+   * the take's own view of the seat, or names no seat, is not retried, and
+   * neither is a second refusal. The runtime owns that one retry: a host
+   * calls this once per focus gain of a controller view and never retries
+   * it. Only the session's latest take retries. A take asked before the
+   * control leg attaches is sent when it attaches, unless the view's focus
+   * ends first. Without the grant's `geometry` right nothing is sent.
    *
    * On the port-pair transport this is `claimResizeControl`, which never
    * displaces another view.
