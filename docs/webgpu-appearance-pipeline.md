@@ -46,6 +46,30 @@ A solid block cursor is inserted after selection backgrounds and before glyphs;
 the covered glyph uses `cursor-text`. Bar, underline, and hollow cursors remain
 late overlay geometry.
 
+## Light adaptation
+
+Some applications paint every cell with their own truecolor background, so a
+light theme never shows through (Grok's default theme paints `#141414`
+everywhere). With `lightAdaptation: "auto"`, the default from configuration,
+a pane is remapped when the theme background is light and at least 60% of its
+cells carry an explicit dark background. It releases below 35%, so partially
+painted scrolls do not flicker. Applications that follow the theme (Codex,
+OpenCode, Claude Code's Auto theme) never cross that threshold.
+
+The remap runs in `resolveStyle`, per style and before blending, so glyph
+coverage, color glyphs, and the shader stack are untouched. Surfaces mirror
+their OKLab-with-toe lightness around the theme background, anchored at the
+application's dominant surface. Neutral ink keeps its distance from its own
+cell background, and accents land in an APCA mid-tone band with their hue
+intact. Default foreground and background stay theme-owned. Engaging,
+re-keying, or releasing invalidates the persistent scene and geometry cache.
+
+Applications that switch themes themselves need the terminal to say which
+scheme it is. ghosttead answers `CSI ? 996 n` from the default background's
+luminance, sends `CSI ? 997 ; 1|2 n` when a theme change flips it and mode
+2031 is set, and sets `COLORFGBG` for new sessions unless the caller provides
+one.
+
 ## Catalogs and persistence
 
 The linked `ghostty.style` gallery seeds its built-in collection from every

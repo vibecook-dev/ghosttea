@@ -19,6 +19,12 @@ export interface TerminalTheme {
   selectionForeground: Rgba;
   /** Apply the window background alpha to explicit cell backgrounds too. */
   backgroundOpacityCells?: boolean;
+  /**
+   * Under a light theme, remap panes that an application paints dark with its
+   * own backgrounds (Grok, fixed-theme TUIs) into a light design. "auto"
+   * engages per pane only when most cells carry an explicit dark background.
+   */
+  lightAdaptation?: "auto" | "off";
 }
 
 export type TerminalPostProcess = "none" | "better-crt";

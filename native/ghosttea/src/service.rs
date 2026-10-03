@@ -2235,6 +2235,8 @@ async fn create_local_session(
             .unwrap_or(terminal_config.scrollback_bytes);
         let scrollback_bytes = usize::try_from(effective_scrollback_bytes)
             .context("scrollbackBytes does not fit this platform")?;
+        let mut options = options;
+        options.hint_color_scheme(terminal_config.background);
         tokio::task::spawn_blocking(move || {
             let session = Session::spawn_configured(
                 options,

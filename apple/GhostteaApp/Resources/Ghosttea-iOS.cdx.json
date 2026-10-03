@@ -129,7 +129,7 @@
       },
       {
         "name": "ghosttea:cargo-lock:sha256",
-        "value": "6da56d16f37b315fb22ebe023528c7f4ff8b00b6674613e894838a658c2c83d3"
+        "value": "7cdc22165195a7f98749dadbf1de0801225a9a3fcac38cfc0a18b931767268e3"
       },
       {
         "name": "ghosttea:rust-target",

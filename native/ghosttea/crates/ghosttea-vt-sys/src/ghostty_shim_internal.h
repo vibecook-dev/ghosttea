@@ -28,6 +28,9 @@ struct EgTerminal {
   EgBuffer grapheme;
   bool mouse_pressed;
   uint32_t effects;
+  // Derived from the embedder's default background; answers CSI ? 996 n and
+  // drives mode-2031 reports when a theme change flips it.
+  GhosttyColorScheme color_scheme;
 };
 
 bool eg_buffer_reserve(EgBuffer* buffer, size_t required);
