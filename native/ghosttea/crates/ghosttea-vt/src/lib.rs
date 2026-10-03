@@ -2164,6 +2164,42 @@ mod tests {
     }
 
     #[test]
+    fn answers_color_scheme_queries_from_the_default_background() {
+        let mut terminal = GhosttyTerminalCore::new(20, 2, 100).unwrap();
+        terminal.feed(b"\x1b[?996n");
+        assert_eq!(terminal.take_pty_response(), b"\x1b[?997;1n");
+
+        terminal
+            .set_colors([0x4c, 0x4f, 0x69], [0xef, 0xf1, 0xf5], [0xdc, 0x8a, 0x78])
+            .unwrap();
+        terminal.feed(b"\x1b[?996n");
+        assert_eq!(terminal.take_pty_response(), b"\x1b[?997;2n");
+    }
+
+    #[test]
+    fn reports_scheme_flips_only_to_programs_that_enabled_mode_2031() {
+        let mut terminal = GhosttyTerminalCore::new(20, 2, 100).unwrap();
+        let light = ([0x4c, 0x4f, 0x69], [0xef, 0xf1, 0xf5], [0xdc, 0x8a, 0x78]);
+        let dark = ([0xcd, 0xd6, 0xf4], [0x1e, 0x1e, 0x2e], [0xf5, 0xe0, 0xdc]);
+
+        terminal.set_colors(light.0, light.1, light.2).unwrap();
+        assert!(terminal.take_pty_response().is_empty());
+
+        terminal.feed(b"\x1b[?2031h");
+        terminal.set_colors(dark.0, dark.1, dark.2).unwrap();
+        assert_eq!(terminal.take_pty_response(), b"\x1b[?997;1n");
+
+        // Another dark theme is not a scheme change.
+        terminal
+            .set_colors([0xff, 0xff, 0xff], [0x28, 0x2c, 0x34], [0xff, 0xff, 0xff])
+            .unwrap();
+        assert!(terminal.take_pty_response().is_empty());
+
+        terminal.set_colors(light.0, light.1, light.2).unwrap();
+        assert_eq!(terminal.take_pty_response(), b"\x1b[?997;2n");
+    }
+
+    #[test]
     fn distinguishes_defaults_palette_truecolor_and_osc_overrides() {
         let mut terminal = GhosttyTerminalCore::new(20, 2, 100).unwrap();
         terminal

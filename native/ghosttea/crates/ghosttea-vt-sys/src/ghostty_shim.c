@@ -1,4 +1,5 @@
 #include "ghostty_shim_internal.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,6 +9,30 @@ struct EgTrackedSelection {
   GhosttyTerminalScreen screen;
   bool rectangle;
 };
+
+static double eg_srgb_to_linear(uint8_t value) {
+  double v = value / 255.0;
+  return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+}
+
+// A background is light when dark text out-contrasts light text on it, which
+// is WCAG relative luminance above ~0.179.
+static GhosttyColorScheme eg_scheme_for_background(GhosttyColorRgb background) {
+  double luminance = 0.2126 * eg_srgb_to_linear(background.r) +
+                     0.7152 * eg_srgb_to_linear(background.g) +
+                     0.0722 * eg_srgb_to_linear(background.b);
+  return (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05)
+             ? GHOSTTY_COLOR_SCHEME_LIGHT
+             : GHOSTTY_COLOR_SCHEME_DARK;
+}
+
+static bool eg_color_scheme(GhosttyTerminal terminal,
+                            void* userdata,
+                            GhosttyColorScheme* out_scheme) {
+  (void)terminal;
+  *out_scheme = ((EgTerminal*)userdata)->color_scheme;
+  return true;
+}
 
 int eg_terminal_set_colors(EgTerminal* state,
                            uint8_t fg_r, uint8_t fg_g, uint8_t fg_b,
@@ -23,8 +48,27 @@ int eg_terminal_set_colors(EgTerminal* state,
   result = ghostty_terminal_set(
       state->terminal, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &background);
   if (result != GHOSTTY_SUCCESS) return result;
-  return ghostty_terminal_set(
+  result = ghostty_terminal_set(
       state->terminal, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cursor);
+  if (result != GHOSTTY_SUCCESS) return result;
+
+  // Programs that enabled mode 2031 (Claude Code's Auto theme, Neovim) learn
+  // about a light/dark flip without re-querying. The report rides the normal
+  // PTY response buffer, so it reaches the program with the next snapshot.
+  GhosttyColorScheme scheme = eg_scheme_for_background(background);
+  if (scheme == state->color_scheme) return GHOSTTY_SUCCESS;
+  state->color_scheme = scheme;
+  bool reporting = false;
+  if (ghostty_terminal_mode_get(
+          state->terminal, GHOSTTY_MODE_COLOR_SCHEME_REPORT, &reporting) != GHOSTTY_SUCCESS ||
+      !reporting)
+    return GHOSTTY_SUCCESS;
+  char report[32];
+  size_t written = 0;
+  if (ghostty_color_scheme_report_encode(scheme, report, sizeof report, &written) ==
+      GHOSTTY_SUCCESS)
+    (void)eg_buffer_append(&state->response, (const uint8_t*)report, written);
+  return GHOSTTY_SUCCESS;
 }
 
 int eg_terminal_set_palette(EgTerminal* state,
@@ -158,6 +202,7 @@ EgTerminal* eg_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback)
   ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)eg_title_changed);
   ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED, (const void*)eg_pwd_changed);
   ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, (const void*)eg_clipboard_write);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME, (const void*)eg_color_scheme);
   if (eg_terminal_set_colors(
           state,
           255, 255, 255,

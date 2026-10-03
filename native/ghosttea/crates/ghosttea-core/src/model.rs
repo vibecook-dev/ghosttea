@@ -733,6 +733,37 @@ mod tests {
     }
 
     #[test]
+    fn theme_change_reports_the_new_color_scheme_to_the_program() {
+        let runtime = Arc::new(TerminalRuntime::discover().unwrap());
+        let mut model = TerminalModel::new(
+            runtime,
+            TerminalModelOptions {
+                session_handle: 4,
+                session_epoch: 1,
+                layout_epoch: 1,
+                cols: 20,
+                rows: 4,
+                scrollback_bytes: 4096,
+            },
+        )
+        .unwrap();
+        model.feed(b"\x1b[?2031h", RenderRequest::None).unwrap();
+        let update = model
+            .set_appearance(
+                [0x4c, 0x4f, 0x69],
+                [0xef, 0xf1, 0xf5],
+                [0xdc, 0x8a, 0x78],
+                &[],
+                RenderRequest::Full,
+            )
+            .unwrap();
+        assert!(update.as_slice().iter().any(|effect| matches!(
+            effect,
+            TerminalEffect::WriteToTransport(bytes) if bytes == b"\x1b[?997;2n"
+        )));
+    }
+
+    #[test]
     fn terminal_reply_precedes_semantic_and_render_effects() {
         let runtime = Arc::new(TerminalRuntime::discover().unwrap());
         let mut model = TerminalModel::new(

@@ -335,6 +335,45 @@ pub struct SpawnOptions {
     pub scrollback_bytes: Option<u64>,
 }
 
+impl SpawnOptions {
+    /// Advertise whether the default background is light or dark through
+    /// `COLORFGBG` (the rxvt `fg;bg` palette-index convention). Programs that
+    /// read it at startup instead of querying OSC 11 pick a matching theme.
+    /// A value the caller already set wins.
+    pub(crate) fn hint_color_scheme(&mut self, background: [u8; 3]) {
+        let value = if background_is_light(background) {
+            "0;15"
+        } else {
+            "15;0"
+        };
+        let variables = match self.environment.as_mut() {
+            Some(SessionEnvironment::Inherit { overrides }) => overrides,
+            Some(SessionEnvironment::Clean { variables }) => variables,
+            None => &mut self.env,
+        };
+        variables
+            .entry("COLORFGBG".to_owned())
+            .or_insert_with(|| value.to_owned());
+    }
+}
+
+/// Matches the VT shim's color-scheme answer: light when dark text
+/// out-contrasts light text, i.e. WCAG relative luminance above ~0.179.
+fn background_is_light(background: [u8; 3]) -> bool {
+    let linear = |value: u8| {
+        let v = f64::from(value) / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * linear(background[0])
+        + 0.7152 * linear(background[1])
+        + 0.0722 * linear(background[2]);
+    (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KeyAction {
@@ -2821,6 +2860,35 @@ mod tests {
         let maximum: SpawnOptions =
             serde_json::from_value(spawn_options_json(MAX_JSON_SAFE_INTEGER.into())).unwrap();
         assert_eq!(maximum.scrollback_bytes, Some(MAX_JSON_SAFE_INTEGER));
+    }
+
+    #[test]
+    fn color_hint_follows_the_background_and_yields_to_the_caller() {
+        let options = |environment: serde_json::Value| -> SpawnOptions {
+            let mut json = spawn_options_json(0.into());
+            json["environment"] = environment;
+            serde_json::from_value(json).unwrap()
+        };
+        let mut light = options(serde_json::json!({ "mode": "clean", "variables": {} }));
+        light.hint_color_scheme([0xef, 0xf1, 0xf5]);
+        let Some(SessionEnvironment::Clean { variables }) = &light.environment else {
+            panic!()
+        };
+        assert_eq!(variables["COLORFGBG"], "0;15");
+
+        let mut dark: SpawnOptions = serde_json::from_value(spawn_options_json(0.into())).unwrap();
+        dark.hint_color_scheme([0x1e, 0x1e, 0x2e]);
+        assert_eq!(dark.env["COLORFGBG"], "15;0");
+
+        let mut chosen = options(serde_json::json!({
+            "mode": "inherit",
+            "overrides": { "COLORFGBG": "7;4" }
+        }));
+        chosen.hint_color_scheme([0xff, 0xff, 0xff]);
+        let Some(SessionEnvironment::Inherit { overrides }) = &chosen.environment else {
+            panic!()
+        };
+        assert_eq!(overrides["COLORFGBG"], "7;4");
     }
 
     #[test]
