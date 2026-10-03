@@ -1488,7 +1488,10 @@
           selectionForeground: selectionForeground,
           backgroundOpacityCells: config.backgroundOpacityCells,
           shaderEffects: effects,
-          shaderAnimation: config.customShaderAnimation
+          shaderAnimation: config.customShaderAnimation,
+          lightAdaptation: config.lightAdaptation == .auto,
+          minimumContrast: config.minimumContrast.isFinite
+            ? min(21, max(1, config.minimumContrast)) : 1
         )
         clearColor = MTLClearColor(
           red: Double(background.red * background.alpha),

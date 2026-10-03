@@ -51,7 +51,9 @@ public enum GhostteaTerminalFrameDecoder {
       case .glyphDefinitions:
         glyphDefinitionCount += try decodeTRF1GlyphDefinitions(section).count
       case .styleDefinitions:
-        styleDefinitionCount += try decodeTRF1StyleDefinitions(section).count
+        styleDefinitionCount += try decodeTRF1StyleDefinitions(
+          section, palette: frame.sections.first { $0.kind == .stylePalette }
+        ).count
       case .rowReplacements:
         rowReplacementCount += try decodeTRF1RowReplacements(section).count
       case .cursorState:

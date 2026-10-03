@@ -37,6 +37,7 @@ public struct TRF1SectionKind: RawRepresentable, Hashable, Sendable {
   public static let viewportMetadata = Self(rawValue: 9)
   public static let accessibilityText = Self(rawValue: 10)
   public static let clipboardWrite = Self(rawValue: 11)
+  public static let stylePalette = Self(rawValue: 13)
 }
 
 public struct TRF1Section: Sendable {
@@ -122,6 +123,45 @@ public struct TRF1StyleDefinition: Equatable, Sendable {
   public let underline: Bool
   public let foreground: TRF1RGB?
   public let background: TRF1RGB?
+  /// Palette index `foreground` was resolved from, when it came from the palette.
+  public let foregroundPalette: UInt8?
+  /// Palette index `background` was resolved from, when it came from the palette.
+  public let backgroundPalette: UInt8?
+
+  public init(
+    id: UInt32,
+    bold: Bool,
+    italic: Bool,
+    faint: Bool,
+    inverse: Bool,
+    invisible: Bool,
+    strikethrough: Bool,
+    underline: Bool,
+    foreground: TRF1RGB?,
+    background: TRF1RGB?,
+    foregroundPalette: UInt8? = nil,
+    backgroundPalette: UInt8? = nil
+  ) {
+    self.id = id
+    self.bold = bold
+    self.italic = italic
+    self.faint = faint
+    self.inverse = inverse
+    self.invisible = invisible
+    self.strikethrough = strikethrough
+    self.underline = underline
+    self.foreground = foreground
+    self.background = background
+    self.foregroundPalette = foregroundPalette
+    self.backgroundPalette = backgroundPalette
+  }
+}
+
+/// Palette provenance for one style definition (TRF1 section 13).
+public struct TRF1StylePaletteEntry: Equatable, Sendable {
+  public let styleID: UInt32
+  public let foreground: UInt8?
+  public let background: UInt8?
 }
 
 public enum TRF1CursorStyle: UInt8, Sendable {
@@ -421,7 +461,12 @@ public func decodeTRF1GlyphDefinitions(_ section: TRF1Section) throws -> [TRF1Gl
   return definitions
 }
 
-public func decodeTRF1StyleDefinitions(_ section: TRF1Section) throws -> [TRF1StyleDefinition] {
+/// Decodes style definitions. Pass the frame's optional style palette section
+/// to attach palette provenance; the RGB colors are complete without it.
+public func decodeTRF1StyleDefinitions(
+  _ section: TRF1Section,
+  palette paletteSection: TRF1Section? = nil
+) throws -> [TRF1StyleDefinition] {
   try requireKind(section, .styleDefinitions, "wrong style definition section kind")
   let reader = TRF1Reader(data: section.bytes)
   try reader.require(offset: 0, length: 4, "truncated style definition header")
@@ -469,7 +514,55 @@ public func decodeTRF1StyleDefinitions(_ section: TRF1Section) throws -> [TRF1St
       )
     )
   }
-  return styles
+  guard let paletteSection else { return styles }
+  var palette: [UInt32: TRF1StylePaletteEntry] = [:]
+  for entry in try decodeTRF1StylePalette(paletteSection) {
+    palette[entry.styleID] = entry
+  }
+  return styles.map { style in
+    guard let entry = palette[style.id] else { return style }
+    return TRF1StyleDefinition(
+      id: style.id,
+      bold: style.bold,
+      italic: style.italic,
+      faint: style.faint,
+      inverse: style.inverse,
+      invisible: style.invisible,
+      strikethrough: style.strikethrough,
+      underline: style.underline,
+      foreground: style.foreground,
+      background: style.background,
+      foregroundPalette: style.foreground == nil ? nil : entry.foreground,
+      backgroundPalette: style.background == nil ? nil : entry.background
+    )
+  }
+}
+
+public func decodeTRF1StylePalette(_ section: TRF1Section) throws -> [TRF1StylePaletteEntry] {
+  try requireKind(section, .stylePalette, "wrong style palette section kind")
+  let reader = TRF1Reader(data: section.bytes)
+  try reader.require(offset: 0, length: 4, "truncated style palette header")
+  let count = try reader.uint32(0, "truncated style palette header")
+  try require(count == section.itemCount, "style palette count mismatch")
+  try require(Int(count) <= (section.bytes.count - 4) / 8, "invalid style palette length")
+  try require(section.bytes.count == 4 + Int(count) * 8, "invalid style palette length")
+  var entries: [TRF1StylePaletteEntry] = []
+  entries.reserveCapacity(Int(count))
+  for index in 0..<Int(count) {
+    let offset = 4 + index * 8
+    let flags = try reader.uint8(offset + 4, "truncated style palette entry")
+    try require(flags & ~0x3 == 0, "invalid style palette flags")
+    let foreground = try reader.uint8(offset + 5, "truncated style palette entry")
+    let background = try reader.uint8(offset + 6, "truncated style palette entry")
+    entries.append(
+      TRF1StylePaletteEntry(
+        styleID: try reader.uint32(offset, "truncated style palette entry"),
+        foreground: flags & 1 != 0 ? foreground : nil,
+        background: flags & 2 != 0 ? background : nil
+      )
+    )
+  }
+  return entries
 }
 
 public func decodeTRF1CursorState(_ section: TRF1Section) throws -> TRF1CursorState {

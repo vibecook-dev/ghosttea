@@ -89,6 +89,8 @@ import Testing
     palette: [GhostteaPaletteConfigEntry(index: 2, color: [19, 20, 21])],
     backgroundOpacity: 0.5,
     backgroundOpacityCells: true,
+    minimumContrast: 4.5,
+    lightAdaptation: .off,
     fontSize: 13,
     fontFamilies: [],
     paddingX: [2, 2],
@@ -101,7 +103,7 @@ import Testing
     JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
   for key in [
     "cursorText", "palette", "backgroundOpacity", "backgroundOpacityCells", "shaderEffects",
-    "customShaderAnimation",
+    "customShaderAnimation", "minimumContrast", "lightAdaptation",
   ] {
     object[key] = nil
   }
@@ -115,7 +117,46 @@ import Testing
   #expect(!decoded.backgroundOpacityCells)
   #expect(decoded.shaderEffects.isEmpty)
   #expect(!decoded.customShaderAnimation)
+  #expect(decoded.minimumContrast == 1)
+  #expect(decoded.lightAdaptation == .auto)
   #expect(decoded.isValid)
+}
+
+@Test func presentationRoundTripsReadabilitySettingsWithTheDesktopSpelling() throws {
+  let presentation = GhostteaTerminalPresentationConfig(
+    schemaVersion: 1,
+    revision: "readability",
+    foreground: [1, 2, 3],
+    background: [4, 5, 6],
+    cursor: [7, 8, 9],
+    selectionBackground: [13, 14, 15],
+    selectionForeground: [16, 17, 18],
+    minimumContrast: 4.5,
+    lightAdaptation: .off,
+    fontSize: 13,
+    fontFamilies: [],
+    paddingX: [2, 2],
+    paddingY: [2, 2],
+    postProcess: .none,
+    customShaderCount: 0)
+  let object = try #require(
+    JSONSerialization.jsonObject(with: JSONEncoder().encode(presentation)) as? [String: Any])
+  #expect(object["minimumContrast"] as? Double == 4.5)
+  #expect(object["lightAdaptation"] as? String == "off")
+  let decoded = try JSONDecoder().decode(
+    GhostteaTerminalPresentationConfig.self,
+    from: JSONSerialization.data(withJSONObject: object))
+  #expect(decoded == presentation)
+  #expect(
+    throws: DecodingError.self,
+    "Unknown modes are rejected like the Rust enum"
+  ) {
+    var invalid = object
+    invalid["lightAdaptation"] = "sometimes"
+    _ = try JSONDecoder().decode(
+      GhostteaTerminalPresentationConfig.self,
+      from: JSONSerialization.data(withJSONObject: invalid))
+  }
 }
 
 @Test func configurationStoreValidatesSavesAndRejectsStaleRevisions() throws {

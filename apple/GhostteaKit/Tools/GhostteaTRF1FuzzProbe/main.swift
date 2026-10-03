@@ -62,6 +62,7 @@ private func exerciseEveryDecoder(_ data: Data) {
     switch section.kind {
     case .glyphDefinitions: _ = try? decodeTRF1GlyphDefinitions(section)
     case .styleDefinitions: _ = try? decodeTRF1StyleDefinitions(section)
+    case .stylePalette: _ = try? decodeTRF1StylePalette(section)
     case .rowReplacements: _ = try? decodeTRF1RowReplacements(section)
     case .cursorState: _ = try? decodeTRF1CursorState(section)
     case .scrollbarState: _ = try? decodeTRF1ScrollbarState(section)
@@ -109,6 +110,7 @@ for iteration in 0..<iterationCount {
     bytes: generator.data(maximumCount: 2_048))
   _ = try? decodeTRF1GlyphDefinitions(section)
   _ = try? decodeTRF1StyleDefinitions(section)
+  _ = try? decodeTRF1StylePalette(section)
   _ = try? decodeTRF1RowReplacements(section)
   _ = try? decodeTRF1CursorState(section)
   _ = try? decodeTRF1ScrollbarState(section)

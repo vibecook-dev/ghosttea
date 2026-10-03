@@ -102,6 +102,8 @@ private func exerciseEveryTRF1Decoder(_ data: Data) {
       _ = try? decodeTRF1GlyphDefinitions(section)
     case .styleDefinitions:
       _ = try? decodeTRF1StyleDefinitions(section)
+    case .stylePalette:
+      _ = try? decodeTRF1StylePalette(section)
     case .rowReplacements:
       _ = try? decodeTRF1RowReplacements(section)
     case .cursorState:
@@ -553,4 +555,127 @@ private func exerciseEveryTRF1Decoder(_ data: Data) {
   #expect(state.sessionEpoch == 2)
   #expect(Set(state.glyphDefinitions.keys) == Set(replacementGlyphs.map(\.id)))
   #expect(state.rows[0].text == "x")
+}
+
+private func styleSection(
+  _ styles: [(id: UInt32, foreground: Bool, background: Bool)]
+) -> TRF1Section {
+  var bytes = Data(repeating: 0, count: 4 + styles.count * 16)
+  writeUInt32(UInt32(styles.count), to: &bytes, at: 0)
+  for (index, style) in styles.enumerated() {
+    let offset = 4 + index * 16
+    writeUInt32(style.id, to: &bytes, at: offset)
+    bytes[offset + 6] = style.foreground ? 1 : 0
+    bytes[offset + 7] = style.background ? 1 : 0
+    bytes[offset + 8] = 0xcc
+    bytes[offset + 11] = 0x81
+  }
+  return TRF1Section(
+    kind: .styleDefinitions, flags: 0, itemCount: UInt32(styles.count), bytes: bytes)
+}
+
+private func paletteSection(
+  _ entries: [(id: UInt32, flags: UInt8, foreground: UInt8, background: UInt8)],
+  itemCount: UInt32? = nil
+) -> TRF1Section {
+  var bytes = Data(repeating: 0, count: 4 + entries.count * 8)
+  writeUInt32(UInt32(entries.count), to: &bytes, at: 0)
+  for (index, entry) in entries.enumerated() {
+    let offset = 4 + index * 8
+    writeUInt32(entry.id, to: &bytes, at: offset)
+    bytes[offset + 4] = entry.flags
+    bytes[offset + 5] = entry.foreground
+    bytes[offset + 6] = entry.background
+  }
+  return TRF1Section(
+    kind: .stylePalette, flags: 0, itemCount: itemCount ?? UInt32(entries.count), bytes: bytes)
+}
+
+@Test func decodesStylePaletteProvenanceOnlyForExplicitColors() throws {
+  let styles = styleSection([(1, true, false), (2, true, true), (3, false, false)])
+  let palette = paletteSection([(1, 0b11, 9, 4), (2, 0b10, 0, 12)])
+  #expect(
+    try decodeTRF1StylePalette(palette) == [
+      TRF1StylePaletteEntry(styleID: 1, foreground: 9, background: 4),
+      TRF1StylePaletteEntry(styleID: 2, foreground: nil, background: 12),
+    ])
+
+  let decoded = try decodeTRF1StyleDefinitions(styles, palette: palette)
+  // Style 1 has no explicit background, so its background index is dropped.
+  #expect(decoded[0].foregroundPalette == 9)
+  #expect(decoded[0].backgroundPalette == nil)
+  #expect(decoded[1].foregroundPalette == nil)
+  #expect(decoded[1].backgroundPalette == 12)
+  #expect(decoded[2].foregroundPalette == nil && decoded[2].backgroundPalette == nil)
+  // RGB stays authoritative: decoding without the section differs only in provenance.
+  let plain = try decodeTRF1StyleDefinitions(styles)
+  #expect(plain.map(\.foreground) == decoded.map(\.foreground))
+  #expect(plain.allSatisfy { $0.foregroundPalette == nil && $0.backgroundPalette == nil })
+}
+
+@Test func rejectsMalformedStylePaletteSections() {
+  for flags: UInt8 in [0b100, 0x80] {
+    #expect(throws: TRF1DecodingError("invalid style palette flags")) {
+      try decodeTRF1StylePalette(paletteSection([(1, flags, 1, 1)]))
+    }
+  }
+  #expect(throws: TRF1DecodingError("style palette count mismatch")) {
+    try decodeTRF1StylePalette(paletteSection([(1, 1, 1, 0)], itemCount: 2))
+  }
+  var truncated = paletteSection([(1, 1, 1, 0)]).bytes
+  truncated.removeLast()
+  #expect(throws: TRF1DecodingError.self) {
+    try decodeTRF1StylePalette(
+      TRF1Section(kind: .stylePalette, flags: 0, itemCount: 1, bytes: truncated))
+  }
+  #expect(throws: TRF1DecodingError("wrong style palette section kind")) {
+    try decodeTRF1StylePalette(
+      TRF1Section(kind: .styleDefinitions, flags: 0, itemCount: 0, bytes: Data(count: 4)))
+  }
+  // A malformed palette fails the style decode that consumes it.
+  #expect(throws: TRF1DecodingError("invalid style palette flags")) {
+    try decodeTRF1StyleDefinitions(
+      styleSection([(1, true, false)]), palette: paletteSection([(1, 0b1000, 1, 0)]))
+  }
+}
+
+/// The shared golden frame produced by the Rust core and decoded by the
+/// TypeScript package, so the Swift decoder is held to the same bytes.
+private func ansiBaselineFrame() throws -> Data {
+  let fixture = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("../../../../native/ghosttea/fixtures/phase1/ansi-baseline.json")
+    .standardizedFileURL
+  let object = try JSONSerialization.jsonObject(with: Data(contentsOf: fixture))
+  let hex = try #require((object as? [String: Any])?["expectedFrameHex"] as? String)
+  var bytes = Data(capacity: hex.utf8.count / 2)
+  var index = hex.startIndex
+  while index < hex.endIndex {
+    let next = hex.index(index, offsetBy: 2)
+    bytes.append(try #require(UInt8(hex[index..<next], radix: 16)))
+    index = next
+  }
+  return bytes
+}
+
+@Test func goldenFrameCarriesStylePaletteProvenanceIntoRetainedState() throws {
+  let bytes = try ansiBaselineFrame()
+  let frame = try decodeTRF1Frame(bytes)
+  let styleSection = try #require(frame.sections.first { $0.kind == .styleDefinitions })
+  let paletteSection = try #require(frame.sections.first { $0.kind == .stylePalette })
+  let styles = try decodeTRF1StyleDefinitions(styleSection, palette: paletteSection)
+  let red = try #require(
+    styles.first { $0.foreground == TRF1RGB(red: 0xcc, green: 0x66, blue: 0x66) })
+  let blue = try #require(
+    styles.first { $0.background == TRF1RGB(red: 0x81, green: 0xa2, blue: 0xbe) })
+  #expect(red.foregroundPalette == 1)
+  #expect(red.backgroundPalette == nil)
+  #expect(blue.backgroundPalette == 4)
+  #expect(blue.foregroundPalette == nil)
+
+  // Retained state merges the palette, and still skips sections it does not render.
+  var state = RetainedTRF1State()
+  _ = try state.apply(bytes)
+  #expect(state.styleDefinitions[red.id]?.foregroundPalette == 1)
+  #expect(state.styleDefinitions[blue.id]?.backgroundPalette == 4)
 }

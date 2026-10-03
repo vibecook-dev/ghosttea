@@ -51,6 +51,36 @@ import Testing
   #expect(!patched.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
 }
 
+@Test func appearanceBlockWritesReadabilitySettingsLikeTheDesktop() throws {
+  let defaults = try GhostteaConfigurationDraft.appearanceBlock(GhostteaAppearanceSelection())
+  #expect(defaults.contains("\nghosttea-light-adaptation = auto\n"))
+  #expect(defaults.contains("\nminimum-contrast = 1\n"))
+  #expect(
+    defaults.hasSuffix(
+      "minimum-contrast = 1\n" + GhostteaConfigurationDraft.appearanceBlockEnd))
+
+  for (ratio, written) in [(3.0, "3"), (4.5, "4.5"), (7.0, "7"), (2.25, "2.25")] {
+    let block = try GhostteaConfigurationDraft.appearanceBlock(
+      GhostteaAppearanceSelection(lightAdaptation: .off, minimumContrast: ratio))
+    #expect(block.contains("\nghosttea-light-adaptation = off\n"))
+    #expect(block.contains("\nminimum-contrast = \(written)\n"))
+  }
+  #expect(GhostteaAppearanceSelection.minimumContrastChoices == [1, 3, 4.5, 7])
+
+  for invalid in [0.5, 22, .nan, .infinity] {
+    #expect(throws: GhostteaConfigDraftError.invalidTheme) {
+      try GhostteaConfigurationDraft.appearanceBlock(
+        GhostteaAppearanceSelection(minimumContrast: invalid))
+    }
+  }
+}
+
+@Test func appearanceSelectionDefaultsReadabilityForConfigsWithoutIt() throws {
+  let selection = GhostteaAppearanceSelection(config: try testConfiguration())
+  #expect(selection.lightAdaptation == .auto)
+  #expect(selection.minimumContrast == 1)
+}
+
 @Test func appearancePatchRejectsAmbiguousManagedMarkers() {
   #expect(throws: GhostteaConfigDraftError.self) {
     try GhostteaConfigurationDraft.patchAppearance(

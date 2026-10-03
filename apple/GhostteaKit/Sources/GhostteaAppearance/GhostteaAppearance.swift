@@ -88,19 +88,30 @@ public struct GhostteaAppearanceSelection: Equatable, Sendable {
   public var backgroundOpacityCells: Bool
   public var shaderEffects: [String]
   public var shaderAnimation: Bool
+  /// `ghosttea-light-adaptation`: restyle dark-painted apps under light themes.
+  public var lightAdaptation: GhostteaLightAdaptation
+  /// Ghostty `minimum-contrast` ratio (1 is off).
+  public var minimumContrast: Double
+
+  /// Ratios offered by Settings; 4.5:1 is the WCAG AA level for body text.
+  public static let minimumContrastChoices: [Double] = [1, 3, 4.5, 7]
 
   public init(
     theme: GhostteaColorTheme? = nil,
     backgroundOpacity: Double = 1,
     backgroundOpacityCells: Bool = false,
     shaderEffects: [String] = [],
-    shaderAnimation: Bool = false
+    shaderAnimation: Bool = false,
+    lightAdaptation: GhostteaLightAdaptation = .auto,
+    minimumContrast: Double = 1
   ) {
     self.theme = theme
     self.backgroundOpacity = backgroundOpacity
     self.backgroundOpacityCells = backgroundOpacityCells
     self.shaderEffects = shaderEffects
     self.shaderAnimation = shaderAnimation
+    self.lightAdaptation = lightAdaptation
+    self.minimumContrast = minimumContrast
   }
 
   public init(config: GhostteaConfigSnapshot) {
@@ -112,6 +123,8 @@ public struct GhostteaAppearanceSelection: Equatable, Sendable {
       ? [GhostteaShaderEffect.betterCRT.rawValue]
       : config.renderer.shaderEffects
     shaderAnimation = config.renderer.customShaderAnimation
+    lightAdaptation = config.renderer.lightAdaptation
+    minimumContrast = Double(config.renderer.minimumContrast)
   }
 }
 
@@ -237,6 +250,8 @@ public enum GhostteaConfigurationDraft {
   public static func appearanceBlock(_ selection: GhostteaAppearanceSelection) throws -> String {
     guard selection.backgroundOpacity.isFinite,
       (0...1).contains(selection.backgroundOpacity),
+      selection.minimumContrast.isFinite,
+      (1...21).contains(selection.minimumContrast),
       selection.shaderEffects.allSatisfy({ id in
         GhostteaShaderOption.available.contains { $0.id == id }
       })
@@ -268,6 +283,8 @@ public enum GhostteaConfigurationDraft {
     }
     lines += [
       "custom-shader-animation = \(selection.shaderAnimation)",
+      "ghosttea-light-adaptation = \(selection.lightAdaptation.rawValue)",
+      "minimum-contrast = \(contrastRatio(selection.minimumContrast))",
       appearanceBlockEnd,
     ]
     return lines.joined(separator: "\n")
@@ -434,6 +451,7 @@ public enum GhostteaConfigurationDraft {
     lines.append("custom-shader =")
     lines += config.renderer.shaderEffects.map { "custom-shader = \($0)" }
     lines.append("custom-shader-animation = \(config.renderer.customShaderAnimation)")
+    lines.append("minimum-contrast = \(contrastRatio(Double(config.renderer.minimumContrast)))")
     lines += config.renderer.palette.map { entry in
       "palette = \(entry.index)=\(GhostteaFriendlyConfigValues.hex(entry.color))"
     }
@@ -512,6 +530,15 @@ public enum GhostteaConfigurationDraft {
 
   private static func configDecimal(_ value: Double) -> String {
     String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value)
+  }
+
+  /// Up to two decimals without trailing zeros, matching the desktop's
+  /// `minimum-contrast = 4.5` rather than `4.50`.
+  private static func contrastRatio(_ value: Double) -> String {
+    var text = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), value)
+    while text.hasSuffix("0") { text.removeLast() }
+    if text.hasSuffix(".") { text.removeLast() }
+    return text
   }
 
   private static func isColor(_ value: String) -> Bool {
