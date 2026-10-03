@@ -21,6 +21,10 @@ export interface GhostteaAppearanceUpdate {
   backgroundOpacityCells: boolean;
   shaderEffects: TerminalShaderEffect[];
   shaderAnimation: boolean;
+  /** `ghosttea-light-adaptation`; omitted by hosts that predate the setting. */
+  lightAdaptation?: "auto" | "off";
+  /** Ghostty `minimum-contrast` ratio (1 is off). */
+  minimumContrast?: number;
 }
 
 export interface GhostteaConfigEditorState {

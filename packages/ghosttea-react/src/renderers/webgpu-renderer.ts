@@ -21,7 +21,7 @@ import { graphemeCellWidth, splitGraphemes } from "../cell-width.js";
 import { backgroundRunBounds } from "./background-geometry.js";
 import { rowsForDamage } from "./render-damage.js";
 import { SHADER_EFFECT_WGSL } from "./shader-effects.js";
-import { createLightAdaptation, darkPaintedBase, type LightAdaptation } from "./light-adaptation.js";
+import { createLightAdaptation, darkPaintedBase, ensureContrast, type LightAdaptation } from "./light-adaptation.js";
 
 const ATLAS_SIZE = 2048;
 const GEOMETRY_CACHE_LIMIT = 8;
@@ -571,6 +571,7 @@ function geometryCacheKey(
       ...view.theme.selectionForeground,
     ].join(","),
     view.theme.backgroundOpacityCells ? "opacity-cells" : "opaque-cells",
+    view.theme.minimumContrast ?? 1,
     adaptationKey,
     selection,
     effectiveCursorStyle(view) === CursorStyle.Block ? `${view.cursor.x},${view.cursor.y}` : "-",
@@ -856,6 +857,8 @@ interface ResolvedStyle {
   background: Rgba | null;
   /** Foreground used as an area fill (block elements); differs only under light adaptation. */
   fill: Rgba;
+  /** Foreground for text glyphs and their decorations, after `minimum-contrast`. */
+  text: Rgba;
   underline: boolean;
   strikethrough: boolean;
   invisible: boolean;
@@ -876,12 +879,12 @@ function resolveStyle(
     if (style?.inverse) {
       background = source.foreground ? adaptation.surface(source.foreground) : theme.foreground;
       foreground = source.background
-        ? adaptation.ink(source.background, source.foreground ?? adaptation.base)
+        ? adaptation.ink(source.background, source.foreground ?? adaptation.base, style?.backgroundPalette)
         : theme.background;
       fill = foreground;
     } else {
       foreground = source.foreground
-        ? adaptation.ink(source.foreground, source.background ?? adaptation.base)
+        ? adaptation.ink(source.foreground, source.background ?? adaptation.base, style?.foregroundPalette)
         : theme.foreground;
       background = source.background ? adaptation.surface(source.background) : null;
       fill = source.foreground ? adaptation.surface(source.foreground) : theme.foreground;
@@ -895,14 +898,23 @@ function resolveStyle(
   if (background && theme.backgroundOpacityCells) {
     background = [background[0], background[1], background[2], theme.background[3]];
   }
+  // Graphics (box drawing, block elements) and color glyphs keep the raw
+  // foreground, as in Ghostty; the backdrop ignores window transparency.
+  let text = ensureContrast(
+    foreground,
+    over(background ?? theme.background, theme.background),
+    theme.minimumContrast ?? 1,
+  );
   if (style?.faint) {
     foreground = [foreground[0], foreground[1], foreground[2], foreground[3] * 0.55];
     fill = [fill[0], fill[1], fill[2], fill[3] * 0.55];
+    text = [text[0], text[1], text[2], text[3] * 0.55];
   }
   return {
     foreground,
     background,
     fill,
+    text,
     underline: style?.underline ?? false,
     strikethrough: style?.strikethrough ?? false,
     invisible: style?.invisible ?? false,
@@ -1672,8 +1684,9 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             )
               continue;
           }
-          const atlas = definition.format === GlyphFormat.Alpha8 ? this.#monoAtlas : this.#colorAtlas;
-          const vertices = definition.format === GlyphFormat.Alpha8 ? glyphVertices : colorGlyphVertices;
+          const mono = definition.format === GlyphFormat.Alpha8;
+          const atlas = mono ? this.#monoAtlas : this.#colorAtlas;
+          const vertices = mono ? glyphVertices : colorGlyphVertices;
           pushGlyph(
             vertices,
             (ORIGIN_X + instance.x) * scale,
@@ -1681,7 +1694,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             instance.width * scale,
             instance.height * scale,
             atlas.glyph(definition),
-            foreground,
+            mono && foreground === style.foreground ? style.text : foreground,
             viewportWidth,
             viewportHeight,
           );
@@ -1731,7 +1744,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             Math.round(rowTop + 16 * scale),
             width,
             stroke,
-            style.foreground,
+            style.text,
             viewportWidth,
             viewportHeight,
           );
@@ -1743,7 +1756,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             Math.round(rowTop + 9 * scale),
             width,
             stroke,
-            style.foreground,
+            style.text,
             viewportWidth,
             viewportHeight,
           );
@@ -1932,8 +1945,9 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             )
               continue;
           }
-          const atlas = definition.format === GlyphFormat.Alpha8 ? this.#monoAtlas : this.#colorAtlas;
-          const vertices = definition.format === GlyphFormat.Alpha8 ? glyphVertices : colorGlyphVertices;
+          const mono = definition.format === GlyphFormat.Alpha8;
+          const atlas = mono ? this.#monoAtlas : this.#colorAtlas;
+          const vertices = mono ? glyphVertices : colorGlyphVertices;
           pushGlyph(
             vertices,
             (ORIGIN_X + instance.x) * scale,
@@ -1941,7 +1955,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             instance.width * scale,
             instance.height * scale,
             atlas.glyph(definition),
-            foreground,
+            mono && foreground === style.foreground ? style.text : foreground,
             viewportWidth,
             viewportHeight,
           );
@@ -1991,7 +2005,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             Math.round(rowTop + 16 * scale),
             width,
             stroke,
-            style.foreground,
+            style.text,
             viewportWidth,
             viewportHeight,
           );
@@ -2003,7 +2017,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
             Math.round(rowTop + 9 * scale),
             width,
             stroke,
-            style.foreground,
+            style.text,
             viewportWidth,
             viewportHeight,
           );

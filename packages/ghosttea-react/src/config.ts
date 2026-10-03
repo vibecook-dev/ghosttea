@@ -23,7 +23,8 @@ export function terminalThemeFromConfig(config: Pick<ConfigSnapshot, "renderer">
     selection: rgba(renderer.selectionBackground),
     selectionForeground: rgba(renderer.selectionForeground),
     backgroundOpacityCells: renderer.backgroundOpacityCells ?? false,
-    lightAdaptation: "auto",
+    lightAdaptation: renderer.lightAdaptation ?? "auto",
+    minimumContrast: renderer.minimumContrast ?? 1,
   };
 }
 

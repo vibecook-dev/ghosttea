@@ -124,6 +124,29 @@ describe("managed appearance config", () => {
     ).toEqual(["background", "custom-shader"]);
   });
 
+  it("writes readability settings only when the renderer sends them", () => {
+    const readable = validateAppearanceUpdate({ ...update, lightAdaptation: "off", minimumContrast: 4.567 });
+    expect(readable).toMatchObject({ lightAdaptation: "off", minimumContrast: 4.57 });
+    const block = appearanceBlock(readable);
+    expect(block).toContain("ghosttea-light-adaptation = off\nminimum-contrast = 4.57\n");
+    expect(appearanceBlock(validateAppearanceUpdate(update))).not.toMatch(/light-adaptation|minimum-contrast/u);
+    expect(() => validateAppearanceUpdate({ ...update, lightAdaptation: "maybe" })).toThrow("auto or off");
+    expect(() => validateAppearanceUpdate({ ...update, minimumContrast: 0 })).toThrow("between 1 and 21");
+
+    const renderer = { lightAdaptation: "auto", minimumContrast: 1 } as RendererConfig;
+    const customColors: ManagedAppearanceUpdate = {
+      backgroundOpacity: 1,
+      backgroundOpacityCells: false,
+      shaderEffects: [],
+      shaderAnimation: false,
+      lightAdaptation: "off",
+      minimumContrast: 4.57,
+    };
+    expect(appearanceUpdateMismatches(renderer, customColors)).toEqual(
+      expect.arrayContaining(["ghosttea-light-adaptation", "minimum-contrast"]),
+    );
+  });
+
   it("refuses ambiguous or incomplete managed markers", () => {
     expect(() => patchAppearanceBlock(`${APPEARANCE_BLOCK_START}\n`, appearanceBlock(update))).toThrow("malformed");
     expect(() =>

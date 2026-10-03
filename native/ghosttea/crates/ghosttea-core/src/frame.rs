@@ -16,6 +16,7 @@ pub const GLYPH_DEFINITIONS: u16 = 1;
 pub const CLIPBOARD_WRITE: u16 = 11;
 pub const SELECTION_SPANS: u16 = 5;
 pub const LINK_TARGETS: u16 = 12;
+pub const STYLE_PALETTE: u16 = 13;
 pub const FULL_SNAPSHOT: u16 = 1;
 pub const MOUSE_TRACKING: u16 = 1 << 1;
 pub const CATALOG_RESET: u16 = 1 << 2;
@@ -62,7 +63,29 @@ fn encode_glyph_definitions(definitions: &[GlyphDefinition]) -> Result<(Vec<u8>,
     Ok((bytes, count))
 }
 
-fn style_id(style: CellStyle) -> u32 {
+/// Palette entries a style's explicit colors were resolved from. Renderers use
+/// it to tell theme-designed ANSI colors from application truecolor; the RGB
+/// in the style definition stays authoritative for decoders that ignore it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StylePalette {
+    pub foreground: Option<u8>,
+    pub background: Option<u8>,
+}
+
+impl StylePalette {
+    fn is_empty(self) -> bool {
+        self.foreground.is_none() && self.background.is_none()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FrameStyle {
+    pub style: CellStyle,
+    pub palette: StylePalette,
+}
+
+fn style_id(style: FrameStyle) -> u32 {
+    let FrameStyle { style, palette } = style;
     if style == CellStyle::default() {
         return 0;
     }
@@ -85,6 +108,22 @@ fn style_id(style: CellStyle) -> u32 {
         .chain(foreground)
         .chain([u8::from(style.background.is_some())])
         .chain(background)
+        // Palette provenance only extends the hash when present, so ids of
+        // truecolor styles are unchanged and same-RGB sources stay distinct.
+        .chain(
+            (!palette.is_empty())
+                .then(|| {
+                    [
+                        2,
+                        u8::from(palette.foreground.is_some()),
+                        palette.foreground.unwrap_or(0),
+                        u8::from(palette.background.is_some()),
+                        palette.background.unwrap_or(0),
+                    ]
+                })
+                .into_iter()
+                .flatten(),
+        )
     {
         hash ^= byte as u32;
         hash = hash.wrapping_mul(16_777_619);
@@ -92,10 +131,10 @@ fn style_id(style: CellStyle) -> u32 {
     if hash == 0 { 1 } else { hash }
 }
 
-fn encode_style_definitions(styles: impl ExactSizeIterator<Item = (u32, CellStyle)>) -> Vec<u8> {
+fn encode_style_definitions(styles: &[(u32, FrameStyle)]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(4 + styles.len() * 16);
     bytes.extend_from_slice(&(styles.len() as u32).to_le_bytes());
-    for (id, style) in styles {
+    for &(id, FrameStyle { style, .. }) in styles {
         let flags = u16::from(style.bold)
             | (u16::from(style.italic) << 1)
             | (u16::from(style.faint) << 2)
@@ -116,15 +155,37 @@ fn encode_style_definitions(styles: impl ExactSizeIterator<Item = (u32, CellStyl
     bytes
 }
 
+/// Section 13: `u32 count`, then 8-byte entries of `u32 style id`, `u8 flags`
+/// (bit 0 foreground, bit 1 background), `u8 foreground index`,
+/// `u8 background index`, `u8 reserved`. Only styles with provenance appear.
+fn encode_style_palette(styles: &[(u32, FrameStyle)]) -> (Vec<u8>, u32) {
+    let entries = styles
+        .iter()
+        .filter(|(_, style)| !style.palette.is_empty())
+        .collect::<Vec<_>>();
+    let mut bytes = Vec::with_capacity(4 + entries.len() * 8);
+    bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (id, FrameStyle { palette, .. }) in &entries {
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes.push(
+            u8::from(palette.foreground.is_some()) | (u8::from(palette.background.is_some()) << 1),
+        );
+        bytes.push(palette.foreground.unwrap_or(0));
+        bytes.push(palette.background.unwrap_or(0));
+        bytes.push(0);
+    }
+    (bytes, entries.len() as u32)
+}
+
 struct PreparedRowStyles {
     cell_ids: Vec<u32>,
     column_ids: Vec<u32>,
 }
 
 enum PreparedFrameStyles {
-    Linear(BTreeMap<u32, CellStyle>),
+    Linear(BTreeMap<u32, FrameStyle>),
     Indexed {
-        definitions: HashMap<u32, CellStyle>,
+        definitions: HashMap<u32, FrameStyle>,
         rows: Vec<PreparedRowStyles>,
     },
 }
@@ -137,18 +198,16 @@ impl PreparedFrameStyles {
         }
     }
 
-    fn encode(&self) -> Vec<u8> {
+    fn sorted(&self) -> Vec<(u32, FrameStyle)> {
         match self {
-            Self::Linear(styles) => {
-                encode_style_definitions(styles.iter().map(|(&id, &style)| (id, style)))
-            }
+            Self::Linear(styles) => styles.iter().map(|(&id, &style)| (id, style)).collect(),
             Self::Indexed { definitions, .. } => {
                 let mut sorted = definitions
                     .iter()
                     .map(|(&id, &style)| (id, style))
                     .collect::<Vec<_>>();
                 sorted.sort_unstable_by_key(|(id, _)| *id);
-                encode_style_definitions(sorted.into_iter())
+                sorted
             }
         }
     }
@@ -161,6 +220,14 @@ pub(crate) trait FrameCell {
     fn column(&self) -> u16;
     fn span(&self) -> u16;
     fn style(&self) -> CellStyle;
+    fn palette(&self) -> StylePalette;
+
+    fn frame_style(&self) -> FrameStyle {
+        FrameStyle {
+            style: self.style(),
+            palette: self.palette(),
+        }
+    }
 }
 
 impl FrameCell for TerminalCell {
@@ -174,6 +241,17 @@ impl FrameCell for TerminalCell {
 
     fn style(&self) -> CellStyle {
         self.style
+    }
+
+    fn palette(&self) -> StylePalette {
+        StylePalette {
+            foreground: self
+                .foreground_palette
+                .filter(|_| self.style.foreground.is_some()),
+            background: self
+                .background_palette
+                .filter(|_| self.style.background.is_some()),
+        }
     }
 }
 
@@ -194,12 +272,12 @@ fn append_style_run<C: FrameCell>(runs: &mut Vec<(u32, u16, u16)>, cell: &C, id:
 fn prepare_row_styles<C: FrameCell>(
     cells: &[C],
     shaped: &ShapedRow,
-    styles: &mut HashMap<u32, CellStyle>,
+    styles: &mut HashMap<u32, FrameStyle>,
 ) -> PreparedRowStyles {
     let cell_ids = cells
         .iter()
         .map(|cell| {
-            let style = cell.style();
+            let style = cell.frame_style();
             let id = style_id(style);
             styles.entry(id).or_insert(style);
             id
@@ -339,7 +417,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         .any(|row| cells[*row as usize].len() >= 8);
     let prepared_styles = if indexed_styles {
         let mut definitions = HashMap::new();
-        definitions.insert(0, CellStyle::default());
+        definitions.insert(0, FrameStyle::default());
         let rows = updated_rows
             .iter()
             .map(|row| {
@@ -350,17 +428,19 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         PreparedFrameStyles::Indexed { definitions, rows }
     } else {
         let mut definitions = BTreeMap::new();
-        definitions.insert(0, CellStyle::default());
+        definitions.insert(0, FrameStyle::default());
         for row in updated_rows {
             for cell in &cells[*row as usize] {
-                let style = cell.style();
+                let style = cell.frame_style();
                 definitions.entry(style_id(style)).or_insert(style);
             }
         }
         PreparedFrameStyles::Linear(definitions)
     };
     let (glyph_definitions, glyph_count) = encode_glyph_definitions(new_glyph_definitions)?;
-    let style_definitions = prepared_styles.encode();
+    let sorted_styles = prepared_styles.sorted();
+    let style_definitions = encode_style_definitions(&sorted_styles);
+    let (style_palette, style_palette_count) = encode_style_palette(&sorted_styles);
     let mut accessibility = Vec::new();
     accessibility.extend_from_slice(&(updated_rows.len() as u16).to_le_bytes());
     let mut replacements = Vec::new();
@@ -385,7 +465,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         match &prepared_styles {
             PreparedFrameStyles::Linear(_) => {
                 for cell in row_cells {
-                    append_style_run(&mut runs, cell, style_id(cell.style()));
+                    append_style_run(&mut runs, cell, style_id(cell.frame_style()));
                 }
             }
             PreparedFrameStyles::Indexed { rows, .. } => {
@@ -405,7 +485,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
                             glyph.cell_start >= cell.column()
                                 && glyph.cell_start < cell.column().saturating_add(cell.span())
                         })
-                        .map(|cell| style_id(cell.style()))
+                        .map(|cell| style_id(cell.frame_style()))
                         .unwrap_or(0);
                     encode_glyph_instance(&mut replacements, glyph, id);
                 }
@@ -459,7 +539,11 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
             }
         }
     }
-    let section_count = 7 + usize::from(links.is_some()) + usize::from(clipboard_payload.is_some());
+    let palette_section = style_palette_count > 0;
+    let section_count = 7
+        + usize::from(links.is_some())
+        + usize::from(clipboard_payload.is_some())
+        + usize::from(palette_section);
     let glyph_offset = FRAME_HEADER_BYTES + SECTION_HEADER_BYTES * section_count;
     let style_offset = glyph_offset + glyph_definitions.len();
     let replacement_offset = style_offset + style_definitions.len();
@@ -491,6 +575,10 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
 
     let link_offset = packet.len();
     packet.extend_from_slice(&link_payload);
+    let style_palette_offset = packet.len();
+    if palette_section {
+        packet.extend_from_slice(&style_palette);
+    }
 
     put_u32(&mut packet, 0, FRAME_MAGIC);
     put_u16(&mut packet, 4, 1);
@@ -560,6 +648,15 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
         put_u32(&mut packet, link_header + 4, link_offset as u32);
         put_u32(&mut packet, link_header + 8, link_payload.len() as u32);
         put_u32(&mut packet, link_header + 12, links.len() as u32);
+    }
+    if palette_section {
+        let palette_header = 176
+            + (usize::from(clipboard_payload.is_some()) + usize::from(links.is_some()))
+                * SECTION_HEADER_BYTES;
+        put_u16(&mut packet, palette_header, STYLE_PALETTE);
+        put_u32(&mut packet, palette_header + 4, style_palette_offset as u32);
+        put_u32(&mut packet, palette_header + 8, style_palette.len() as u32);
+        put_u32(&mut packet, palette_header + 12, style_palette_count);
     }
     Ok(packet)
 }
@@ -635,14 +732,14 @@ mod tests {
             definitions: Vec::new(),
         };
         let mut definitions = HashMap::new();
-        definitions.insert(0, CellStyle::default());
+        definitions.insert(0, FrameStyle::default());
         let prepared = prepare_row_styles(&cells, &shaped, &mut definitions);
 
         assert_eq!(
             prepared.cell_ids,
             cells
                 .iter()
-                .map(|cell| style_id(cell.style))
+                .map(|cell| style_id(cell.frame_style()))
                 .collect::<Vec<_>>()
         );
         for glyph in &shaped.glyphs {
@@ -652,7 +749,7 @@ mod tests {
                     glyph.cell_start >= cell.column
                         && glyph.cell_start < cell.column.saturating_add(cell.span)
                 })
-                .map(|cell| style_id(cell.style))
+                .map(|cell| style_id(cell.frame_style()))
                 .unwrap_or(0);
             assert_eq!(
                 prepared
@@ -665,6 +762,125 @@ mod tests {
                 glyph.cell_start
             );
         }
+    }
+
+    fn frame_sections(frame: &[u8]) -> Vec<(u16, &[u8], u32)> {
+        let count = u16::from_le_bytes([frame[60], frame[61]]) as usize;
+        (0..count)
+            .map(|index| {
+                let header = &frame[FRAME_HEADER_BYTES + index * SECTION_HEADER_BYTES..];
+                let field = |at: usize| u32::from_le_bytes(header[at..at + 4].try_into().unwrap());
+                let (offset, length) = (field(4) as usize, field(8) as usize);
+                (
+                    u16::from_le_bytes([header[0], header[1]]),
+                    &frame[offset..offset + length],
+                    field(12),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn palette_colors_carry_their_index_beside_the_resolved_rgb() {
+        let mut terminal = ghosttea_vt::GhosttyTerminalCore::new(8, 1, 0).unwrap();
+        terminal.feed(b"\x1b[31;44mA\x1b[0m");
+        let palette_red = terminal.snapshot().unwrap().cells[0][0]
+            .style
+            .foreground
+            .unwrap();
+        let [r, g, b] = palette_red;
+        terminal.feed(format!("\x1b[38;2;{r};{g};{b}mB\x1b[0m").as_bytes());
+        let snapshot = terminal.snapshot().unwrap();
+        let shaped_rows = vec![ShapedRow::default(); snapshot.rows.len()];
+        let cursor = FrameCursor {
+            x: 0,
+            y: 0,
+            visible: false,
+            style: 0,
+            blinking: false,
+        };
+        let frame = encode_text_snapshot(TextSnapshot {
+            session_handle: 1,
+            session_epoch: 1,
+            layout_epoch: 1,
+            sequence: 1,
+            revision: 1,
+            cols: snapshot.cols,
+            rows: &snapshot.rows,
+            shaped_rows: &shaped_rows,
+            cells: &snapshot.cells,
+            updated_rows: &[0],
+            full_snapshot: true,
+            catalog_reset: false,
+            mouse_tracking: false,
+            scrollbar: &snapshot.scrollbar,
+            selection: None,
+            new_glyph_definitions: &[],
+            clipboard: None,
+            cursor: &cursor,
+            links: None,
+        })
+        .unwrap();
+
+        let cells = &snapshot.cells[0];
+        let palette_id = style_id(cells[0].frame_style());
+        let truecolor_id = style_id(cells[1].frame_style());
+        assert_eq!(cells[0].style.foreground, cells[1].style.foreground);
+        assert_ne!(palette_id, truecolor_id, "same RGB from different sources");
+
+        let sections = frame_sections(&frame);
+        let (_, payload, count) = sections
+            .iter()
+            .find(|(kind, ..)| *kind == STYLE_PALETTE)
+            .copied()
+            .expect("palette section");
+        assert_eq!(count, 1);
+        let mut expected = 1_u32.to_le_bytes().to_vec();
+        expected.extend_from_slice(&palette_id.to_le_bytes());
+        expected.extend_from_slice(&[0b11, 1, 4, 0]);
+        assert_eq!(payload, expected);
+    }
+
+    #[test]
+    fn truecolor_frames_omit_the_palette_section() {
+        let mut terminal = ghosttea_vt::GhosttyTerminalCore::new(8, 1, 0).unwrap();
+        terminal.feed(b"\x1b[38;2;1;2;3mA");
+        let snapshot = terminal.snapshot().unwrap();
+        let shaped_rows = vec![ShapedRow::default(); 1];
+        let cursor = FrameCursor {
+            x: 0,
+            y: 0,
+            visible: false,
+            style: 0,
+            blinking: false,
+        };
+        let frame = encode_text_snapshot(TextSnapshot {
+            session_handle: 1,
+            session_epoch: 1,
+            layout_epoch: 1,
+            sequence: 1,
+            revision: 1,
+            cols: snapshot.cols,
+            rows: &snapshot.rows,
+            shaped_rows: &shaped_rows,
+            cells: &snapshot.cells,
+            updated_rows: &[0],
+            full_snapshot: true,
+            catalog_reset: false,
+            mouse_tracking: false,
+            scrollbar: &snapshot.scrollbar,
+            selection: None,
+            new_glyph_definitions: &[],
+            clipboard: None,
+            cursor: &cursor,
+            links: None,
+        })
+        .unwrap();
+        assert!(
+            frame_sections(&frame)
+                .iter()
+                .all(|(kind, ..)| *kind != STYLE_PALETTE)
+        );
     }
 
     #[test]

@@ -15,7 +15,12 @@
 //  accents   land in a mid-tone band: APCA Lc = clamp(0.5·|Lc| + 28, 45, 70)
 //            against the new background, chroma raised toward 0.12.
 //
-// Theme-owned colors (default fg/bg) are left to the theme.
+// Theme-owned colors (default fg/bg) are left to the theme, and so are
+// chromatic ANSI colors (palette 1–6, 9–14): the light theme designed them for
+// light paper, so they pass through unless the remapped surface beneath makes
+// them less legible than on the theme background. Neutral ANSI colors (0, 7,
+// 8, 15) carry a role — "bright text", "dim panel" — rather than a hue, so
+// they remap like truecolor.
 
 import type { StyleDefinition } from "@vibecook/ghosttea-frame";
 import type { RenderView, Rgba } from "./types.js";
@@ -110,12 +115,6 @@ const smoothstep = (e0: number, e1: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** Light when dark text out-contrasts light text: WCAG luminance above ~0.179. Matches the VT shim. */
-export function isLightBackground([r, g, b]: Rgb): boolean {
-  const luminance = 0.2126 * toLinear(r / 255) + 0.7152 * toLinear(g / 255) + 0.0722 * toLinear(b / 255);
-  return (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05);
-}
-
 const toRgba = ([r, g, b]: Rgb): Rgba => [r / 255, g / 255, b / 255, 1];
 const fromRgba = (color: Rgba): Rgb => [
   Math.round(clamp(color[0]) * 255),
@@ -124,14 +123,75 @@ const fromRgba = (color: Rgba): Rgb => [
 ];
 const keyOf = ([r, g, b]: Rgb): number => (r << 16) | (g << 8) | b;
 
+const luminance = ([r, g, b]: Rgb): number =>
+  0.2126 * toLinear(r / 255) + 0.7152 * toLinear(g / 255) + 0.0722 * toLinear(b / 255);
+const contrastRatio = (a: Rgb, b: Rgb): number => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+};
+
+/** Light when dark text out-contrasts light text: WCAG luminance above ~0.179. Matches the VT shim. */
+export function isLightBackground(color: Rgb): boolean {
+  const y = luminance(color);
+  return (y + 0.05) / 0.05 > 1.05 / (y + 0.05);
+}
+
+/** null: the text already meets the ratio. */
+const contrasted = new Map<string, Rgb | null>();
+
+/**
+ * Ghostty's `minimum-contrast`: text below the WCAG ratio against its
+ * background moves toward whichever of black or white contrasts more. Ghostty
+ * snaps straight to that extreme; this keeps hue and chroma and moves OKLab
+ * lightness only as far as the ratio needs, reaching black or white only when
+ * nothing less suffices.
+ */
+export function ensureContrast(text: Rgba, background: Rgba, ratio: number): Rgba {
+  if (!(ratio > 1)) return text;
+  const fg = fromRgba(text);
+  const bg = fromRgba(background);
+  const cacheKey = `${keyOf(fg)}/${keyOf(bg)}/${ratio}`;
+  let result = contrasted.get(cacheKey);
+  if (result === undefined) {
+    if (contrastRatio(fg, bg) >= ratio) result = null;
+    else {
+      const towardWhite = contrastRatio([255, 255, 255], bg) > contrastRatio([0, 0, 0], bg);
+      const [L, a, b] = oklab(fg);
+      const C = Math.hypot(a, b);
+      const h = Math.atan2(b, a);
+      let near = L;
+      let far = towardWhite ? 1 : 0;
+      let best: Rgb = towardWhite ? [255, 255, 255] : [0, 0, 0];
+      if (contrastRatio(best, bg) >= ratio) {
+        for (let i = 0; i < 20; i += 1) {
+          const mid = (near + far) / 2;
+          const candidate = gamutMap(mid, C, h);
+          if (contrastRatio(candidate, bg) >= ratio) {
+            far = mid;
+            best = candidate;
+          } else near = mid;
+        }
+      }
+      result = best;
+    }
+    if (contrasted.size > 4096) contrasted.clear();
+    contrasted.set(cacheKey, result);
+  }
+  if (result === null) return text;
+  return [result[0] / 255, result[1] / 255, result[2] / 255, text[3]];
+}
+
 export interface LightAdaptation {
   /** Stable identity for cache keys: base, paper, and ink. */
   readonly key: string;
   readonly base: Rgb;
   /** A color painted as an area: cell backgrounds and block-element art. */
   surface(color: Rgb): Rgba;
-  /** A glyph color, judged against the background it was designed on. */
-  ink(color: Rgb, sourceBackground: Rgb): Rgba;
+  /**
+   * A glyph color, judged against the background it was designed on.
+   * `paletteIndex` is the ANSI entry the color came from, when known.
+   */
+  ink(color: Rgb, sourceBackground: Rgb, paletteIndex?: number): Rgba;
 }
 
 export function createLightAdaptation(base: Rgb, paperColor: Rgba, inkColor: Rgba): LightAdaptation {
@@ -181,11 +241,20 @@ export function createLightAdaptation(base: Rgb, paperColor: Rgba, inkColor: Rgb
   };
 
   const inks = new Map<string, Rgba>();
-  const ink = (color: Rgb, sourceBackground: Rgb): Rgba => {
-    const cacheKey = `${keyOf(color)}/${keyOf(sourceBackground)}`;
+  const ink = (color: Rgb, sourceBackground: Rgb, paletteIndex?: number): Rgba => {
+    const themeColor = paletteIndex !== undefined && CHROMATIC_ANSI.has(paletteIndex);
+    const cacheKey = `${keyOf(color)}/${keyOf(sourceBackground)}${themeColor ? "/p" : ""}`;
     const cached = inks.get(cacheKey);
     if (cached) return cached;
     const mapped = surfaceRgb(sourceBackground);
+    if (themeColor) {
+      const legibility = Math.min(45, Math.abs(apca(color, paper)));
+      if (Math.abs(apca(color, mapped)) >= legibility) {
+        const rgba = toRgba(color);
+        inks.set(cacheKey, rgba);
+        return rgba;
+      }
+    }
     const [L, a0, b0] = oklab(color);
     const C0 = Math.hypot(a0, b0);
     // Neutral ink: mirror its Lr distance from the background, and lean
@@ -229,6 +298,8 @@ export function createLightAdaptation(base: Rgb, paperColor: Rgba, inkColor: Rgb
     ink,
   };
 }
+
+const CHROMATIC_ANSI = new Set([1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14]);
 
 /** Engage when this share of cells carries an explicit dark background… */
 export const ENGAGE_SHARE = 0.6;

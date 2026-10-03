@@ -13,6 +13,8 @@ export interface AppearanceDraftState {
   opacityCells: boolean;
   effects: TerminalShaderEffect[];
   animation: boolean;
+  lightAdaptation: "auto" | "off";
+  minimumContrast: number;
 }
 
 export function appearanceDraftFromConfig(config: ConfigSnapshot): AppearanceDraftState {
@@ -24,6 +26,8 @@ export function appearanceDraftFromConfig(config: ConfigSnapshot): AppearanceDra
       config.renderer.shaderEffects?.filter(isGhostteaShaderEffect) ??
       (config.renderer.postProcess === "better-crt" ? ["ghosttea:better-crt"] : []),
     animation: config.renderer.customShaderAnimation ?? false,
+    lightAdaptation: config.renderer.lightAdaptation ?? "auto",
+    minimumContrast: config.renderer.minimumContrast ?? 1,
   };
 }
 
@@ -33,6 +37,8 @@ export function sameAppearanceDraft(left: AppearanceDraftState, right: Appearanc
     left.opacity === right.opacity &&
     left.opacityCells === right.opacityCells &&
     left.animation === right.animation &&
+    left.lightAdaptation === right.lightAdaptation &&
+    left.minimumContrast === right.minimumContrast &&
     left.effects.length === right.effects.length &&
     left.effects.every((effect, index) => effect === right.effects[index])
   );
@@ -72,11 +78,13 @@ export function AppearanceSettings({
   const [opacityCells, setOpacityCells] = useState(initialAppearance.opacityCells);
   const [effects, setEffects] = useState<TerminalShaderEffect[]>(initialAppearance.effects);
   const [animation, setAnimation] = useState(initialAppearance.animation);
+  const [lightAdaptation, setLightAdaptation] = useState(initialAppearance.lightAdaptation);
+  const [minimumContrast, setMinimumContrast] = useState(initialAppearance.minimumContrast);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const appearanceDraft = useMemo<AppearanceDraftState>(
-    () => ({ themeName, opacity, opacityCells, effects, animation }),
-    [animation, effects, opacity, opacityCells, themeName],
+    () => ({ themeName, opacity, opacityCells, effects, animation, lightAdaptation, minimumContrast }),
+    [animation, effects, lightAdaptation, minimumContrast, opacity, opacityCells, themeName],
   );
   const appearanceDirty = !sameAppearanceDraft(appearanceDraft, appearanceBaseline);
   const appearanceStale = appearanceDirty && observedConfig.revision !== appearanceBaselineRevision;
@@ -94,6 +102,8 @@ export function AppearanceSettings({
     setOpacityCells(next.opacityCells);
     setEffects(next.effects);
     setAnimation(next.animation);
+    setLightAdaptation(next.lightAdaptation);
+    setMinimumContrast(next.minimumContrast);
     setAppearanceBaseline(next);
     setAppearanceBaselineRevision(nextConfig.revision);
   }, []);
@@ -175,6 +185,8 @@ export function AppearanceSettings({
         backgroundOpacityCells: opacityCells,
         shaderEffects: effects,
         shaderAnimation: animation,
+        lightAdaptation,
+        minimumContrast,
       });
       requestClose();
     } catch (cause) {
@@ -343,6 +355,33 @@ export function AppearanceSettings({
                       Desktop transparency and background blur depend on your operating system and app host.
                     </p>
                   )}
+
+                  <h2>Readability</h2>
+                  <label className="appearance-check">
+                    <input
+                      type="checkbox"
+                      checked={lightAdaptation === "auto"}
+                      onChange={(event) => setLightAdaptation(event.currentTarget.checked ? "auto" : "off")}
+                    />
+                    <span>Restyle apps that paint their own dark background when a light theme is active</span>
+                  </label>
+                  <label className="appearance-range">
+                    <span>
+                      Minimum text contrast <output>{minimumContrast > 1 ? `${minimumContrast}:1` : "Off"}</output>
+                    </span>
+                    <input
+                      type="range"
+                      min="1"
+                      max={Math.max(7, minimumContrast)}
+                      step="0.5"
+                      value={minimumContrast}
+                      onChange={(event) => setMinimumContrast(event.currentTarget.valueAsNumber)}
+                    />
+                  </label>
+                  <p className="appearance-help">
+                    Text below this ratio against its background is lightened or darkened, keeping its hue. 4.5:1 is the
+                    WCAG AA level for body text.
+                  </p>
 
                   <h2>Shader stack</h2>
                   <p className="appearance-help">

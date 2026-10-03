@@ -8,6 +8,7 @@ import {
   decodeRowReplacements,
   decodeScrollbarState,
   decodeStyleDefinitions,
+  decodeStylePalette,
   FRAME_HEADER_BYTES,
   FRAME_MAGIC,
   FRAME_PROTOCOL_VERSION,
@@ -141,6 +142,38 @@ describe("decodeFrame", () => {
         background: [20, 30, 40],
       },
     ]);
+  });
+
+  it("attaches palette provenance from the style palette section", () => {
+    const styles = new Uint8Array(4 + 2 * 16);
+    const styleView = new DataView(styles.buffer);
+    styleView.setUint32(0, 2, true);
+    styleView.setUint32(4, 7, true);
+    styleView.setUint8(10, 1);
+    styleView.setUint8(11, 1);
+    styles.set([204, 102, 102, 20, 30, 40], 12);
+    styleView.setUint32(20, 8, true);
+    styleView.setUint8(26, 1);
+    styles.set([204, 102, 102], 28);
+    const palette = new Uint8Array(4 + 8);
+    const paletteView = new DataView(palette.buffer);
+    paletteView.setUint32(0, 1, true);
+    paletteView.setUint32(4, 7, true);
+    palette.set([0b01, 1, 0, 0], 8);
+    const decoded = decodeStyleDefinitions(
+      { kind: SectionKind.StyleDefinitions, flags: 0, itemCount: 2, bytes: styles },
+      { kind: SectionKind.StylePalette, flags: 0, itemCount: 1, bytes: palette },
+    );
+    expect(decoded[0]).toMatchObject({ foreground: [204, 102, 102], foregroundPalette: 1 });
+    expect(decoded[0]).not.toHaveProperty("backgroundPalette");
+    expect(decoded[1]).not.toHaveProperty("foregroundPalette");
+    expect(decodeStylePalette({ kind: SectionKind.StylePalette, flags: 0, itemCount: 1, bytes: palette })).toEqual([
+      { styleId: 7, foreground: 1 },
+    ]);
+    palette[8] = 0b100;
+    expect(() =>
+      decodeStylePalette({ kind: SectionKind.StylePalette, flags: 0, itemCount: 1, bytes: palette }),
+    ).toThrow("invalid style palette flags");
   });
 
   it("decodes native alpha glyph definitions", () => {

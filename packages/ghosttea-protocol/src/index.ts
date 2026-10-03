@@ -11,6 +11,8 @@ export type ConfigDiagnosticSeverity = "info" | "warning" | "error";
 export type ConfigSupport = "applied" | "parsed" | "unsupported";
 export type ConfigSourceKind = "ghostty-default" | "included" | "ghosttea-overlay";
 export type RendererPostProcess = "none" | "better-crt";
+/** `ghosttea-light-adaptation`: may a light theme restyle apps that paint their own dark backgrounds. */
+export type LightAdaptation = "auto" | "off";
 
 export interface ConfigCompatibility {
   ghosttyVersion: string;
@@ -63,6 +65,9 @@ export interface RendererConfig {
   palette?: PaletteConfigEntry[];
   backgroundOpacity?: number;
   backgroundOpacityCells?: boolean;
+  /** Ghostty `minimum-contrast`: WCAG ratio text keeps against its cell background; 1 is off. */
+  minimumContrast?: number;
+  lightAdaptation?: LightAdaptation;
   fontSize: number;
   fontFamilies: string[];
   paddingX: [number, number];
@@ -906,6 +911,14 @@ export function isServerEvent(value: unknown): value is ServerEvent {
           renderer.backgroundOpacity >= 0 &&
           renderer.backgroundOpacity <= 1)) &&
       (renderer.backgroundOpacityCells === undefined || typeof renderer.backgroundOpacityCells === "boolean") &&
+      (renderer.minimumContrast === undefined ||
+        (typeof renderer.minimumContrast === "number" &&
+          Number.isFinite(renderer.minimumContrast) &&
+          renderer.minimumContrast >= 1 &&
+          renderer.minimumContrast <= 21)) &&
+      (renderer.lightAdaptation === undefined ||
+        renderer.lightAdaptation === "auto" ||
+        renderer.lightAdaptation === "off") &&
       (renderer.linkUrl === undefined || typeof renderer.linkUrl === "boolean") &&
       typeof renderer.fontSize === "number" &&
       Number.isFinite(renderer.fontSize) &&

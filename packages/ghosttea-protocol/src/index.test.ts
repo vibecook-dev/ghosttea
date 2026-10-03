@@ -370,6 +370,20 @@ describe("isServerEvent", () => {
         config: { ...config, renderer: { ...config.renderer, postProcess: "mystery" } },
       }),
     ).toBe(false);
+    for (const renderer of [
+      { ...config.renderer, lightAdaptation: "sometimes" },
+      { ...config.renderer, minimumContrast: 0.5 },
+      { ...config.renderer, minimumContrast: Number.NaN },
+    ]) {
+      expect(isServerEvent({ requestId: 0, type: "config-changed", config: { ...config, renderer } })).toBe(false);
+    }
+    expect(
+      isServerEvent({
+        requestId: 0,
+        type: "config-changed",
+        config: { ...config, renderer: { ...config.renderer, lightAdaptation: "off", minimumContrast: 4.5 } },
+      }),
+    ).toBe(true);
     expect(isServerEvent({ requestId: 4, type: "config", config: { ...config, schemaVersion: 2 } })).toBe(false);
     expect(
       isServerEvent({

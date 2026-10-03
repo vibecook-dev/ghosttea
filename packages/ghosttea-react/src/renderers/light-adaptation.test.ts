@@ -1,6 +1,12 @@
 import type { StyleDefinition, StyleRun } from "@vibecook/ghosttea-frame";
 import { describe, expect, it } from "vitest";
-import { createLightAdaptation, darkPaintedBase, isLightBackground, type Rgb } from "./light-adaptation.js";
+import {
+  createLightAdaptation,
+  darkPaintedBase,
+  ensureContrast,
+  isLightBackground,
+  type Rgb,
+} from "./light-adaptation.js";
 import { DEFAULT_THEME, type RenderView, type Rgba, type TerminalTheme } from "./types.js";
 
 const rgba = ([r, g, b]: Rgb): Rgba => [r / 255, g / 255, b / 255, 1];
@@ -37,9 +43,56 @@ describe("light adaptation colors", () => {
     expect(r - Math.min(g, b)).toBeGreaterThan(20);
   });
 
+  it("keeps a light theme's own ANSI colors when they stay legible", () => {
+    const red: Rgb = [0xd2, 0x0f, 0x39]; // Catppuccin Latte red, designed for light paper
+    const latte = createLightAdaptation([0x1e, 0x1e, 0x2e], rgba([0xef, 0xf1, 0xf5]), rgba([0x4c, 0x4f, 0x69]));
+    expect(bytes(latte.ink(red, latte.base, 1))).toEqual(red);
+    // The same RGB as truecolor is an application color and is remapped.
+    expect(bytes(latte.ink(red, latte.base))).not.toEqual(red);
+    // Neutral entries describe a role, not a hue: "white" text still darkens.
+    const white = bytes(latte.ink([0xbc, 0xc0, 0xcc], latte.base, 7));
+    expect(white[0]).toBeLessThan(0x80);
+  });
+
   it("classifies backgrounds the same way the VT shim answers CSI ? 996 n", () => {
     expect(isLightBackground([0xef, 0xf1, 0xf5])).toBe(true);
     expect(isLightBackground([0x1e, 0x1e, 0x2e])).toBe(false);
+  });
+});
+
+describe("minimum contrast", () => {
+  const luminance = (color: Rgba): number =>
+    [0.2126, 0.7152, 0.0722].reduce((sum, weight, index) => {
+      const v = color[index]!;
+      return sum + weight * (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    }, 0);
+  const ratio = (a: Rgba, b: Rgba): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const panel = rgba([0xe6, 0xe6, 0xe6]);
+
+  it("leaves text alone when it is off or already meets the ratio", () => {
+    const gray = rgba([0x9a, 0x9a, 0x9a]);
+    expect(ensureContrast(gray, panel, 1)).toBe(gray);
+    const ink = rgba([0x26, 0x26, 0x26]);
+    expect(ensureContrast(ink, panel, 4.5)).toBe(ink);
+  });
+
+  it("moves lightness only as far as the ratio needs and keeps the hue", () => {
+    const amber: Rgba = [0xe0 / 255, 0xaf / 255, 0x68 / 255, 0.55];
+    const result = ensureContrast(amber, panel, 4.5);
+    expect(ratio(result, panel)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(result, panel)).toBeLessThan(4.7);
+    const [r, g, b] = bytes(result);
+    expect(r).toBeGreaterThan(g);
+    expect(g).toBeGreaterThan(b);
+    expect(result[3]).toBe(0.55);
+  });
+
+  it("reaches black or white when nothing less suffices", () => {
+    expect(bytes(ensureContrast(rgba([0x80, 0x80, 0x80]), rgba([0x80, 0x80, 0x80]), 21))).toEqual([0, 0, 0]);
+    expect(bytes(ensureContrast(rgba([0x30, 0x30, 0x30]), rgba([0x20, 0x20, 0x20]), 7))[0]).toBeGreaterThan(0x80);
   });
 });
 

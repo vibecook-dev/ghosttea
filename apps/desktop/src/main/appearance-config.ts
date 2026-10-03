@@ -15,6 +15,10 @@ export interface ManagedAppearanceUpdate {
   backgroundOpacityCells: boolean;
   shaderEffects: string[];
   shaderAnimation: boolean;
+  /** Omitted by older renderers; the block then leaves the setting to other layers. */
+  lightAdaptation?: "auto" | "off";
+  /** WCAG ratio from 1 (off) through 21; omitted by older renderers. */
+  minimumContrast?: number;
 }
 
 export const APPEARANCE_BLOCK_START = "# >>> Ghosttea appearance (managed; edit through Settings)";
@@ -81,6 +85,18 @@ export function validateAppearanceUpdate(payload: unknown): ManagedAppearanceUpd
   if (typeof update.backgroundOpacityCells !== "boolean" || typeof update.shaderAnimation !== "boolean") {
     throw new Error("Invalid appearance toggle");
   }
+  if (update.lightAdaptation !== undefined && update.lightAdaptation !== "auto" && update.lightAdaptation !== "off") {
+    throw new Error("Light adaptation must be auto or off");
+  }
+  if (
+    update.minimumContrast !== undefined &&
+    (typeof update.minimumContrast !== "number" ||
+      !Number.isFinite(update.minimumContrast) ||
+      update.minimumContrast < 1 ||
+      update.minimumContrast > 21)
+  ) {
+    throw new Error("Minimum contrast must be between 1 and 21");
+  }
   if (
     !Array.isArray(update.shaderEffects) ||
     !update.shaderEffects.every((id) => typeof id === "string" && BUNDLED_SHADER_IDS.has(id))
@@ -93,7 +109,14 @@ export function validateAppearanceUpdate(payload: unknown): ManagedAppearanceUpd
     backgroundOpacityCells: update.backgroundOpacityCells,
     shaderEffects: [...new Set(update.shaderEffects as string[])],
     shaderAnimation: update.shaderAnimation,
+    ...(update.lightAdaptation !== undefined ? { lightAdaptation: update.lightAdaptation } : {}),
+    ...(update.minimumContrast !== undefined ? { minimumContrast: contrastValue(update.minimumContrast) } : {}),
   };
+}
+
+/** Two decimals are enough for a contrast ratio and keep the config readable. */
+function contrastValue(ratio: number): number {
+  return Number(ratio.toFixed(2));
 }
 
 export function appearanceBlock(update: ManagedAppearanceUpdate): string {
@@ -117,6 +140,8 @@ export function appearanceBlock(update: ManagedAppearanceUpdate): string {
     "custom-shader =",
     ...update.shaderEffects.map((id) => `custom-shader = ${id}`),
     `custom-shader-animation = ${update.shaderAnimation}`,
+    ...(update.lightAdaptation !== undefined ? [`ghosttea-light-adaptation = ${update.lightAdaptation}`] : []),
+    ...(update.minimumContrast !== undefined ? [`minimum-contrast = ${contrastValue(update.minimumContrast)}`] : []),
     APPEARANCE_BLOCK_END,
   ].join("\n");
 }
@@ -198,6 +223,15 @@ export function appearanceUpdateMismatches(renderer: RendererConfig, update: Man
   if (!sameValues(shaderEffects, update.shaderEffects)) mismatches.push("custom-shader");
   if ((renderer.customShaderAnimation ?? false) !== update.shaderAnimation) {
     mismatches.push("custom-shader-animation");
+  }
+  if (update.lightAdaptation !== undefined && (renderer.lightAdaptation ?? "auto") !== update.lightAdaptation) {
+    mismatches.push("ghosttea-light-adaptation");
+  }
+  if (
+    update.minimumContrast !== undefined &&
+    Math.abs((renderer.minimumContrast ?? 1) - contrastValue(update.minimumContrast)) > 0.0001
+  ) {
+    mismatches.push("minimum-contrast");
   }
   return mismatches;
 }

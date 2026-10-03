@@ -14,7 +14,7 @@ pub use ghosttea_config::{
     ConfigDocumentError, ConfigDocumentUpdate, ConfigDocumentValidation, ConfigLoadOptions,
     ConfigManager, ConfigSnapshot, ConfigSource, ConfigSourceKind, ConfigSupport, ConfiguredKey,
     DiagnosticSeverity, GHOSTTEA_BETTER_CRT_SHADER, GHOSTTY_COMPAT_COMMIT, GHOSTTY_COMPAT_VERSION,
-    GHOSTTY_CONFIG_COMPAT_COMMIT, GHOSTTY_CONFIG_COMPAT_VERSION, KeybindingConfig,
+    GHOSTTY_CONFIG_COMPAT_COMMIT, GHOSTTY_CONFIG_COMPAT_VERSION, KeybindingConfig, LightAdaptation,
     MAX_CONFIG_DOCUMENT_BYTES, RendererConfig, RendererPostProcess, TerminalConfig,
     TerminalPresentationConfig, WorkspaceConfig,
 };

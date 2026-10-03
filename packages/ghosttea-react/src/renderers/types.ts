@@ -25,6 +25,12 @@ export interface TerminalTheme {
    * engages per pane only when most cells carry an explicit dark background.
    */
   lightAdaptation?: "auto" | "off";
+  /**
+   * Ghostty `minimum-contrast`: the WCAG ratio text keeps against its cell
+   * background (1–21; 1 is off). Box drawing, block elements, and color
+   * glyphs are exempt.
+   */
+  minimumContrast?: number;
 }
 
 export type TerminalPostProcess = "none" | "better-crt";
