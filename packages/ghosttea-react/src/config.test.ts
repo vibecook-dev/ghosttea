@@ -27,6 +27,7 @@ describe("shared configuration presentation", () => {
       selection: [4 / 255, 5 / 255, 6 / 255, 1],
       selectionForeground: [7 / 255, 8 / 255, 9 / 255, 1],
       backgroundOpacityCells: false,
+      lightAdaptation: "auto",
     });
     expect(terminalEffectsFromConfig({ renderer })).toEqual({
       postProcess: "better-crt",

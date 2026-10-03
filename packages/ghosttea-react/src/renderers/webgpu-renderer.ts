@@ -21,6 +21,7 @@ import { graphemeCellWidth, splitGraphemes } from "../cell-width.js";
 import { backgroundRunBounds } from "./background-geometry.js";
 import { rowsForDamage } from "./render-damage.js";
 import { SHADER_EFFECT_WGSL } from "./shader-effects.js";
+import { createLightAdaptation, darkPaintedBase, type LightAdaptation } from "./light-adaptation.js";
 
 const ATLAS_SIZE = 2048;
 const GEOMETRY_CACHE_LIMIT = 8;
@@ -485,6 +486,8 @@ interface WebGpuSurface extends PixelSize {
   geometryCache: Map<string, CachedGeometry>;
   geometryCandidates: Map<string, true>;
   sceneValid: boolean;
+  /** Engaged light adaptation for a dark-painted pane, or null. */
+  adaptation: LightAdaptation | null;
 }
 
 interface EffectPass {
@@ -548,6 +551,7 @@ function geometryCacheKey(
   rows: readonly number[],
   hasNativeRows: boolean,
   atlasGenerations: readonly [number, number, number],
+  adaptationKey: string,
 ): string {
   const selection = view.selection
     ? `${view.selection.anchor.row},${view.selection.anchor.column},${view.selection.focus.row},${view.selection.focus.column}`
@@ -567,6 +571,7 @@ function geometryCacheKey(
       ...view.theme.selectionForeground,
     ].join(","),
     view.theme.backgroundOpacityCells ? "opacity-cells" : "opaque-cells",
+    adaptationKey,
     selection,
     effectiveCursorStyle(view) === CursorStyle.Block ? `${view.cursor.x},${view.cursor.y}` : "-",
     atlasGenerations.join(","),
@@ -849,26 +854,55 @@ function pushBlockCursorBackground(
 interface ResolvedStyle {
   foreground: Rgba;
   background: Rgba | null;
+  /** Foreground used as an area fill (block elements); differs only under light adaptation. */
+  fill: Rgba;
   underline: boolean;
   strikethrough: boolean;
   invisible: boolean;
 }
 
-function resolveStyle(style: StyleDefinition | undefined, theme: RenderView["theme"]): ResolvedStyle {
+function resolveStyle(
+  style: StyleDefinition | undefined,
+  theme: RenderView["theme"],
+  adaptation: LightAdaptation | null = null,
+): ResolvedStyle {
   let foreground: Rgba = style?.foreground ? rgb(style.foreground) : theme.foreground;
   let background: Rgba | null = style?.background ? rgb(style.background) : null;
-  if (style?.inverse) {
+  let fill = foreground;
+  if (adaptation) {
+    // Application colors were designed on the app's dark base; theme-owned
+    // defaults already belong to the light theme and pass through.
+    const source = { foreground: style?.foreground, background: style?.background };
+    if (style?.inverse) {
+      background = source.foreground ? adaptation.surface(source.foreground) : theme.foreground;
+      foreground = source.background
+        ? adaptation.ink(source.background, source.foreground ?? adaptation.base)
+        : theme.background;
+      fill = foreground;
+    } else {
+      foreground = source.foreground
+        ? adaptation.ink(source.foreground, source.background ?? adaptation.base)
+        : theme.foreground;
+      background = source.background ? adaptation.surface(source.background) : null;
+      fill = source.foreground ? adaptation.surface(source.foreground) : theme.foreground;
+    }
+  } else if (style?.inverse) {
     const originalForeground = foreground;
     foreground = background ?? theme.background;
     background = originalForeground;
+    fill = foreground;
   }
   if (background && theme.backgroundOpacityCells) {
     background = [background[0], background[1], background[2], theme.background[3]];
   }
-  if (style?.faint) foreground = [foreground[0], foreground[1], foreground[2], foreground[3] * 0.55];
+  if (style?.faint) {
+    foreground = [foreground[0], foreground[1], foreground[2], foreground[3] * 0.55];
+    fill = [fill[0], fill[1], fill[2], fill[3] * 0.55];
+  }
   return {
     foreground,
     background,
+    fill,
     underline: style?.underline ?? false,
     strikethrough: style?.strikethrough ?? false,
     invisible: style?.invisible ?? false,
@@ -1039,6 +1073,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
   readonly #monoAtlas: NativeGlyphAtlas;
   readonly #colorAtlas: NativeGlyphAtlas;
   readonly #fallbackAtlas: FallbackGlyphAtlas;
+  readonly #adaptations = new Map<string, LightAdaptation>();
   #performanceMeasurementEnabled = false;
 
   private constructor(
@@ -1249,6 +1284,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       geometryCache: new Map(),
       geometryCandidates: new Map(),
       sceneValid: false,
+      adaptation: null,
     };
     this.#surfaces.set(id, surface);
     this.#configure(surface);
@@ -1422,9 +1458,32 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     };
   }
 
+  /**
+   * Engage, re-key, or release light adaptation for a pane. Any change remaps
+   * every color, so the persistent scene and cached geometry are invalidated.
+   */
+  #prepareAdaptation(surface: WebGpuSurface, view: RenderView): void {
+    const base = darkPaintedBase(view, surface.adaptation !== null);
+    let next: LightAdaptation | null = null;
+    if (base) {
+      const key = `${base.join(",")}|${view.theme.background.join(",")}|${view.theme.foreground.join(",")}`;
+      next = this.#adaptations.get(key) ?? null;
+      if (!next) {
+        next = createLightAdaptation(base, view.theme.background, view.theme.foreground);
+        this.#adaptations.set(key, next);
+        if (this.#adaptations.size > 8) this.#adaptations.delete(this.#adaptations.keys().next().value!);
+      }
+    }
+    if ((next?.key ?? null) === (surface.adaptation?.key ?? null)) return;
+    surface.adaptation = next;
+    surface.sceneValid = false;
+    clearGeometryCache(surface);
+  }
+
   render(id: string, view: RenderView): TerminalRenderMetrics | undefined {
     const surface = this.#surfaces.get(id);
     if (!surface) return;
+    this.#prepareAdaptation(surface, view);
     const encoder = this.device.createCommandEncoder({ label: `terminal frame ${id}` });
     const metrics =
       view.damage?.geometryChanged === false
@@ -1441,6 +1500,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     const encoder = this.device.createCommandEncoder({ label: `terminal frame batch (${active.length} panes)` });
     const byId = new Map<string, TerminalRenderMetrics | undefined>();
     for (const { id, view } of active) {
+      this.#prepareAdaptation(this.#surfaces.get(id)!, view);
       byId.set(
         id,
         view.damage?.geometryChanged === false
@@ -1463,6 +1523,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     scale: number,
     viewportWidth: number,
     viewportHeight: number,
+    adaptation: LightAdaptation | null,
   ): CpuGeometry {
     const rectangleVertices: number[] = [];
     const glyphVertices: number[] = [];
@@ -1472,7 +1533,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     const styleFor = (styleId: number): ResolvedStyle => {
       const cached = resolvedStyles.get(styleId);
       if (cached) return cached;
-      const resolved = resolveStyle(view.styleDefinitions.get(styleId), view.theme);
+      const resolved = resolveStyle(view.styleDefinitions.get(styleId), view.theme, adaptation);
       resolvedStyles.set(styleId, resolved);
       return resolved;
     };
@@ -1596,6 +1657,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
           if (blockElement) {
             let backdrop = style.background ?? view.theme.background;
             if (isSelected) backdrop = view.theme.selection;
+            const blockForeground = foreground === style.foreground ? style.fill : foreground;
             if (
               pushBlockElement(
                 rectangleVertices,
@@ -1603,7 +1665,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
                 instance.cellStart,
                 row,
                 scale,
-                over(foreground, backdrop),
+                over(blockForeground, backdrop),
                 viewportWidth,
                 viewportHeight,
               )
@@ -1727,7 +1789,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     const styleFor = (styleId: number): ResolvedStyle => {
       const cached = resolvedStyles.get(styleId);
       if (cached) return cached;
-      const resolved = resolveStyle(view.styleDefinitions.get(styleId), view.theme);
+      const resolved = resolveStyle(view.styleDefinitions.get(styleId), view.theme, surface.adaptation);
       resolvedStyles.set(styleId, resolved);
       return resolved;
     };
@@ -1854,7 +1916,8 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
           if (blockElement) {
             let backdrop = style.background ?? view.theme.background;
             if (isSelected) backdrop = view.theme.selection;
-            const blockColor = over(foreground, backdrop);
+            const blockForeground = foreground === style.foreground ? style.fill : foreground;
+            const blockColor = over(blockForeground, backdrop);
             if (
               pushBlockElement(
                 rectangleVertices,
@@ -2155,7 +2218,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       this.#colorAtlas.generation,
       this.#fallbackAtlas.generation,
     ];
-    let key = geometryCacheKey(view, damage.rows, hasNativeRows, generations());
+    let key = geometryCacheKey(view, damage.rows, hasNativeRows, generations(), surface.adaptation?.key ?? "-");
     const cached = surface.geometryCache.get(key);
     const cacheHit = cached !== undefined;
     if (cached) {
@@ -2174,8 +2237,9 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
         scale,
         viewportWidth,
         viewportHeight,
+        surface.adaptation,
       );
-      key = geometryCacheKey(view, damage.rows, hasNativeRows, generations());
+      key = geometryCacheKey(view, damage.rows, hasNativeRows, generations(), surface.adaptation?.key ?? "-");
       const promote = admitted && key === candidateKey;
       geometry = {
         rectangleBuffer: promote
