@@ -12,6 +12,10 @@ struct GhostteaMetalColor: Equatable, Sendable {
   static let clear = Self(red: 0, green: 0, blue: 0, alpha: 0)
 
   var components: [Float] { [red, green, blue, alpha] }
+
+  func withAlpha(_ alpha: Float) -> Self {
+    Self(red: red, green: green, blue: blue, alpha: alpha)
+  }
 }
 
 struct GhostteaMetalTheme: Equatable, Sendable {
@@ -25,6 +29,11 @@ struct GhostteaMetalTheme: Equatable, Sendable {
   var backgroundOpacityCells = false
   var shaderEffects: [GhostteaMetalShaderEffect] = []
   var shaderAnimation = false
+  /// Restyle panes a dark-painted application fills under a light theme
+  /// (`ghosttea-light-adaptation = auto`).
+  var lightAdaptation = false
+  /// WCAG ratio text keeps against its cell background (`minimum-contrast`, 1 = off).
+  var minimumContrast: Float = 1
 }
 
 enum GhostteaMetalShaderEffect: UInt32, CaseIterable, Equatable, Sendable {
@@ -126,6 +135,10 @@ struct GhostteaMetalDrawResult: Equatable, Sendable {
 private struct GhostteaResolvedMetalStyle {
   let foreground: GhostteaMetalColor
   let background: GhostteaMetalColor?
+  /// Foreground used as an area fill (block elements); differs only under light adaptation.
+  let fill: GhostteaMetalColor
+  /// Foreground for text glyphs and their decorations, after `minimum-contrast`.
+  let text: GhostteaMetalColor
   let underline: Bool
   let strikethrough: Bool
   let invisible: Bool
@@ -174,6 +187,7 @@ private struct GhostteaMetalRowCacheContext: Equatable {
   let theme: GhostteaMetalTheme
   let contentInsets: GhostteaTerminalContentInsets
   let selection: GhostteaMetalSelection?
+  let lightAdaptationKey: String?
   let alphaAtlasResetCount: Int
   let colorAtlasResetCount: Int
 }
@@ -224,6 +238,7 @@ private struct GhostteaMetalGeometryKey: Equatable {
   let contentInsets: GhostteaTerminalContentInsets
   let selection: GhostteaMetalSelection?
   let focused: Bool
+  let lightAdaptationKey: String?
   let alphaAtlasResetCount: Int
   let colorAtlasResetCount: Int
 }
@@ -421,6 +436,9 @@ final class GhostteaMetalRenderer {
   private var rowCache: [Int: GhostteaMetalRowCacheEntry] = [:]
   private var pendingRowRevisions: [Int: UInt64] = [:]
   private var rowCacheBytes = 0
+  private var lightRemap: GhostteaLightRemap?
+  private var lightRemaps: [String: GhostteaLightRemap] = [:]
+  private var lightRemapOrder: [String] = []
   private var effectSceneTexture: (any MTLTexture)?
   private var effectIntermediateTextures: [any MTLTexture] = []
   private var effectTextureSize = SIMD2<Int>(repeating: 0)
@@ -609,6 +627,7 @@ final class GhostteaMetalRenderer {
           Float((focused ? $0.style : TRF1CursorStyle.hollowBlock).rawValue)
         )
       } ?? SIMD4<Float>(repeating: 0)
+    prepareLightAdaptation(state: state, theme: theme)
     let recorder = GhostteaPerformanceRecorder.shared
     let lookupKey =
       encodedGeometryReuseEnabled
@@ -762,9 +781,35 @@ final class GhostteaMetalRenderer {
       contentInsets: contentInsets,
       selection: selection,
       focused: focused,
+      lightAdaptationKey: lightRemap?.key,
       alphaAtlasResetCount: atlases.alpha.resetCount,
       colorAtlasResetCount: atlases.colorResetCount
     )
+  }
+
+  /// Engages, re-keys, or releases light adaptation for this pane. The remap
+  /// key is part of the geometry key and row-cache context, so any change
+  /// rebuilds every row with the new colors.
+  private func prepareLightAdaptation(state: RetainedTRF1State, theme: GhostteaMetalTheme) {
+    guard
+      let base = GhostteaLightColor.darkPaintedBase(
+        state: state, theme: theme, engaged: lightRemap != nil)
+    else {
+      lightRemap = nil
+      return
+    }
+    let key = "\(base.hex)|\(theme.background.components)|\(theme.foreground.components)"
+    if let cached = lightRemaps[key] {
+      lightRemap = cached
+      return
+    }
+    let remap = GhostteaLightRemap(base: base, paper: theme.background, ink: theme.foreground)
+    lightRemaps[key] = remap
+    lightRemapOrder.append(key)
+    if lightRemapOrder.count > 8 {
+      lightRemaps[lightRemapOrder.removeFirst()] = nil
+    }
+    lightRemap = remap
   }
 
   private func visibleGlyphDefinitions(_ state: RetainedTRF1State) throws -> [TRF1GlyphDefinition] {
@@ -820,6 +865,7 @@ final class GhostteaMetalRenderer {
       theme: theme,
       contentInsets: contentInsets,
       selection: orderedSelection,
+      lightAdaptationKey: lightRemap?.key,
       alphaAtlasResetCount: atlases.alpha.resetCount,
       colorAtlasResetCount: atlases.colorResetCount
     )
@@ -837,6 +883,8 @@ final class GhostteaMetalRenderer {
       activity.evictions += clearRowCache()
       pendingRowRevisions.removeAll(keepingCapacity: true)
     }
+    let styles = GhostteaMetalStyleResolver(
+      definitions: state.styleDefinitions, theme: theme, adaptation: lightRemap)
 
     for (rowIndex, row) in state.rows.enumerated() {
       let rowDamaged = damage.rows.contains(UInt16(clamping: rowIndex))
@@ -865,7 +913,8 @@ final class GhostteaMetalRenderer {
         originX: originX,
         originY: originY,
         selection: orderedSelection,
-        blockCursorColumn: blockCursorColumn
+        blockCursorColumn: blockCursorColumn,
+        styles: styles
       )
       append(rowMesh, to: &mesh)
       if !broadDamage, pendingRowRevisions[rowIndex] == row.revision,
@@ -982,11 +1031,18 @@ final class GhostteaMetalRenderer {
     originX: Float,
     originY: Float,
     selection: GhostteaMetalSelection?,
-    blockCursorColumn: UInt16?
+    blockCursorColumn: UInt16?,
+    styles: GhostteaMetalStyleResolver
   ) throws -> GhostteaMetalRowMesh {
     var mesh = GhostteaMetalRowMesh()
+    // Graphics (box drawing, block elements) keep the raw foreground rather
+    // than the contrast-adjusted text color, as in Ghostty; block elements
+    // are areas, so light adaptation maps them as surfaces. Only computed
+    // when those colors can differ.
+    let graphics =
+      styles.distinguishesGraphics ? GhostteaMetalGraphicCells.cells(in: row.text) : [:]
     for run in row.styles {
-      let style = resolveStyle(state.styleDefinitions[run.styleID], theme: theme)
+      let style = styles[run.styleID]
       if let background = style.background {
         pushRectangle(
           into: &mesh.backgrounds,
@@ -1002,7 +1058,7 @@ final class GhostteaMetalRenderer {
     }
     for instance in row.glyphs {
       guard let definition = state.glyphDefinitions[instance.glyphID] else { continue }
-      let style = resolveStyle(state.styleDefinitions[instance.styleID], theme: theme)
+      let style = styles[instance.styleID]
       if style.invisible { continue }
       let glyphStart = Int(instance.cellStart)
       let glyphEnd = glyphStart + max(1, Int(instance.cellSpan))
@@ -1010,14 +1066,22 @@ final class GhostteaMetalRenderer {
         blockCursorColumn.map {
           glyphStart <= Int($0) && Int($0) < glyphEnd
         } ?? false
-      let foreground =
-        selectionContains(selection, row: rowIndex, column: glyphStart)
-        ? theme.selectionForeground
-        : style.foreground
+      let selected = selectionContains(selection, row: rowIndex, column: glyphStart)
+      let foreground = selected ? theme.selectionForeground : style.foreground
       guard let location = atlases.location(for: definition) else {
         throw TRF1DecodingError("visible glyph \(definition.id) is absent from its atlas")
       }
       if definition.format == .alpha8 {
+        let glyphColor: GhostteaMetalColor
+        if selected {
+          glyphColor = foreground
+        } else {
+          switch graphics[glyphStart] {
+          case .box: glyphColor = style.foreground
+          case .block: glyphColor = style.fill
+          case nil: glyphColor = style.text
+          }
+        }
         pushGlyph(
           into: &mesh.alphaGlyphs,
           x: (originX + instance.x) * scale,
@@ -1025,7 +1089,7 @@ final class GhostteaMetalRenderer {
           width: instance.width * scale,
           height: instance.height * scale,
           location: location,
-          color: foreground,
+          color: glyphColor,
           viewportWidth: width,
           viewportHeight: height
         )
@@ -1072,7 +1136,7 @@ final class GhostteaMetalRenderer {
       }
     }
     for run in row.styles {
-      let style = resolveStyle(state.styleDefinitions[run.styleID], theme: theme)
+      let style = styles[run.styleID]
       if style.invisible { continue }
       let x = (originX + Float(run.cellStart) * cellWidth) * scale
       let rowTop = (originY + Float(rowIndex) * lineHeight) * scale
@@ -1091,7 +1155,7 @@ final class GhostteaMetalRenderer {
           y: (rowTop + 16 * metricScale * scale).rounded(),
           width: runWidth,
           height: stroke,
-          color: style.foreground,
+          color: style.text,
           viewportWidth: width,
           viewportHeight: height
         )
@@ -1115,7 +1179,7 @@ final class GhostteaMetalRenderer {
           y: (rowTop + 9 * metricScale * scale).rounded(),
           width: runWidth,
           height: stroke,
-          color: style.foreground,
+          color: style.text,
           viewportWidth: width,
           viewportHeight: height
         )
@@ -1884,16 +1948,116 @@ final class GhostteaMetalRenderer {
   }
 }
 
+/// Resolves each style once per mesh build. Light adaptation and
+/// `minimum-contrast` search colors, so per-glyph resolution would repeat that
+/// work for every cell sharing a style.
+private final class GhostteaMetalStyleResolver {
+  private let definitions: [UInt32: TRF1StyleDefinition]
+  private let theme: GhostteaMetalTheme
+  private let adaptation: GhostteaLightRemap?
+  private var resolved: [UInt32: GhostteaResolvedMetalStyle] = [:]
+
+  init(
+    definitions: [UInt32: TRF1StyleDefinition],
+    theme: GhostteaMetalTheme,
+    adaptation: GhostteaLightRemap?
+  ) {
+    self.definitions = definitions
+    self.theme = theme
+    self.adaptation = adaptation
+  }
+
+  /// Whether graphics cells can need a color other than the text color.
+  var distinguishesGraphics: Bool { adaptation != nil || theme.minimumContrast > 1 }
+
+  subscript(id: UInt32) -> GhostteaResolvedMetalStyle {
+    if let style = resolved[id] { return style }
+    let style = resolveStyle(definitions[id], theme: theme, adaptation: adaptation)
+    resolved[id] = style
+    return style
+  }
+}
+
+private enum GhostteaMetalGraphicCell {
+  case box
+  case block
+}
+
+enum GhostteaMetalGraphicCells {
+  /// Columns holding box-drawing (U+2500–257F) or block-element (U+2580–259F)
+  /// characters, found by walking the row text with the desktop's cell widths.
+  fileprivate static func cells(in text: String) -> [Int: GhostteaMetalGraphicCell] {
+    if text.utf8.allSatisfy({ $0 < 0x80 }) { return [:] }
+    var cells: [Int: GhostteaMetalGraphicCell] = [:]
+    var column = 0
+    for character in text {
+      switch character.unicodeScalars.first?.value ?? 0 {
+      case 0x2500...0x257F: cells[column] = .box
+      case 0x2580...0x259F: cells[column] = .block
+      default: break
+      }
+      column += cellWidth(character)
+    }
+    return cells
+  }
+
+  /// Mirrors `graphemeCellWidth` in `@vibecook/ghosttea-react`. Swift has no
+  /// Extended_Pictographic property, so non-ASCII emoji other than regional
+  /// indicators stand in for it.
+  static func cellWidth(_ character: Character) -> Int {
+    let pictographic = character.unicodeScalars.contains {
+      $0.value > 0x7F && $0.properties.isEmoji && !(0x1F1E6...0x1F1FF).contains($0.value)
+    }
+    if pictographic { return 2 }
+    switch character.unicodeScalars.first?.value ?? 0 {
+    case 0x1100...0x115F, 0x2E80...0xA4CF, 0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE10...0xFE6F,
+      0xFF00...0xFF60, 0x1F300...0x1FAFF, 0x20000...0x3FFFD:
+      return 2
+    default:
+      return 1
+    }
+  }
+}
+
 private func resolveStyle(
   _ style: TRF1StyleDefinition?,
-  theme: GhostteaMetalTheme
+  theme: GhostteaMetalTheme,
+  adaptation: GhostteaLightRemap? = nil
 ) -> GhostteaResolvedMetalStyle {
   var foreground = style?.foreground.map(metalColor) ?? theme.foreground
   var background = style?.background.map(metalColor)
-  if style?.inverse == true {
+  var fill = foreground
+  if let adaptation {
+    // Application colors were designed on the app's dark base; theme-owned
+    // defaults already belong to the light theme and pass through.
+    let sourceForeground = style?.foreground.map { GhostteaLightRGB($0) }
+    let sourceBackground = style?.background.map { GhostteaLightRGB($0) }
+    if style?.inverse == true {
+      background = sourceForeground.map { adaptation.surface($0) } ?? theme.foreground
+      foreground =
+        sourceBackground.map {
+          adaptation.ink(
+            $0,
+            sourceBackground: sourceForeground ?? adaptation.base,
+            paletteIndex: style?.backgroundPalette)
+        } ?? theme.background
+      fill = foreground
+    } else {
+      foreground =
+        sourceForeground.map {
+          adaptation.ink(
+            $0,
+            sourceBackground: sourceBackground ?? adaptation.base,
+            paletteIndex: style?.foregroundPalette)
+        } ?? theme.foreground
+      background = sourceBackground.map { adaptation.surface($0) }
+      fill = sourceForeground.map { adaptation.surface($0) } ?? theme.foreground
+    }
+  } else if style?.inverse == true {
     let originalForeground = foreground
     foreground = background ?? theme.background
     background = originalForeground
+    fill = foreground
   }
   if let cellBackground = background, theme.backgroundOpacityCells {
     background = GhostteaMetalColor(
@@ -1903,20 +2067,46 @@ private func resolveStyle(
       alpha: theme.background.alpha
     )
   }
+  // Graphics and color glyphs keep the raw foreground, as in Ghostty; the
+  // backdrop ignores window transparency.
+  var text = GhostteaLightColor.ensureContrast(
+    foreground,
+    background: over(background ?? theme.background, theme.background),
+    ratio: theme.minimumContrast
+  )
   if style?.faint == true {
-    foreground = GhostteaMetalColor(
-      red: foreground.red,
-      green: foreground.green,
-      blue: foreground.blue,
-      alpha: foreground.alpha * 0.55
-    )
+    foreground = foreground.withAlpha(foreground.alpha * 0.55)
+    fill = fill.withAlpha(fill.alpha * 0.55)
+    text = text.withAlpha(text.alpha * 0.55)
   }
   return GhostteaResolvedMetalStyle(
     foreground: foreground,
     background: background,
+    fill: fill,
+    text: text,
     underline: style?.underline ?? false,
     strikethrough: style?.strikethrough ?? false,
     invisible: style?.invisible ?? false
+  )
+}
+
+/// Source-over composite of straight-alpha colors.
+private func over(
+  _ source: GhostteaMetalColor,
+  _ backdrop: GhostteaMetalColor
+) -> GhostteaMetalColor {
+  if source.alpha >= 1 { return source }
+  if source.alpha <= 0 { return backdrop }
+  let alpha = source.alpha + backdrop.alpha * (1 - source.alpha)
+  if alpha <= Float.ulpOfOne { return .clear }
+  func channel(_ s: Float, _ b: Float) -> Float {
+    (s * source.alpha + b * backdrop.alpha * (1 - source.alpha)) / alpha
+  }
+  return GhostteaMetalColor(
+    red: channel(source.red, backdrop.red),
+    green: channel(source.green, backdrop.green),
+    blue: channel(source.blue, backdrop.blue),
+    alpha: alpha
   )
 }
 

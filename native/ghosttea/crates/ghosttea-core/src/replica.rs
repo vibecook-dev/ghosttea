@@ -10,7 +10,7 @@ use ghosttea_vt::{
     CellStyle, TerminalPalette, TerminalScrollbar, TerminalSelection, resolved_palette,
 };
 
-use crate::frame::{FrameCell, FrameTextSnapshot, encode_frame_text_snapshot};
+use crate::frame::{FrameCell, FrameTextSnapshot, StylePalette, encode_frame_text_snapshot};
 use crate::{
     FrameCursor, LogicalCellStyle, LogicalRow, LogicalTerminalPatch, LogicalTerminalSnapshot,
     TerminalEffect, TerminalRuntime, TerminalUpdate, TextEnginePerformanceSnapshot,
@@ -21,6 +21,7 @@ struct ReplicaFrameCell {
     column: u16,
     span: u16,
     style: CellStyle,
+    palette: StylePalette,
 }
 
 impl FrameCell for ReplicaFrameCell {
@@ -34,6 +35,10 @@ impl FrameCell for ReplicaFrameCell {
 
     fn style(&self) -> CellStyle {
         self.style
+    }
+
+    fn palette(&self) -> StylePalette {
+        self.palette
     }
 }
 
@@ -525,6 +530,16 @@ fn prepare_logical_cells(row: &LogicalRow, palette: &TerminalPalette) -> Vec<Rep
             column: cell.column,
             span: cell.span,
             style: cell_style(cell.style, palette),
+            palette: StylePalette {
+                foreground: cell
+                    .style
+                    .foreground_palette
+                    .filter(|_| !cell.style.foreground_default),
+                background: cell
+                    .style
+                    .background_palette
+                    .filter(|_| !cell.style.background_default),
+            },
         })
         .collect()
 }

@@ -37,6 +37,7 @@ describe("desktop config editor boundary", () => {
         palette: [{ index: 2, color: [4, 5, 6] }],
         backgroundOpacity: 0.73,
         backgroundOpacityCells: true,
+        minimumContrast: 4.5,
         fontSize: 14,
         fontFamilies: ["JetBrains Mono"],
         paddingX: [3, 4],
@@ -54,6 +55,7 @@ describe("desktop config editor boundary", () => {
     const result = serializeSupportedGhosttyConfig(config);
     expect(result).toContain("foreground = #f0f1f2\n");
     expect(result).toContain("palette = 2=#040506\n");
+    expect(result).toContain("minimum-contrast = 4.5\n");
     expect(result).toContain("window-padding-x = 3,4\nwindow-padding-y = 5\n");
     expect(result).toContain("custom-shader = ghosttea:crt\n");
     expect(result).toContain("keybind = clear\nkeybind = super+t=new_tab\n");

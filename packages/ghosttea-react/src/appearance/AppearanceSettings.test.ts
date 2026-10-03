@@ -25,7 +25,15 @@ describe("Appearance settings draft", () => {
       opacityCells: true,
       effects: ["ghosttea:crt"],
       animation: true,
+      lightAdaptation: "auto",
+      minimumContrast: 1,
     });
+    expect(
+      appearanceDraftFromConfig({
+        ...config,
+        renderer: { ...config.renderer, lightAdaptation: "off", minimumContrast: 4.5 },
+      }),
+    ).toMatchObject({ lightAdaptation: "off", minimumContrast: 4.5 });
   });
 
   it("detects a stale sibling draft without relying on object identity", () => {
@@ -33,5 +41,7 @@ describe("Appearance settings draft", () => {
     expect(sameAppearanceDraft(baseline, { ...baseline, effects: [...baseline.effects] })).toBe(true);
     expect(sameAppearanceDraft(baseline, { ...baseline, opacity: 0.5 })).toBe(false);
     expect(sameAppearanceDraft(baseline, { ...baseline, effects: [] })).toBe(false);
+    expect(sameAppearanceDraft(baseline, { ...baseline, lightAdaptation: "off" })).toBe(false);
+    expect(sameAppearanceDraft(baseline, { ...baseline, minimumContrast: 3 })).toBe(false);
   });
 });

@@ -24,6 +24,13 @@ public enum GhostteaRendererPostProcess: String, Codable, Sendable {
   case betterCRT = "better-crt"
 }
 
+/// Whether a light theme may restyle applications that paint their own dark
+/// backgrounds (`ghosttea-light-adaptation`).
+public enum GhostteaLightAdaptation: String, Codable, Sendable {
+  case auto
+  case off
+}
+
 public enum GhostteaShaderEffect: String, CaseIterable, Codable, Sendable {
   case betterCRT = "ghosttea:better-crt"
   case crt = "ghosttea:crt"
@@ -113,6 +120,9 @@ public struct GhostteaResolvedRendererConfig: Codable, Equatable, Sendable {
   public let palette: [GhostteaPaletteConfigEntry]
   public let backgroundOpacity: Float
   public let backgroundOpacityCells: Bool
+  /// WCAG contrast ratio text keeps against its cell background (1 = off).
+  public let minimumContrast: Float
+  public let lightAdaptation: GhostteaLightAdaptation
   public let fontSize: Float
   public let fontFamilies: [String]
   public let paddingX: [Float]
@@ -125,6 +135,7 @@ public struct GhostteaResolvedRendererConfig: Codable, Equatable, Sendable {
   private enum CodingKeys: String, CodingKey {
     case foreground, background, cursor, cursorText, selectionBackground, selectionForeground
     case palette, backgroundOpacity, backgroundOpacityCells
+    case minimumContrast, lightAdaptation
     case fontSize, fontFamilies, paddingX, paddingY, postProcess
     case shaderEffects, customShaderAnimation, customShaderPaths
   }
@@ -141,6 +152,9 @@ public struct GhostteaResolvedRendererConfig: Codable, Equatable, Sendable {
     backgroundOpacity = try values.decodeIfPresent(Float.self, forKey: .backgroundOpacity) ?? 1
     backgroundOpacityCells =
       try values.decodeIfPresent(Bool.self, forKey: .backgroundOpacityCells) ?? false
+    minimumContrast = try values.decodeIfPresent(Float.self, forKey: .minimumContrast) ?? 1
+    lightAdaptation =
+      try values.decodeIfPresent(GhostteaLightAdaptation.self, forKey: .lightAdaptation) ?? .auto
     fontSize = try values.decode(Float.self, forKey: .fontSize)
     fontFamilies = try values.decode([String].self, forKey: .fontFamilies)
     paddingX = try values.decode([Float].self, forKey: .paddingX)
@@ -169,6 +183,9 @@ public struct GhostteaTerminalPresentationConfig: Codable, Equatable, Sendable {
   public let palette: [GhostteaPaletteConfigEntry]
   public let backgroundOpacity: Float
   public let backgroundOpacityCells: Bool
+  /// WCAG contrast ratio text keeps against its cell background (1 = off).
+  public let minimumContrast: Float
+  public let lightAdaptation: GhostteaLightAdaptation
   public let fontSize: Float
   public let fontFamilies: [String]
   public let paddingX: [Float]
@@ -191,6 +208,8 @@ public struct GhostteaTerminalPresentationConfig: Codable, Equatable, Sendable {
     palette: [GhostteaPaletteConfigEntry] = [],
     backgroundOpacity: Float = 1,
     backgroundOpacityCells: Bool = false,
+    minimumContrast: Float = 1,
+    lightAdaptation: GhostteaLightAdaptation = .auto,
     fontSize: Float,
     fontFamilies: [String],
     paddingX: [Float],
@@ -211,6 +230,8 @@ public struct GhostteaTerminalPresentationConfig: Codable, Equatable, Sendable {
     self.palette = palette
     self.backgroundOpacity = backgroundOpacity
     self.backgroundOpacityCells = backgroundOpacityCells
+    self.minimumContrast = minimumContrast
+    self.lightAdaptation = lightAdaptation
     self.fontSize = fontSize
     self.fontFamilies = fontFamilies
     self.paddingX = paddingX
@@ -225,6 +246,7 @@ public struct GhostteaTerminalPresentationConfig: Codable, Equatable, Sendable {
     case schemaVersion, revision, foreground, background, cursor, cursorText
     case selectionBackground, selectionForeground, palette
     case backgroundOpacity, backgroundOpacityCells
+    case minimumContrast, lightAdaptation
     case fontSize, fontFamilies, paddingX, paddingY, postProcess
     case shaderEffects, customShaderAnimation, customShaderCount
   }
@@ -243,6 +265,9 @@ public struct GhostteaTerminalPresentationConfig: Codable, Equatable, Sendable {
     backgroundOpacity = try values.decodeIfPresent(Float.self, forKey: .backgroundOpacity) ?? 1
     backgroundOpacityCells =
       try values.decodeIfPresent(Bool.self, forKey: .backgroundOpacityCells) ?? false
+    minimumContrast = try values.decodeIfPresent(Float.self, forKey: .minimumContrast) ?? 1
+    lightAdaptation =
+      try values.decodeIfPresent(GhostteaLightAdaptation.self, forKey: .lightAdaptation) ?? .auto
     fontSize = try values.decode(Float.self, forKey: .fontSize)
     fontFamilies = try values.decode([String].self, forKey: .fontFamilies)
     paddingX = try values.decode([Float].self, forKey: .paddingX)
@@ -310,6 +335,8 @@ public struct GhostteaConfigSnapshot: Codable, Equatable, Sendable {
       palette: renderer.palette,
       backgroundOpacity: renderer.backgroundOpacity,
       backgroundOpacityCells: renderer.backgroundOpacityCells,
+      minimumContrast: renderer.minimumContrast,
+      lightAdaptation: renderer.lightAdaptation,
       fontSize: renderer.fontSize,
       fontFamilies: renderer.fontFamilies,
       paddingX: renderer.paddingX,

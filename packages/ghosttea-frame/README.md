@@ -20,3 +20,18 @@ URI bytes, followed by `spanCount` triples of `u16 row`, `u16 startColumn`,
 `u16 endColumn`. End columns are exclusive. The section header's item count
 must equal the target count. URI lengths are bounded at 8192 bytes, and all
 spans must fit the advertised viewport.
+
+## Style palette (TRF1 section 13)
+
+`decodeStyleDefinitions(styles, palette)` attaches `foregroundPalette` and
+`backgroundPalette` to definitions whose explicit colors were resolved from the
+terminal palette, so renderers can tell theme-designed ANSI colors from
+application truecolor. The RGB values stay authoritative; decoders that skip
+the section render identically. Producers omit the section when no style in
+the frame has palette provenance.
+
+Payload: `u32 entryCount`, then 8-byte entries of `u32 styleId`, `u8 flags`
+(bit 0 = foreground index present, bit 1 = background index present),
+`u8 foregroundIndex`, `u8 backgroundIndex`, `u8 reserved`. The section header's
+item count must equal the entry count. Style ids include provenance, so one RGB
+reached by palette and by truecolor yields two definitions.

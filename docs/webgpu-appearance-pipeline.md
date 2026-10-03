@@ -50,8 +50,8 @@ late overlay geometry.
 
 Some applications paint every cell with their own truecolor background, so a
 light theme never shows through (Grok's default theme paints `#141414`
-everywhere). With `lightAdaptation: "auto"`, the default from configuration,
-a pane is remapped when the theme background is light and at least 60% of its
+everywhere). With `ghosttea-light-adaptation = auto` (the default; Settings →
+Appearance → Readability, or `off` to disable), a pane is remapped when the theme background is light and at least 60% of its
 cells carry an explicit dark background. It releases below 35%, so partially
 painted scrolls do not flicker. Applications that follow the theme (Codex,
 OpenCode, Claude Code's Auto theme) never cross that threshold.
@@ -61,8 +61,23 @@ coverage, color glyphs, and the shader stack are untouched. Surfaces mirror
 their OKLab-with-toe lightness around the theme background, anchored at the
 application's dominant surface. Neutral ink keeps its distance from its own
 cell background, and accents land in an APCA mid-tone band with their hue
-intact. Default foreground and background stay theme-owned. Engaging,
+intact. Default foreground and background stay theme-owned, and so do the
+chromatic ANSI colors (palette 1–6 and 9–14): TRF1 section 13 tells the
+renderer which palette entry a style color came from, and the light theme's own
+entry is kept unless the remapped surface beneath leaves it less legible than
+on the theme background (capped at APCA Lc 45). Neutral entries (0, 7, 8, 15)
+describe a role rather than a hue and remap like truecolor. Engaging,
 re-keying, or releasing invalidates the persistent scene and geometry cache.
+
+## Minimum contrast
+
+Ghostty's `minimum-contrast` (WCAG ratio 1–21, 1 is off) applies to text
+glyphs and their underline and strikethrough, measured against the cell
+background composited over the theme background, after light adaptation.
+Ghostty snaps failing text to black or white; Ghosttea keeps hue and chroma and
+moves OKLab lightness toward whichever extreme contrasts more, only as far as
+the ratio needs. Box drawing, block elements, and color glyphs are exempt, as
+in Ghostty.
 
 Applications that switch themes themselves need the terminal to say which
 scheme it is. ghosttead answers `CSI ? 996 n` from the default background's

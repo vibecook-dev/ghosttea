@@ -31,6 +31,9 @@ pub const GHOSTTEA_BETTER_CRT_SHADER: &str = "ghosttea:better-crt";
 pub const GHOSTTEA_CRT_SHADER: &str = "ghosttea:crt";
 pub const GHOSTTEA_VHS_SHADER: &str = "ghosttea:vhs";
 pub const GHOSTTEA_SPARKS_SHADER: &str = "ghosttea:sparks-from-fire";
+/// Ghosttea-only keys accepted beside the pinned Ghostty schema. The prefix
+/// keeps them clear of future upstream keys.
+pub const GHOSTTEA_EXTENSION_KEYS: &[&str] = &["ghosttea-light-adaptation"];
 pub const CONFIG_DOCUMENT_SCHEMA_VERSION: u32 = 1;
 /// Keeps a raw document plus worst-case JSON escaping below the 1 MiB control
 /// packet quota. Ghostty configuration should reference large assets by path.
@@ -132,6 +135,8 @@ impl ConfigSnapshot {
             palette: self.renderer.palette.clone(),
             background_opacity: self.renderer.background_opacity,
             background_opacity_cells: self.renderer.background_opacity_cells,
+            minimum_contrast: self.renderer.minimum_contrast,
+            light_adaptation: self.renderer.light_adaptation,
             font_size: self.renderer.font_size,
             font_families: self.renderer.font_families.clone(),
             padding_x: self.renderer.padding_x,
@@ -249,6 +254,11 @@ pub struct RendererConfig {
     pub background_opacity: f32,
     #[serde(default)]
     pub background_opacity_cells: bool,
+    /// WCAG contrast ratio text keeps against its cell background (1 = off).
+    #[serde(default = "default_minimum_contrast")]
+    pub minimum_contrast: f32,
+    #[serde(default)]
+    pub light_adaptation: LightAdaptation,
     pub font_size: f32,
     pub font_families: Vec<String>,
     pub padding_x: [f32; 2],
@@ -283,6 +293,11 @@ pub struct TerminalPresentationConfig {
     pub background_opacity: f32,
     #[serde(default)]
     pub background_opacity_cells: bool,
+    /// WCAG contrast ratio text keeps against its cell background (1 = off).
+    #[serde(default = "default_minimum_contrast")]
+    pub minimum_contrast: f32,
+    #[serde(default)]
+    pub light_adaptation: LightAdaptation,
     pub font_size: f32,
     pub font_families: Vec<String>,
     pub padding_x: [f32; 2],
@@ -315,6 +330,10 @@ struct TerminalPresentationConfigWire {
     background_opacity: f32,
     #[serde(default)]
     background_opacity_cells: bool,
+    #[serde(default = "default_minimum_contrast")]
+    minimum_contrast: f32,
+    #[serde(default)]
+    light_adaptation: LightAdaptation,
     font_size: f32,
     font_families: Vec<String>,
     padding_x: [f32; 2],
@@ -345,6 +364,8 @@ impl<'de> Deserialize<'de> for TerminalPresentationConfig {
             palette: wire.palette,
             background_opacity: wire.background_opacity,
             background_opacity_cells: wire.background_opacity_cells,
+            minimum_contrast: wire.minimum_contrast,
+            light_adaptation: wire.light_adaptation,
             font_size: wire.font_size,
             font_families: wire.font_families,
             padding_x: wire.padding_x,
@@ -357,6 +378,16 @@ impl<'de> Deserialize<'de> for TerminalPresentationConfig {
     }
 }
 
+/// Whether a light theme may restyle applications that paint their own dark
+/// backgrounds (`ghosttea-light-adaptation`).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LightAdaptation {
+    #[default]
+    Auto,
+    Off,
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum RendererPostProcess {
@@ -366,6 +397,10 @@ pub enum RendererPostProcess {
 }
 
 const fn default_background_opacity() -> f32 {
+    1.0
+}
+
+const fn default_minimum_contrast() -> f32 {
     1.0
 }
 
@@ -517,6 +552,8 @@ impl Default for ConfigSnapshot {
             palette: Vec::new(),
             background_opacity: 1.0,
             background_opacity_cells: false,
+            minimum_contrast: 1.0,
+            light_adaptation: LightAdaptation::Auto,
             font_size: platform_default_font_size(),
             font_families: Vec::new(),
             padding_x: [2.0, 2.0],
@@ -1311,7 +1348,9 @@ fn project(mut state: LoadState) -> ConfigSnapshot {
     let mut clear_keybindings = false;
 
     for setting in state.settings {
-        if !known.contains(setting.key.as_str()) {
+        if !known.contains(setting.key.as_str())
+            && !GHOSTTEA_EXTENSION_KEYS.contains(&setting.key.as_str())
+        {
             state.diagnostics.push(diagnostic_at(
                 DiagnosticSeverity::Warning,
                 "unknown-key",
@@ -1455,6 +1494,42 @@ fn project(mut state: LoadState) -> ConfigSnapshot {
                 DiagnosticSeverity::Error,
                 "invalid-value",
                 "`background-opacity-cells` must be `true` or `false`".to_owned(),
+                setting,
+            )),
+        }
+    }
+    for setting in scalars
+        .iter()
+        .filter(|setting| setting.key == "minimum-contrast")
+    {
+        if setting.value.is_empty() {
+            snapshot.renderer.minimum_contrast = 1.0;
+            continue;
+        }
+        // Ghostty clamps rather than rejects out-of-range ratios.
+        match setting.value.parse::<f32>() {
+            Ok(value) if value.is_finite() => {
+                snapshot.renderer.minimum_contrast = value.clamp(1.0, 21.0);
+            }
+            _ => state.diagnostics.push(diagnostic_at(
+                DiagnosticSeverity::Error,
+                "invalid-value",
+                "`minimum-contrast` must be a contrast ratio from 1 through 21".to_owned(),
+                setting,
+            )),
+        }
+    }
+    for setting in scalars
+        .iter()
+        .filter(|setting| setting.key == "ghosttea-light-adaptation")
+    {
+        match setting.value.trim() {
+            "" | "auto" => snapshot.renderer.light_adaptation = LightAdaptation::Auto,
+            "off" => snapshot.renderer.light_adaptation = LightAdaptation::Off,
+            _ => state.diagnostics.push(diagnostic_at(
+                DiagnosticSeverity::Error,
+                "invalid-value",
+                "`ghosttea-light-adaptation` must be `auto` or `off`".to_owned(),
                 setting,
             )),
         }
@@ -1953,6 +2028,8 @@ fn support_for_key(key: &str) -> ConfigSupport {
         | "background"
         | "background-opacity"
         | "background-opacity-cells"
+        | "minimum-contrast"
+        | "ghosttea-light-adaptation"
         | "foreground"
         | "cursor-color"
         | "cursor-text"
@@ -3058,5 +3135,51 @@ mod tests {
                 .renderer
                 .link_url
         );
+    }
+    #[test]
+    fn minimum_contrast_and_light_adaptation_apply_and_reach_remote_views() {
+        let temporary = TempDir::new().unwrap();
+        let config = temporary.path().join("config");
+        write(
+            &config,
+            "minimum-contrast = 4.5\nghosttea-light-adaptation = off\n",
+        );
+        let snapshot = load_config(&ConfigLoadOptions::explicit(&config));
+        assert_eq!(snapshot.renderer.minimum_contrast, 4.5);
+        assert_eq!(snapshot.renderer.light_adaptation, LightAdaptation::Off);
+        assert!(
+            snapshot.diagnostics.is_empty(),
+            "{:?}",
+            snapshot.diagnostics
+        );
+        for key in ["minimum-contrast", "ghosttea-light-adaptation"] {
+            assert!(
+                snapshot
+                    .configured_keys
+                    .iter()
+                    .any(|configured| configured.key == key
+                        && configured.support == ConfigSupport::Applied),
+                "{key}"
+            );
+        }
+        let presentation = snapshot.terminal_presentation();
+        assert_eq!(presentation.minimum_contrast, 4.5);
+        assert_eq!(presentation.light_adaptation, LightAdaptation::Off);
+
+        // Ghostty clamps the ratio; an empty value resets both keys.
+        write(&config, "minimum-contrast = 40\n");
+        let snapshot = load_config(&ConfigLoadOptions::explicit(&config));
+        assert_eq!(snapshot.renderer.minimum_contrast, 21.0);
+        assert_eq!(snapshot.renderer.light_adaptation, LightAdaptation::Auto);
+        write(
+            &config,
+            "minimum-contrast = 3\nminimum-contrast =\nghosttea-light-adaptation = sometimes\n",
+        );
+        let snapshot = load_config(&ConfigLoadOptions::explicit(&config));
+        assert_eq!(snapshot.renderer.minimum_contrast, 1.0);
+        assert!(snapshot.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "invalid-value"
+                && diagnostic.key.as_deref() == Some("ghosttea-light-adaptation")
+        }));
     }
 }

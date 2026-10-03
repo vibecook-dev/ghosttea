@@ -965,6 +965,8 @@ extension GhostteaTerminalPresentationConfig {
       && palette == other.palette
       && backgroundOpacity == other.backgroundOpacity
       && backgroundOpacityCells == other.backgroundOpacityCells
+      && minimumContrast == other.minimumContrast
+      && lightAdaptation == other.lightAdaptation
       && fontSize == other.fontSize
       && fontFamilies == other.fontFamilies
       && paddingX == other.paddingX

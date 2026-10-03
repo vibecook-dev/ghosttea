@@ -135,6 +135,29 @@ private struct GhostteaAppearanceSettingsView: View {
         .foregroundStyle(.secondary)
       }
 
+      Section("Readability") {
+        Toggle(
+          "Restyle dark apps under light themes",
+          isOn: Binding(
+            get: { configuration.appearance.lightAdaptation == .auto },
+            set: { value in update { $0.lightAdaptation = value ? .auto : .off } }))
+        Picker(
+          "Minimum text contrast",
+          selection: Binding(
+            get: { configuration.appearance.minimumContrast },
+            set: { value in update { $0.minimumContrast = value } })
+        ) {
+          ForEach(contrastChoices, id: \.self) { ratio in
+            Text(contrastLabel(ratio)).tag(ratio)
+          }
+        }
+        Text(
+          "Apps that paint their own dark background are redrawn as a light design when a light theme is active. Text below the minimum contrast against its background is lightened or darkened, keeping its hue; 4.5:1 is the WCAG AA level for body text."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
+
       if !configuration.appearance.shaderEffects.isEmpty {
         Section("Shader order") {
           ForEach(configuration.appearance.shaderEffects, id: \.self) { id in
@@ -199,6 +222,17 @@ private struct GhostteaAppearanceSettingsView: View {
     var selection = configuration.appearance
     mutation(&selection)
     configuration.applyAppearance(selection)
+  }
+
+  /// The offered ratios, plus a hand-edited one so the picker can show it.
+  private var contrastChoices: [Double] {
+    let current = configuration.appearance.minimumContrast
+    let choices = GhostteaAppearanceSelection.minimumContrastChoices
+    return choices.contains(current) ? choices : (choices + [current]).sorted()
+  }
+
+  private func contrastLabel(_ ratio: Double) -> String {
+    ratio > 1 ? "\(ratio.formatted(.number.precision(.fractionLength(0...2)))):1" : "Off"
   }
 
   private func shaderName(_ id: String) -> String {

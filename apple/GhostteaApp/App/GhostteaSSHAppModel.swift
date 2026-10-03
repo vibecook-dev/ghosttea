@@ -1408,6 +1408,8 @@ extension GhostteaTerminalPresentationConfig {
       palette: palette,
       backgroundOpacity: backgroundOpacity,
       backgroundOpacityCells: backgroundOpacityCells,
+      minimumContrast: minimumContrast,
+      lightAdaptation: lightAdaptation,
       fontSize: runtime.fontSize,
       fontFamilies: runtime.fontFamilies,
       paddingX: paddingX,

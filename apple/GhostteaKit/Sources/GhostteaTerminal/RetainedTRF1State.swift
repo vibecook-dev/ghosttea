@@ -171,7 +171,10 @@ struct RetainedTRF1State: Equatable, Sendable {
         decodeTRF1AccessibilityRows) ?? []
     let nextCursor = try decodeTRF1CursorState(cursorSection)
     let glyphs = try sections[.glyphDefinitions].map(decodeTRF1GlyphDefinitions) ?? []
-    let styles = try sections[.styleDefinitions].map(decodeTRF1StyleDefinitions) ?? []
+    let styles =
+      try sections[.styleDefinitions].map {
+        try decodeTRF1StyleDefinitions($0, palette: sections[.stylePalette])
+      } ?? []
     let nextScrollbar = try sections[.scrollbarState].map(decodeTRF1ScrollbarState)
     let nextSelection = try sections[.selectionSpans].map(decodeTRF1SelectionState)
     let clipboardWrites = try clipboardSections.map(decodeTRF1ClipboardWrite)

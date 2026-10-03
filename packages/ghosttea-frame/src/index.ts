@@ -22,6 +22,7 @@ export enum SectionKind {
   AccessibilityText = 10,
   ClipboardWrite = 11,
   LinkTargets = 12,
+  StylePalette = 13,
 }
 
 export interface FrameSection {
@@ -93,6 +94,16 @@ export interface StyleDefinition {
   underline: boolean;
   foreground?: readonly [number, number, number];
   background?: readonly [number, number, number];
+  /** Palette index `foreground` was resolved from, when it came from the palette. */
+  foregroundPalette?: number;
+  /** Palette index `background` was resolved from, when it came from the palette. */
+  backgroundPalette?: number;
+}
+
+export interface StylePaletteEntry {
+  styleId: number;
+  foreground?: number;
+  background?: number;
 }
 
 export interface StyleRun {
@@ -275,7 +286,11 @@ export function decodeGlyphDefinitions(section: FrameSection): GlyphDefinition[]
   return definitions;
 }
 
-export function decodeStyleDefinitions(section: FrameSection): StyleDefinition[] {
+/**
+ * Decodes style definitions. Pass the frame's optional `StylePalette` section
+ * to attach palette provenance; the RGB colors are complete without it.
+ */
+export function decodeStyleDefinitions(section: FrameSection, paletteSection?: FrameSection): StyleDefinition[] {
   assertRange(section.kind === SectionKind.StyleDefinitions, "wrong style definition section kind");
   assertRange(section.bytes.byteLength >= 4, "truncated style definition header");
   const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
@@ -308,7 +323,38 @@ export function decodeStyleDefinitions(section: FrameSection): StyleDefinition[]
         : {}),
     });
   }
-  return styles;
+  if (!paletteSection) return styles;
+  const palette = new Map(decodeStylePalette(paletteSection).map((entry) => [entry.styleId, entry]));
+  return styles.map((style) => {
+    const entry = palette.get(style.id);
+    if (!entry) return style;
+    return {
+      ...style,
+      ...(entry.foreground !== undefined && style.foreground ? { foregroundPalette: entry.foreground } : {}),
+      ...(entry.background !== undefined && style.background ? { backgroundPalette: entry.background } : {}),
+    };
+  });
+}
+
+export function decodeStylePalette(section: FrameSection): StylePaletteEntry[] {
+  assertRange(section.kind === SectionKind.StylePalette, "wrong style palette section kind");
+  assertRange(section.bytes.byteLength >= 4, "truncated style palette header");
+  const view = new DataView(section.bytes.buffer, section.bytes.byteOffset, section.bytes.byteLength);
+  const count = view.getUint32(0, true);
+  assertRange(count === section.itemCount, "style palette count mismatch");
+  assertRange(section.bytes.byteLength === 4 + count * 8, "invalid style palette length");
+  const entries: StylePaletteEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const offset = 4 + index * 8;
+    const flags = view.getUint8(offset + 4);
+    assertRange((flags & ~0x3) === 0, "invalid style palette flags");
+    entries.push({
+      styleId: view.getUint32(offset, true),
+      ...(flags & 1 ? { foreground: view.getUint8(offset + 5) } : {}),
+      ...(flags & 2 ? { background: view.getUint8(offset + 6) } : {}),
+    });
+  }
+  return entries;
 }
 
 export function decodeCursorState(section: FrameSection): CursorState {

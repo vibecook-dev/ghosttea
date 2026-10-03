@@ -202,6 +202,7 @@ export function serializeSupportedGhosttyConfig(config: ConfigSnapshot): string 
       .map(({ index, color }) => `palette = ${index}=${colorHex(color)}`),
     `background-opacity = ${(renderer.backgroundOpacity ?? 1).toFixed(2)}`,
     `background-opacity-cells = ${renderer.backgroundOpacityCells ?? false}`,
+    `minimum-contrast = ${renderer.minimumContrast ?? 1}`,
     `scrollback-limit = ${config.terminal.scrollbackBytes}`,
     "font-family =",
     ...renderer.fontFamilies.map((family) => `font-family = ${family.replaceAll(/[\r\n]/gu, "")}`),

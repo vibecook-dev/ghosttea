@@ -830,7 +830,8 @@ function applyFrame(
   }
 
   const glyphDefinitions = glyphSection ? decodeGlyphDefinitions(glyphSection) : NO_GLYPH_DEFINITIONS;
-  const styleDefinitions = styleSection ? decodeStyleDefinitions(styleSection) : NO_STYLE_DEFINITIONS;
+  const paletteSection = frame.sections.find((candidate) => candidate.kind === SectionKind.StylePalette);
+  const styleDefinitions = styleSection ? decodeStyleDefinitions(styleSection, paletteSection) : NO_STYLE_DEFINITIONS;
   const replacements = decodeRowReplacements(rowSection);
   for (const replacement of replacements) {
     if (replacement.row >= frame.rows) throw new RangeError("Row replacement exceeds viewport");

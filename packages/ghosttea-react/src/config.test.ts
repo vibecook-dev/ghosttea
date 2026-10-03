@@ -28,7 +28,11 @@ describe("shared configuration presentation", () => {
       selectionForeground: [7 / 255, 8 / 255, 9 / 255, 1],
       backgroundOpacityCells: false,
       lightAdaptation: "auto",
+      minimumContrast: 1,
     });
+    expect(
+      terminalThemeFromConfig({ renderer: { ...renderer, lightAdaptation: "off", minimumContrast: 4.5 } }),
+    ).toMatchObject({ lightAdaptation: "off", minimumContrast: 4.5 });
     expect(terminalEffectsFromConfig({ renderer })).toEqual({
       postProcess: "better-crt",
       shaderEffects: ["ghosttea:better-crt"],
