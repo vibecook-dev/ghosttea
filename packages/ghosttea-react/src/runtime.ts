@@ -261,6 +261,7 @@ interface RoutedActivationRuntime {
   cellLeaseTimer?: number;
   workerLeaseTimer?: number;
   framesResume?: Promise<void>;
+  framesAttachStarted?: boolean;
   recoveryAttempts: number;
   preAuthRemints: { control: number; frames: number };
   protocolFailures: { control: number; frames: number };
@@ -1592,14 +1593,21 @@ export class GhostteaTerminalRuntime extends EventTarget {
   ): Promise<void> {
     const host = this.#routedHost;
     if (!host || this.#disposed || entry.viewIds.size === 0) return;
+    const activationId = entry.state.activationId;
+    const isCurrent = () =>
+      !this.#disposed &&
+      entry.viewIds.size > 0 &&
+      entry.state.activationId === activationId &&
+      this.#routedByActivation.get(activationId) === entry &&
+      this.#routedBySession.get(entry.sessionId) === entry;
     let ticket: RoutedTerminalOpenTicket;
     try {
       ticket = await host.openTicket(entry.sessionId, { reason });
     } catch (error) {
-      this.#transitionRouted(entry, { type: "no-route", reason: String(error) });
+      if (isCurrent()) this.#transitionRouted(entry, { type: "no-route", reason: String(error) });
       return;
     }
-    if (this.#routedBySession.get(entry.sessionId) !== entry || this.#disposed) return;
+    if (!isCurrent()) return;
     if (!this.#routedTicketMatches(entry, ticket)) {
       this.#transitionRouted(entry, { type: "no-route", reason: "ticket-binding-mismatch" });
       return;
@@ -1614,10 +1622,26 @@ export class GhostteaTerminalRuntime extends EventTarget {
       transportGrant: ticket.transportGrant,
       attachGrant: ticket.attachGrant,
       activationId: entry.state.activationId,
+      replacePreviousActivation: true,
       ...(entry.replacesActivationId === undefined ? {} : { replacesActivationId: entry.replacesActivationId }),
       initialDemand: this.#routedDemand(entry),
       capabilities: this.#routedCapabilities,
     });
+    this.#armRoutedAttachDeadline(
+      entry,
+      this.#routedAttachDeadlineByCell.get(ticket.route.cellBootId) ??
+        DEFAULT_ROUTED_PROTOCOL_LIMITS.activationAttachDeadlineMs,
+    );
+    this.#scheduleRoutedRenewal(entry);
+  }
+
+  #startRoutedFrames(entry: RoutedActivationRuntime): void {
+    const ticket = entry.ticket;
+    if (!ticket?.endpoints || !entry.state.controlAttached || entry.framesAttachStarted || entry.viewIds.size === 0)
+      return;
+    // Control creates the native activation. The frames socket may already be
+    // warm; sending on both legs at once races that creation on every remount.
+    entry.framesAttachStarted = true;
     this.#postWorker({
       type: "routed-frames-attach",
       request: {
@@ -1632,17 +1656,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
         capabilities: this.#routedCapabilities,
       },
     });
-    this.#armRoutedAttachDeadline(
-      entry,
-      this.#routedAttachDeadlineByCell.get(ticket.route.cellBootId) ??
-        DEFAULT_ROUTED_PROTOCOL_LIMITS.activationAttachDeadlineMs,
-    );
-    this.#scheduleRoutedRenewal(entry);
   }
 
   #stopRoutedActivation(entry: RoutedActivationRuntime): void {
     this.#routedControl?.detach(entry.state.activationId);
     this.#postWorker({ type: "routed-frames-detach", activationId: entry.state.activationId });
+    delete entry.framesAttachStarted;
     if (entry.attachTimer !== undefined) window.clearTimeout(entry.attachTimer);
     delete entry.attachTimer;
     if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
@@ -1725,6 +1744,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         grantGeneration: event.attached.grantGenerationAccepted,
         rights: event.attached.rights,
       });
+      this.#startRoutedFrames(entry);
       const previousGeometry = this.#routedGeometry.get(entry.sessionId);
       if (
         !event.attached.rights.includes("geometry") &&
@@ -2085,6 +2105,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const previousActivationId = entry.state.activationId;
     this.#routedControl?.detach(previousActivationId);
     this.#postWorker({ type: "routed-frames-detach", activationId: previousActivationId });
+    delete entry.framesAttachStarted;
     this.#routedByActivation.delete(previousActivationId);
     const nextActivationId = crypto.randomUUID();
     entry.replacesActivationId = previousActivationId;

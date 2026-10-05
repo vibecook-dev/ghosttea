@@ -140,6 +140,249 @@ async function flush(): Promise<void> {
 }
 
 describe("routed terminal runtime", () => {
+  function inputFixture(openTicket?: GhostteaRoutedHost["openTicket"]) {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const socket = new FakeSocket();
+    const first = session("session-a", "11");
+    let generation = 0;
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: {
+        openTicket:
+          openTicket ??
+          (async () => {
+            const result = ticket("cell-a", first.id, "set-a");
+            result.attachGrant.claims.grantGeneration = ++generation;
+            return result;
+          }),
+        encodeInput: (context) => ({ type: "TerminalInput", ...context }),
+      },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      websocketFactory: () => socket as unknown as WebSocket,
+      workerFactory: () => worker as unknown as Worker,
+    });
+    runtime.registerSession(first);
+    const mount = (viewId: string) => runtime.mount(first.id, first.handle, viewId, canvas());
+    const attaches = () => socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "AttachControlLeg");
+    const framesAttaches = () => worker.messages.filter((m) => (m as { type: string }).type === "routed-frames-attach");
+    const connect = async () => {
+      await flush();
+      socket.open();
+      socket.receive(
+        encodeRoutedMessage("ConnectionAccepted", {
+          selectedProtocolVersion: { major: 1, minor: 0 },
+          connectionSetId: "set-a",
+          channel: "control",
+          legGeneration: 1,
+          heartbeatTtlMs: 15_000,
+          protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+          capabilities: ["resume"],
+        }),
+      );
+    };
+    const accept = (activationId: string, grantGenerationAccepted: number) => {
+      socket.receive(
+        encodeRoutedMessage("ControlLegAttached", {
+          sessionId: first.id,
+          activationId,
+          grantGenerationAccepted,
+          rights: ["geometry", "input", "read"],
+        }),
+      );
+    };
+    const present = (activationId: string) => {
+      const stamp = { sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: 1 };
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-attached",
+          attached: {
+            sessionId: first.id,
+            activationId,
+            resumeToken: "resume",
+            trfIdentity: { sessionHandle: "11", viewHandle: "12" },
+            outcome: { kind: "seed-required", reason: "no-cursor" },
+          },
+        },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: { type: "frames-state", activationId, state: "active", appliedContent: stamp },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "presentation-status",
+          status: {
+            activationId,
+            workerStatusSequence: 1,
+            state: "active",
+            sceneContent: stamp,
+            leaseTtlMs: 10_000,
+          },
+        },
+      });
+      socket.receive(
+        encodeRoutedMessage("CellActivationStatus", {
+          sessionId: first.id,
+          activationId,
+          cellStatusSequence: 1,
+          leaseTtlMs: 10_000,
+          acceptedContent: stamp,
+          presentation: { state: "presenting" },
+          input: { state: "allowed" },
+        }),
+      );
+    };
+    const dispose = () => {
+      runtime.dispose();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    };
+    return { runtime, worker, socket, first, mount, attaches, framesAttaches, connect, accept, present, dispose };
+  }
+
+  it("restores input after repeated last-pane detach and reattach with a fresh presentation lease", async () => {
+    const h = inputFixture();
+    try {
+      let mounted = h.mount("view-0");
+      await h.connect();
+      let previous: string | undefined;
+      for (let index = 0; index < 10; index++) {
+        const attach = h.attaches().at(-1)!;
+        expect(attach.replacesActivationId).toBe(previous);
+        expect(h.framesAttaches()).toHaveLength(index);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        h.accept(attach.activationId, index + 1);
+        h.accept(attach.activationId, index + 1); // a duplicate ACK must not attach frames twice
+        expect(h.framesAttaches()).toHaveLength(index + 1);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        if (previous) {
+          h.present(previous); // old leases cannot admit input on the replacement
+          expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        }
+        h.present(attach.activationId);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(true);
+        h.runtime.sendText(h.first.id, `view-${index}`, "probe");
+        expect(JSON.parse(h.socket.sent.at(-1)!)).toMatchObject({
+          type: "TerminalInput",
+          activationId: attach.activationId,
+        });
+        if (index === 9) break;
+        previous = attach.activationId;
+        mounted.dispose();
+        await vi.advanceTimersByTimeAsync(1);
+        mounted = h.mount(`view-${index + 1}`);
+        await flush();
+      }
+      const retained = h.mount("second-pane");
+      await flush();
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.runtime.routedViewInputAllowed("second-pane")).toBe(true);
+      expect(h.attaches()).toHaveLength(10);
+      retained.dispose();
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("recovers a replacement refusal against the admitted identity instead of the refused attempt", async () => {
+    const h = inputFixture();
+    try {
+      const mounted = h.mount("old-view");
+      await h.connect();
+      const old = h.attaches().at(-1)!.activationId;
+      h.accept(old, 1);
+      h.present(old);
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      h.mount("new-view");
+      await flush();
+      const refused = h.attaches().at(-1)!.activationId;
+      h.socket.receive(
+        encodeRoutedMessage("AttachRefused", { activationId: refused, code: "CAPACITY", retryable: true }),
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      const retry = h.attaches().at(-1)!;
+      expect(retry.activationId).not.toBe(refused);
+      expect(retry.replacesActivationId).toBe(old);
+      expect(h.framesAttaches()).toHaveLength(1);
+      h.accept(retry.activationId, 3);
+      h.present(retry.activationId);
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("does not start frames for a pane detached before its control reply", async () => {
+    const h = inputFixture();
+    try {
+      const mounted = h.mount("old-view");
+      await h.connect();
+      const old = h.attaches().at(-1)!.activationId;
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      h.mount("new-view");
+      await flush();
+      expect(h.attaches()).toHaveLength(1);
+      h.accept(old, 1);
+      expect(h.framesAttaches()).toHaveLength(0);
+      const next = h.attaches().at(-1)!;
+      expect(next.replacesActivationId).toBe(old);
+      h.accept(next.activationId, 2);
+      h.present(next.activationId);
+      expect(h.framesAttaches()).toHaveLength(1);
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a retired pane's open ticket that settles late (%s)",
+    async (settlement) => {
+      let resolve!: (value: RoutedTerminalOpenTicket) => void;
+      let reject!: (reason: Error) => void;
+      const pending = new Promise<RoutedTerminalOpenTicket>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      const openTicket = vi
+        .fn<GhostteaRoutedHost["openTicket"]>()
+        .mockReturnValueOnce(pending)
+        .mockResolvedValue(ticket("cell-a", "session-a", "set-a"));
+      const h = inputFixture(openTicket);
+      try {
+        const old = h.mount("old-view");
+        await flush();
+        old.dispose();
+        await vi.advanceTimersByTimeAsync(1);
+        h.mount("new-view");
+        await h.connect();
+        const current = h.attaches().at(-1)!;
+        h.accept(current.activationId, 1);
+        h.present(current.activationId);
+        if (settlement === "resolve") resolve(ticket("cell-a", "session-a", "set-a"));
+        else reject(new Error("old ticket failed"));
+        await flush();
+        expect(h.attaches()).toHaveLength(1);
+        expect(h.framesAttaches()).toHaveLength(1);
+        expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+      } finally {
+        h.dispose();
+      }
+    },
+  );
+
   it("bounds lease timers and does not renew leases for stale status messages", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);
@@ -897,7 +1140,7 @@ describe("routed terminal runtime", () => {
             (message as { type?: string }).type === "routed-frames-attach",
         )
         .map((message) => message.request.cellBootId),
-    ).toEqual(["cell-a", "cell-b"]);
+    ).toEqual([]); // the native control attachment must exist before frames starts
     for (const socket of sockets) socket.open();
     const helloA = JSON.parse(sockets[0]!.sent[0]!) as Record<string, unknown>;
     const helloB = JSON.parse(sockets[1]!.sent[0]!) as Record<string, unknown>;
@@ -928,6 +1171,9 @@ describe("routed terminal runtime", () => {
         rights: ["geometry", "input", "read"],
       }),
     );
+    expect(
+      worker.messages.filter((message) => (message as { type: string }).type === "routed-frames-attach"),
+    ).toHaveLength(1);
     expect(JSON.parse(sockets[0]!.sent.at(-1)!)).toMatchObject({
       type: "ClaimGeometry",
       activationId: attachA.activationId,

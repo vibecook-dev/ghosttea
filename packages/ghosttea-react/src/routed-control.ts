@@ -27,6 +27,9 @@ export interface RoutedControlAttachRequest {
   attachGrant: RoutedSessionAttachGrant;
   activationId: string;
   replacesActivationId?: string;
+  /** Replace this connection's last admitted activation for the session.
+   * A pending predecessor is resolved first, including after local detach. */
+  replacePreviousActivation?: boolean;
   initialDemand: RoutedSourceDemand;
   capabilities?: string[];
 }
@@ -75,11 +78,20 @@ interface ControlConnection {
   accepted?: RoutedConnectionAccepted;
   activationIds: Set<string>;
   pendingGeometry: string[];
+  replacements: Map<string, ControlReplacement>;
   heartbeatSequence: number;
   heartbeatAckSequence: number;
   heartbeatTimer?: number;
   heartbeatDeadlineTimer?: number;
   refusal?: RoutedConnectionRefused;
+}
+
+/** One cell-side identity per session, not a history of DOM mounts. Retained
+ * after demand-none until replacement, cell revocation, or connection death. */
+interface ControlReplacement {
+  admitted?: string;
+  pending?: RoutedControlAttachRequest;
+  queued?: ControlActivation;
 }
 
 const socketOpen = 1;
@@ -137,10 +149,17 @@ export class RoutedControlTransport {
   declareDemand(activationId: string, demand: RoutedSourceDemand): number | undefined {
     const activation = this.#activations.get(activationId);
     if (!activation) return undefined;
+    activation.lastDemand = demand;
     const connection = this.#connections.get(activation.request.cellBootId);
     if (!connection?.accepted) return undefined;
+    const replacement = connection.replacements.get(activation.request.attachGrant.claims.sessionId);
+    if (
+      activation.request.replacePreviousActivation &&
+      replacement?.pending?.activationId !== activationId &&
+      replacement?.admitted !== activationId
+    )
+      return undefined;
     activation.demandSequence += 1;
-    activation.lastDemand = demand;
     const body: RoutedDeclareDemand = {
       sessionId: activation.request.attachGrant.claims.sessionId,
       activationId,
@@ -184,7 +203,10 @@ export class RoutedControlTransport {
     if (!activation) return;
     this.declareDemand(activationId, { mode: "none" });
     this.#activations.delete(activationId);
-    this.#connections.get(activation.request.cellBootId)?.activationIds.delete(activationId);
+    const connection = this.#connections.get(activation.request.cellBootId);
+    connection?.activationIds.delete(activationId);
+    const replacement = connection?.replacements.get(activation.request.attachGrant.claims.sessionId);
+    if (replacement?.queued === activation) delete replacement.queued;
   }
 
   dispose(): void {
@@ -219,6 +241,7 @@ export class RoutedControlTransport {
       socket,
       activationIds: new Set(),
       pendingGeometry: [],
+      replacements: new Map(),
       heartbeatSequence: 0,
       heartbeatAckSequence: 0,
     };
@@ -315,6 +338,26 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "ControlLegAttached") {
+      const replacement = connection.replacements.get(message.sessionId);
+      const pending = replacement?.pending;
+      if (replacement && pending?.activationId === message.activationId) {
+        if (
+          message.grantGenerationAccepted !== pending.attachGrant.claims.grantGeneration ||
+          message.rights.some((right) => !pending.attachGrant.claims.rights.includes(right))
+        ) {
+          this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "control attach binding mismatch", true);
+          return;
+        }
+        replacement.admitted = message.activationId;
+        delete replacement.pending;
+        // Detach retires the UI consumer, not the cell's identity. A late ACK
+        // still resolves a queued replacement, but must not resurrect a view.
+        if (connection.activationIds.has(message.activationId)) {
+          this.#emit({ type: "control-attached", attached: message });
+        }
+        this.#drainReplacement(connection, message.sessionId, replacement);
+        return;
+      }
       const activation = this.#activations.get(message.activationId);
       if (!connection.activationIds.has(message.activationId) && !activation) return;
       if (
@@ -331,6 +374,22 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "AttachRefused") {
+      for (const [sessionId, replacement] of connection.replacements) {
+        if (message.activationId === undefined || replacement.pending?.activationId !== message.activationId) continue;
+        // A refused attempt never became the native predecessor. Keep the
+        // admitted id, even if this reply arrives after that attempt detached.
+        delete replacement.pending;
+        if (connection.activationIds.has(message.activationId)) {
+          this.#emit({
+            type: "attach-refused",
+            activationId: message.activationId,
+            code: message.code,
+            retryable: message.retryable,
+          });
+        }
+        this.#drainReplacement(connection, sessionId, replacement);
+        return;
+      }
       if (message.activationId !== undefined && !connection.activationIds.has(message.activationId)) {
         if (!this.#activations.has(message.activationId)) return;
         this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "attach refusal binding mismatch", true);
@@ -345,6 +404,11 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "CellActivationStatus") {
+      const replacement = connection.replacements.get(message.sessionId);
+      if (replacement?.admitted === message.activationId && message.presentation.state === "revoked") {
+        delete replacement.admitted;
+        if (!replacement.pending && !replacement.queued) connection.replacements.delete(message.sessionId);
+      }
       const activation = this.#activations.get(message.activationId);
       if (!connection.activationIds.has(message.activationId) && !activation) return;
       if (
@@ -396,17 +460,44 @@ export class RoutedControlTransport {
   }
 
   #sendAttach(connection: ControlConnection, activation: ControlActivation): void {
+    let replacesActivationId = activation.request.replacesActivationId;
+    if (activation.request.replacePreviousActivation) {
+      const sessionId = activation.request.attachGrant.claims.sessionId;
+      let replacement = connection.replacements.get(sessionId);
+      if (!replacement) {
+        replacement = {};
+        connection.replacements.set(sessionId, replacement);
+      }
+      if (replacement.pending) {
+        replacement.queued = activation;
+        return;
+      }
+      replacement.pending = activation.request;
+      replacesActivationId =
+        replacement.admitted === activation.request.activationId ? undefined : replacement.admitted;
+    }
     this.#send(
       connection,
       encodeRoutedMessage("AttachControlLeg", {
         activationId: activation.request.activationId,
         attachGrant: activation.request.attachGrant,
-        ...(activation.request.replacesActivationId === undefined
-          ? {}
-          : { replacesActivationId: activation.request.replacesActivationId }),
+        ...(replacesActivationId === undefined ? {} : { replacesActivationId }),
         initialDemand: activation.lastDemand,
       }),
     );
+  }
+
+  #drainReplacement(connection: ControlConnection, sessionId: string, replacement: ControlReplacement): void {
+    const queued = replacement.queued;
+    delete replacement.queued;
+    if (
+      queued &&
+      this.#connections.get(connection.cellBootId) === connection &&
+      this.#activations.get(queued.request.activationId) === queued
+    ) {
+      this.#sendAttach(connection, queued);
+    }
+    if (!replacement.admitted && !replacement.pending && !replacement.queued) connection.replacements.delete(sessionId);
   }
 
   #sendActivation(activationId: string, text: string): boolean {
