@@ -114,6 +114,12 @@ const snapshots = new Map<string, SessionSnapshot>();
  * until a handle has drawn once, and forgotten with its snapshot.
  */
 const drawnSessions = new Set<string>();
+/**
+ * The mouse-tracking flag each routed session's last committed frame carried,
+ * as last said to the renderer (`terminal-modes`). Forgotten when the session's
+ * activation attaches again, so a re-attached session says it once more.
+ */
+const routedMouseTracking = new Map<string, boolean>();
 const sharedGlyphDefinitions = new Map<string, { definition: GlyphDefinition; references: number }>();
 // Renderer IDs never repeat while the GPU atlas survives, even after a cell restart.
 let nextRendererGlyphId = 1;
@@ -1131,6 +1137,16 @@ function applyFrame(
     // recovered screen apart from a partial update of the stale one.
     fullSnapshot: fullFrame,
   });
+  // The renderer sends the wheel to a program that tracks the mouse and
+  // scrolls locally otherwise (`isMouseTracking`). Routed frames never pass the
+  // main thread, where the legacy bridge reads the flag, so it is said here.
+  if (expectedIdentity) {
+    const mouseTracking = (frame.flags & FrameFlag.MouseTracking) !== 0;
+    if (routedMouseTracking.get(id) !== mouseTracking) {
+      routedMouseTracking.set(id, mouseTracking);
+      postToRenderer({ type: "terminal-modes", sessionHandle: id, mouseTracking });
+    }
+  }
   if (firstDrawn) {
     drawnSessions.add(id);
     postToRenderer({ type: "session-drawn", sessionHandle: id });
@@ -1323,6 +1339,7 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
     } else if (message.type === "performance-counters") {
       postToRenderer({ type: "performance-counters", requestId: message.requestId, snapshot: counterSnapshot() });
     } else if (message.type === "routed-frames-attach") {
+      routedMouseTracking.delete(message.request.sessionHandle);
       routedFrames.attach(message.request);
     } else if (message.type === "routed-frames-detach") {
       routedFrames.detach(message.activationId);

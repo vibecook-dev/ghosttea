@@ -645,6 +645,43 @@ describe("routed terminal runtime", () => {
     vi.useRealTimers();
   });
 
+  it("takes a routed session's mouse modes from the worker, once per change", () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const first = session("session-a", "11");
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    const modes = vi.fn();
+    runtime.addEventListener("terminal-modes", modes);
+    runtime.registerSession(first);
+    // A routed frame never passes the main thread, so before the worker says
+    // otherwise the wheel scrolls locally — codex's history went unscrolled.
+    expect(runtime.isMouseTracking(first.handle)).toBe(false);
+
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: true });
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: true });
+    expect(runtime.isMouseTracking(first.handle)).toBe(true);
+    expect(modes).toHaveBeenCalledOnce();
+    expect((modes.mock.calls[0]![0] as CustomEvent).detail).toEqual({
+      sessionHandle: first.handle,
+      mouseTracking: true,
+    });
+
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: false });
+    expect(runtime.isMouseTracking(first.handle)).toBe(false);
+    expect(modes).toHaveBeenCalledTimes(2);
+    runtime.dispose();
+  });
+
   it("coalesces routed metadata reads without overlapping them", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);

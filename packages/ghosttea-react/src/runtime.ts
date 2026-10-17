@@ -585,6 +585,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
         pending.resolve(data.snapshot);
       } else if (data.type === "routed-frames-event") {
         this.#handleRoutedFramesEvent(data.event);
+      } else if (data.type === "terminal-modes") {
+        this.#noteMouseTracking(data.sessionHandle, data.mouseTracking);
       } else if (data.type === "renderer-reload-required") {
         console.error(`[terminal-runtime] renderer requested reload: ${String(data.reason ?? "unknown")}`);
         this.#platform.setForceCanvasFallback(true);
@@ -824,11 +826,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.#returnFrameCredit(data.byteLength);
         return;
       }
-      const tracking = (view.getUint16(6, true) & FrameFlag.MouseTracking) !== 0;
-      if (this.#mouseTrackingByHandle.get(sessionHandle) !== tracking) {
-        this.#mouseTrackingByHandle.set(sessionHandle, tracking);
-        this.dispatchEvent(new CustomEvent("terminal-modes", { detail: { sessionHandle, mouseTracking: tracking } }));
-      }
+      this.#noteMouseTracking(sessionHandle, (view.getUint16(6, true) & FrameFlag.MouseTracking) !== 0);
       this.#scheduleMetadataRefresh(sessionHandle);
       this.#postWorker({ type: "frame", packet: data }, [data]);
     };
@@ -2963,6 +2961,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   isMouseTracking(sessionHandle: string): boolean {
     return this.#mouseTrackingByHandle.get(sessionHandle) ?? false;
+  }
+
+  /** A session's mouse modes, from whichever path carried its frame: the legacy
+   * bridge's header, read here, or the worker's word for a routed frame. */
+  #noteMouseTracking(sessionHandle: string, tracking: boolean): void {
+    if (this.#mouseTrackingByHandle.get(sessionHandle) === tracking) return;
+    this.#mouseTrackingByHandle.set(sessionHandle, tracking);
+    this.dispatchEvent(new CustomEvent("terminal-modes", { detail: { sessionHandle, mouseTracking: tracking } }));
   }
 
   setTheme(sessionHandle: string, theme: TerminalTheme, surfaceId?: string): void {

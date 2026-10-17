@@ -57,6 +57,13 @@ export type WorkerToRendererMessage =
    * is dropped; the runtime publishes it per session as `session-drawn`.
    */
   | { type: "session-drawn"; sessionHandle: string }
+  /**
+   * A routed session's mouse modes, as of the frame just committed. The legacy
+   * bridge's frames pass the main thread, which reads them from each header; a
+   * routed frame reaches only this worker, so the worker says them — once per
+   * change, and again after the session's activation re-attaches.
+   */
+  | { type: "terminal-modes"; sessionHandle: string; mouseTracking: boolean }
   | { type: "catalog-pressure"; sessionHandle: string; reason: "working-set-exceeds-budget" }
   | { type: "frame-credit"; bytes: number }
   | { type: "performance-started"; requestId: number }

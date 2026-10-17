@@ -563,6 +563,137 @@ describe("terminal render worker surfaces", () => {
     expect(new Set(ids).size).toBe(1);
   });
 
+  it("says a routed session's mouse modes when a committed frame changes them", async () => {
+    const scope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback): number => {
+        callback(performance.now());
+        return 1;
+      },
+    };
+    const sockets: FakeRoutedSocket[] = [];
+    vi.stubGlobal("self", scope);
+    vi.stubGlobal(
+      "WebSocket",
+      class extends FakeRoutedSocket {
+        constructor(_url: string) {
+          super();
+          sockets.push(this);
+        }
+      },
+    );
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    const protectedBase = {
+      v: 1 as const,
+      iss: "fieldd" as const,
+      alg: "HS256" as const,
+      kid: { cellBootId: "cell-a", keyGeneration: 1 },
+    };
+    dispatch({
+      type: "routed-frames-attach",
+      request: {
+        cellBootId: "cell-a",
+        sessionHandle: "11",
+        framesUrl: "ws://127.0.0.1/frames",
+        transportGrant: {
+          protected: { ...protectedBase, typ: "CellTransportGrant" as const },
+          claims: {
+            audienceCellBootId: "cell-a",
+            clientId: "window-a",
+            connectionSetId: "set-a",
+            allowedChannels: ["control", "frames"] as const,
+            transportGrantGeneration: 1,
+            issuedAt: 1,
+            expiresAt: 2,
+            nonce: "nonce-a",
+          },
+          mac: "opaque",
+        },
+        attachGrant: {
+          protected: { ...protectedBase, typ: "SessionAttachGrant" as const },
+          claims: {
+            audienceCellBootId: "cell-a",
+            clientId: "window-a",
+            sessionId: "session-a",
+            leaseEpoch: 4,
+            routeRevision: 1,
+            grantGeneration: 1,
+            rights: ["input", "read"] as const,
+            issuedAt: 1,
+            expiresAt: 2,
+          },
+          mac: "opaque",
+        },
+        activationId: "activation-a",
+        capabilities: ["resume"],
+      },
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(
+      encodeRoutedMessage("ConnectionAccepted", {
+        selectedProtocolVersion: { major: 1, minor: 0 },
+        connectionSetId: "set-a",
+        channel: "frames",
+        legGeneration: 1,
+        heartbeatTtlMs: 15_000,
+        creditEpoch: 1,
+        initialWindows: DEFAULT_ROUTED_RECEIVER_CAPACITIES,
+        protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+        capabilities: ["resume"],
+      }),
+    );
+    socket.receive(
+      encodeRoutedMessage("FramesLegAttached", {
+        sessionId: "session-a",
+        activationId: "activation-a",
+        resumeToken: "resume-a",
+        trfIdentity: { sessionHandle: "11", viewHandle: "11" },
+        outcome: { kind: "seed-required", reason: "no-cursor" },
+      }),
+    );
+    const stamp = (seq: number) => ({ sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: seq });
+    const frame = async (seq: number, mouseTracking: boolean): Promise<void> => {
+      const packet = minimalFullFrame(11n, 11n);
+      const header = new DataView(packet);
+      header.setUint16(6, FrameFlag.FullSnapshot | (mouseTracking ? FrameFlag.MouseTracking : 0), true);
+      header.setBigUint64(40, BigInt(seq), true);
+      socket.receive(
+        encodeRoutedPresentationEnvelope(
+          {
+            creditEpoch: 1,
+            activationSequence: seq,
+            sessionId: "session-a",
+            activationId: "activation-a",
+            leaseEpoch: 4,
+            kind: "trf1-frame",
+            baseContent: seq === 1 ? null : stamp(seq - 1),
+            resultContent: stamp(seq),
+          },
+          new Uint8Array(packet),
+        ).buffer as ArrayBuffer,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    // codex turns mouse reporting on; a second frame with it on says nothing
+    // new; turning it off is said too.
+    await frame(1, true);
+    await frame(2, true);
+    await frame(3, false);
+    const said = scope.postMessage.mock.calls
+      .map(([message]) => message as { type: string })
+      .filter((message) => message.type === "terminal-modes");
+    expect(said).toEqual([
+      { type: "terminal-modes", sessionHandle: "11", mouseTracking: true },
+      { type: "terminal-modes", sessionHandle: "11", mouseTracking: false },
+    ]);
+    socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
   it("mounts and redraws multiple surfaces backed by one session snapshot", async () => {
     const workerScope = {
       onmessage: null as ((event: MessageEvent) => void) | null,
