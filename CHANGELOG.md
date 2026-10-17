@@ -3,6 +3,15 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.10.2 - Unreleased
+
+### Added
+
+- `GhostteaTerminalMetalView.focusesInputOnScroll` (default `true`, unchanged
+  behavior). A host that owns the keyboard itself turns it off, and scrolling
+  the terminal by touch no longer takes keyboard focus — a swipe scrolls
+  without raising the keyboard, as `focusesInputOnTap` already does for a tap.
+
 ## 0.10.1 - 2026-08-18
 
 ### Fixed
