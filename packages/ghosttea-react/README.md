@@ -119,8 +119,10 @@ before the control leg attaches is sent when it attaches. On the port-pair
 transport the take is `claimResizeControl`, which never displaces another
 view. To let the pane focused last size the PTY across windows and devices,
 pass `takeGeometryOnFocus` to `TerminalSurface` or `GhostteaWorkspace`. A pane
-then takes the seat each time it gains focus, and a `controlsResize={false}`
-mirror still never does.
+then takes the seat each time it gains focus, and each time it is pressed while
+it already has focus, so a seat another device took while this window kept its
+focus is taken back by pressing the pane. A `controlsResize={false}` mirror
+still never does.
 
 `runtime.geometryHolder(sessionHandle)` reads the seat as this runtime last
 saw it: `{ holder, revision, local }`, where `holder` is

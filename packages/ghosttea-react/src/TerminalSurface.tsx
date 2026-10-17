@@ -44,6 +44,30 @@ export function focusTakesGeometry(focused: boolean, wasFocused: boolean, policy
 }
 
 /**
+ * Whether a press takes the geometry seat: a press of a surface that already
+ * has focus, under a focus gain's own policy. A press of an unfocused surface
+ * focuses it, and that gain takes. A press of a focused one changes no focus, so
+ * without this a pane whose seat another client took while this window kept its
+ * focus (a phone's take) could not be taken back by pressing it.
+ */
+export function pressTakesGeometry(wasFocused: boolean, policy: SurfaceFocusPolicy): boolean {
+  return wasFocused && policy.takeGeometryOnFocus && policy.controlsResize && policy.interactive;
+}
+
+/** A press of the surface, reported before it moves focus: the seat is taken at
+ * the surface's current grid when `pressTakesGeometry` says so. */
+export function syncSurfacePress(
+  runtime: Pick<GhostteaTerminalRuntime, "takeResizeControl">,
+  surface: { sessionHandle: string; viewId: string; cols: number; rows: number },
+  wasFocused: boolean,
+  policy: SurfaceFocusPolicy,
+): void {
+  if (pressTakesGeometry(wasFocused, policy)) {
+    runtime.takeResizeControl(surface.sessionHandle, surface.viewId, surface.cols, surface.rows);
+  }
+}
+
+/**
  * The surface's focus report. Focus always reaches the runtime as a
  * scheduling fact; the seat is taken only when `focusTakesGeometry` says so,
  * at the surface's current grid.
@@ -653,6 +677,16 @@ function TerminalSurfaceSession({
   };
 
   const onPointerDown = (event: PointerEvent<HTMLTextAreaElement>): void => {
+    syncSurfacePress(
+      terminalRuntime,
+      { sessionHandle: session.handle, viewId, ...gridRef.current },
+      focusedRef.current,
+      {
+        takeGeometryOnFocus: takeGeometryOnFocusRef.current,
+        controlsResize: controlsResizeRef.current,
+        interactive: interactiveRef.current,
+      },
+    );
     onActivate?.();
     event.currentTarget.focus({ preventScroll: true });
     if (links.begin(event)) {

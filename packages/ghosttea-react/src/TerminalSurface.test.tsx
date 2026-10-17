@@ -1,7 +1,14 @@
 import { isValidElement } from "react";
 import { unknownSessionActivity, type SessionSummary } from "@vibecook/ghosttea-protocol";
 import { describe, expect, it } from "vitest";
-import { focusTakesGeometry, syncSurfaceFocus, TerminalSurface, viewportSelection } from "./TerminalSurface";
+import {
+  focusTakesGeometry,
+  pressTakesGeometry,
+  syncSurfaceFocus,
+  syncSurfacePress,
+  TerminalSurface,
+  viewportSelection,
+} from "./TerminalSurface";
 import { DEFAULT_THEME } from "./renderers/types";
 
 function session(id: string, handle: string): SessionSummary {
@@ -88,5 +95,26 @@ describe("focus and the geometry seat", () => {
       ["setFocused", "11", "view-a", false, 90, 30],
       ["setFocused", "11", "view-a", true, 90, 30],
     ]);
+  });
+
+  it("takes the seat on a press of a surface that already has focus, and on no other press", () => {
+    expect(pressTakesGeometry(true, controller)).toBe(true);
+    // A press of an unfocused surface focuses it, and that gain takes instead.
+    expect(pressTakesGeometry(false, controller)).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, takeGeometryOnFocus: false })).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, controlsResize: false })).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, interactive: false })).toBe(false);
+
+    const calls: unknown[][] = [];
+    const runtime = {
+      takeResizeControl: (...args: unknown[]) => {
+        calls.push(["takeResizeControl", ...args]);
+      },
+    };
+    const surface = { sessionHandle: "11", viewId: "view-a", cols: 90, rows: 30 };
+    syncSurfacePress(runtime, surface, true, controller);
+    syncSurfacePress(runtime, surface, false, controller);
+    syncSurfacePress(runtime, surface, true, { ...controller, controlsResize: false });
+    expect(calls).toEqual([["takeResizeControl", "11", "view-a", 90, 30]]);
   });
 });
