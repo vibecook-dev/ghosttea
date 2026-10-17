@@ -185,6 +185,10 @@
     public var focusesInputOnTap = true {
       didSet { inputFocusTapRecognizer.isEnabled = focusesInputOnTap }
     }
+    /// Whether scrolling the terminal by touch takes keyboard focus. A host that
+    /// owns the keyboard itself — an input card above the terminal — turns it
+    /// off, and a swipe then scrolls without raising the keyboard.
+    public var focusesInputOnScroll = true
     public var onGridSizeChange: ((GhostteaTerminalGridSize) -> Void)? {
       didSet { updateGridSize(notifyUnchanged: true) }
     }
@@ -1010,7 +1014,7 @@
       switch recognizer.state {
       case .began:
         stopScrollMomentum()
-        _ = focusTerminalInput()
+        if focusesInputOnScroll { _ = focusTerminalInput() }
         previousDirectScrollTranslation = 0
         wheelAccumulator.reset()
         traceSelection("physical pan won gesture arbitration")
