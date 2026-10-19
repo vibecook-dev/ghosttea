@@ -204,6 +204,23 @@
         geometryDidChange()
       }
     }
+    /// Where the view draws a grid whose row count differs from the grid it
+    /// measured — a session whose PTY size another device holds. `.top`, the
+    /// default, draws it from the top as the view always has; `.bottom` sets its
+    /// last row where the measured grid's last row would, so the prompt stays at
+    /// the foot and the empty rows go to the top. Drawing, hit testing, mouse
+    /// reports, selection, the caret and VoiceOver's row frames move with it;
+    /// the grid the view measures and reports (`currentGridSize`,
+    /// `onGridSizeChange`) does not.
+    public var gridAlignment = GhostteaTerminalGridAlignment.top {
+      didSet {
+        guard gridAlignment != oldValue else { return }
+        updateRenderedSelection()
+        updateMarkedTextOverlay()
+        scheduleAccessibilityElementUpdate(force: true)
+        requestEventDrivenDraw(damage: .geometry)
+      }
+    }
     public private(set) var terminalTextMetrics = GhostteaTextMetrics()
     public private(set) var configurationWarnings: [String] = []
     public private(set) var diagnostics = GhostteaTerminalMetalDiagnostics()
@@ -458,20 +475,13 @@
     }
 
     public func viewportCell(at location: CGPoint) -> GhostteaViewportCellPoint {
-      let insets = effectiveContentInsets()
-      let x = location.x - CGFloat(insets.left + GhostteaTerminalLayout.horizontalPadding)
-      let y = location.y - CGFloat(insets.top + GhostteaTerminalLayout.verticalPadding)
-      let maximumColumn = max(0, Int(currentGridSize?.columns ?? retainedState.columns) - 1)
-      let maximumRow = max(0, Int(currentGridSize?.rows ?? UInt16(retainedState.rows.count)) - 1)
-      let column = max(
-        0,
-        min(maximumColumn, Int(floor(x / terminalCellWidth)))
+      GhostteaTerminalLayout.viewportCell(
+        at: location,
+        placement: gridPlacement(),
+        columns: currentGridSize?.columns ?? retainedState.columns,
+        cellWidth: terminalCellWidth,
+        lineHeight: terminalLineHeight
       )
-      let row = max(
-        0,
-        min(maximumRow, Int(floor(y / terminalLineHeight)))
-      )
-      return GhostteaViewportCellPoint(column: UInt16(column), row: UInt16(row))
     }
 
     public func terminalMouseEvent(
@@ -480,21 +490,25 @@
       at location: CGPoint,
       modifiers: GhostteaInputModifiers = []
     ) -> GhostteaTerminalMouseEvent {
-      let insets = effectiveContentInsets()
+      let placement = gridPlacement()
+      let origin = GhostteaTerminalLayout.gridOrigin(contentInsets: placement.insets)
+      let vertical = GhostteaTerminalLayout.mouseReportVertical(
+        y: location.y,
+        height: bounds.height,
+        placement: placement
+      )
       return GhostteaTerminalMouseEvent(
         action: action,
         button: button,
         modifiers: modifiers,
         x: Float(max(0, min(bounds.width, location.x))),
-        y: Float(max(0, min(bounds.height, location.y))),
+        y: Float(vertical.y),
         screenWidth: Self.boundedGeometry(bounds.width),
-        screenHeight: Self.boundedGeometry(bounds.height),
+        screenHeight: Self.boundedGeometry(vertical.screenHeight),
         cellWidth: Self.boundedGeometry(terminalCellWidth),
         cellHeight: Self.boundedGeometry(terminalLineHeight),
-        paddingLeft: Self.boundedGeometry(
-          CGFloat(insets.left + GhostteaTerminalLayout.horizontalPadding)),
-        paddingTop: Self.boundedGeometry(
-          CGFloat(insets.top + GhostteaTerminalLayout.verticalPadding))
+        paddingLeft: Self.boundedGeometry(CGFloat(origin.x)),
+        paddingTop: Self.boundedGeometry(vertical.paddingTop)
       )
     }
 
@@ -731,7 +745,7 @@
     private func rebuildAccessibilityElements() {
       accessibilityElementUpdateTask?.cancel()
       accessibilityElementUpdateTask = nil
-      let insets = effectiveContentInsets()
+      let placement = gridPlacement()
       let rowActions = accessibilityRowActions()
       var elements: [UIAccessibilityElement] = [accessibilitySummaryElement()]
       elements += accessibilitySnapshot.rows.map { row in
@@ -747,16 +761,11 @@
         element.accessibilityTraits =
           row.isSelected
           ? [.staticText, .updatesFrequently, .selected] : [.staticText, .updatesFrequently]
-        element.accessibilityFrameInContainerSpace = CGRect(
-          x: CGFloat(insets.left + GhostteaTerminalLayout.horizontalPadding),
-          y: CGFloat(insets.top + GhostteaTerminalLayout.verticalPadding)
-            + CGFloat(row.viewportRow) * terminalLineHeight,
-          width: max(
-            0,
-            bounds.width
-              - CGFloat(insets.left + insets.right + 2 * GhostteaTerminalLayout.horizontalPadding)
-          ),
-          height: terminalLineHeight
+        element.accessibilityFrameInContainerSpace = GhostteaTerminalLayout.rowFrame(
+          row: row.viewportRow,
+          width: bounds.width,
+          placement: placement,
+          lineHeight: terminalLineHeight
         )
         element.accessibilityCustomActions = rowActions
         return element
@@ -1299,8 +1308,8 @@
         case .selection(let anchor) = pointerInteraction
       else { return }
       let offset = retainedState.scrollbar?.offset ?? 0
-      let viewportRows = max(1, currentGridSize?.rows ?? UInt16(retainedState.rows.count))
-      let viewportRow: UInt16 = selectionAutoScrollDirection < 0 ? 0 : viewportRows - 1
+      let placement = gridPlacement()
+      let viewportRow = selectionAutoScrollDirection < 0 ? placement.firstRow : placement.lastRow
       let focus = GhostteaTerminalCellPoint(
         column: selectionAutoScrollColumn,
         row: UInt32(min(UInt64(UInt32.max), offset + UInt64(viewportRow)))
@@ -1330,7 +1339,7 @@
         let viewport = absoluteSelection.viewportSelection(
           offset: retainedState.scrollbar?.offset ?? 0,
           columns: currentGridSize?.columns ?? retainedState.columns,
-          rows: currentGridSize?.rows ?? UInt16(retainedState.rows.count)
+          rows: UInt16(clamping: gridPlacement().rows.upperBound)
         )
       else {
         guard terminalSelection != nil else { return }
@@ -1590,7 +1599,7 @@
               target: drawable.texture,
               scale: Float(contentScaleFactor),
               theme: terminalTheme,
-              contentInsets: effectiveContentInsets(),
+              contentInsets: gridPlacement().insets,
               focused: terminalFocused,
               cursorBlinkVisible: cursorBlinkVisible,
               presenting: drawable
@@ -1604,7 +1613,7 @@
             target: drawable.texture,
             scale: Float(contentScaleFactor),
             theme: terminalTheme,
-            contentInsets: effectiveContentInsets(),
+            contentInsets: gridPlacement().insets,
             selection: terminalSelection,
             focused: terminalFocused,
             cursorBlinkVisible: cursorBlinkVisible,
@@ -1752,6 +1761,20 @@
         left: Float(safeArea.left + terminalContentInsets.left),
         bottom: Float(safeArea.bottom + terminalContentInsets.bottom),
         right: Float(safeArea.right + terminalContentInsets.right)
+      )
+    }
+
+    /// Where the grid this view draws sits: `gridAlignment` applied to the rows
+    /// the retained frame holds and the rows the view measured. Drawing and
+    /// every point↔cell map read the grid's origin here; measurement reads
+    /// `effectiveContentInsets()` alone.
+    private func gridPlacement() -> GhostteaTerminalGridPlacement {
+      GhostteaTerminalLayout.gridPlacement(
+        contentInsets: effectiveContentInsets(),
+        alignment: gridAlignment,
+        measuredRows: currentGridSize?.rows,
+        drawnRows: retainedState.rows.count,
+        lineHeight: terminalTextMetrics.lineHeightPixels
       )
     }
 
@@ -2124,14 +2147,16 @@
     }
 
     private func terminalInputCaretRect(at textOffset: Int? = nil) -> CGRect {
-      let insets = effectiveContentInsets()
       let cursor = retainedState.cursor
-      var x =
-        CGFloat(insets.left + GhostteaTerminalLayout.horizontalPadding)
-        + CGFloat(cursor?.x ?? 0) * terminalCellWidth
-      let y =
-        CGFloat(insets.top + GhostteaTerminalLayout.verticalPadding)
-        + CGFloat(cursor?.y ?? 0) * terminalLineHeight
+      let origin = GhostteaTerminalLayout.cellOrigin(
+        column: cursor?.x ?? 0,
+        row: cursor?.y ?? 0,
+        placement: gridPlacement(),
+        cellWidth: terminalCellWidth,
+        lineHeight: terminalLineHeight
+      )
+      var x = origin.x
+      let y = origin.y
       if let textOffset, textOffset > 0, !compositionBuffer.text.isEmpty {
         let prefix = compositionBuffer.text(
           in: NSRange(location: 0, length: clampTextOffset(textOffset)))

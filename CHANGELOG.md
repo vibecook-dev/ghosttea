@@ -11,6 +11,13 @@ share one version.
   behavior). A host that owns the keyboard itself turns it off, and scrolling
   the terminal by touch no longer takes keyboard focus — a swipe scrolls
   without raising the keyboard, as `focusesInputOnTap` already does for a tap.
+- `GhostteaTerminalMetalView.gridAlignment` (default `.top`, unchanged
+  behavior). A host showing a session whose PTY size another device holds sets
+  it to `.bottom`, and the held grid's last row sits where the view's own last
+  row would — the prompt stays at the foot and the empty rows go to the top; a
+  taller grid clips its top rows, not its prompt. Drawing, hit testing, mouse
+  reports, selection, the caret and VoiceOver's row frames move with it; the
+  grid the view measures and reports does not.
 
 ## 0.13.0 - 2026-10-22
 
