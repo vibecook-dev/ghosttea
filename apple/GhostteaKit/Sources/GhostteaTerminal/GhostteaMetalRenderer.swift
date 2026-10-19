@@ -600,11 +600,12 @@ final class GhostteaMetalRenderer {
       state.cursor.map {
         $0.visible && (!focused || !$0.blinking || cursorBlinkVisible)
       } ?? false
+    let origin = GhostteaTerminalLayout.gridOrigin(contentInsets: contentInsets)
     let effectCursor =
       state.cursor.map {
         SIMD4<Float>(
-          (Self.originX + contentInsets.left + Float($0.x) * cellWidth) * scale,
-          (Self.originY + contentInsets.top + Float($0.y) * lineHeight) * scale,
+          (origin.x + Float($0.x) * cellWidth) * scale,
+          (origin.y + Float($0.y) * lineHeight) * scale,
           showCursor ? 1 : 0,
           Float((focused ? $0.style : TRF1CursorStyle.hollowBlock).rawValue)
         )
@@ -800,8 +801,9 @@ final class GhostteaMetalRenderer {
   ) throws -> (mesh: GhostteaMetalMesh, activity: GhostteaMetalRowCacheActivity) {
     var mesh = GhostteaMetalMesh()
     var activity = GhostteaMetalRowCacheActivity()
-    let originX = Self.originX + contentInsets.left
-    let originY = Self.originY + contentInsets.top
+    let origin = GhostteaTerminalLayout.gridOrigin(contentInsets: contentInsets)
+    let originX = origin.x
+    let originY = origin.y
     let orderedSelection = ordered(selection)
     let effectiveCursorStyle = state.cursor.map {
       focused ? $0.style : TRF1CursorStyle.hollowBlock
@@ -1511,11 +1513,12 @@ final class GhostteaMetalRenderer {
       state.cursor.map {
         $0.visible && (!focused || !$0.blinking || cursorBlinkVisible)
       } ?? false
+    let origin = GhostteaTerminalLayout.gridOrigin(contentInsets: contentInsets)
     let cursor =
       state.cursor.map {
         SIMD4<Float>(
-          (Self.originX + contentInsets.left + Float($0.x) * cellWidth) * scale,
-          (Self.originY + contentInsets.top + Float($0.y) * lineHeight) * scale,
+          (origin.x + Float($0.x) * cellWidth) * scale,
+          (origin.y + Float($0.y) * lineHeight) * scale,
           showCursor ? 1 : 0,
           Float((focused ? $0.style : TRF1CursorStyle.hollowBlock).rawValue)
         )
