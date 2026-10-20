@@ -3,7 +3,7 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
-## 0.10.2 - Unreleased
+## 0.10.2 - 2026-10-20
 
 ### Added
 
@@ -11,13 +11,30 @@ share one version.
   behavior). A host that owns the keyboard itself turns it off, and scrolling
   the terminal by touch no longer takes keyboard focus — a swipe scrolls
   without raising the keyboard, as `focusesInputOnTap` already does for a tap.
-- `GhostteaTerminalMetalView.gridAlignment` (default `.top`, unchanged
-  behavior). A host showing a session whose PTY size another device holds sets
-  it to `.bottom`, and the held grid's last row sits where the view's own last
-  row would — the prompt stays at the foot and the empty rows go to the top; a
-  taller grid clips its top rows, not its prompt. Drawing, hit testing, mouse
-  reports, selection, the caret and VoiceOver's row frames move with it; the
-  grid the view measures and reports does not.
+- `GhostteaTerminalMetalView.gridAlignment`, a `GhostteaTerminalGridAlignment`
+  (default `.top`, unchanged behavior). A host showing a session whose PTY size
+  another device holds sets it to `.bottom`, and the held grid's last row sits
+  where the view's own last row would — the prompt stays at the foot and the
+  empty rows go to the top; a taller grid clips its top rows, not its prompt.
+  Drawing, hit testing, mouse reports, selection, the caret and VoiceOver's row
+  frames move with it; the grid the view measures and reports does not.
+
+### Fixed
+
+- The prebuilt `ghosttead` daemons build against rustls 0.23.46, rustls-webpki
+  0.103.16, quinn-proto 0.11.19, and webpki-roots and webpki-root-certs 1.0.10,
+  which fix RUSTSEC-2026-0285, -0338 to -0342, -0346, -0348, -0349 and -0381 to
+  -0383 in the TLS and QUIC stack under the Truffle mesh transport, and against
+  chacha20 0.10.2 in place of the yanked 0.10.1. Crates.io consumers resolve
+  their own versions.
+
+### Compatibility
+
+- **A patch on the 0.10 line.** 0.10.2 follows 0.10.1 for hosts that pin
+  0.10.x, and carries nothing from 0.11 or 0.12. Both additions default to
+  0.10.1's behavior. Its npm packages publish under the `release-0.10`
+  dist-tag, so `latest` stays on the newest line: install 0.10.2 by version or
+  by that tag. crates.io and SwiftPM resolve the highest version, as before.
 
 ## 0.10.1 - 2026-08-18
 
