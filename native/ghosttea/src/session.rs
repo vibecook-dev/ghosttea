@@ -2897,10 +2897,16 @@ mod tests {
             Arc::new(|_, _| {}),
         )
         .unwrap();
+        // Lines, not one long line: XNU drops canonical input past the line
+        // limit rather than block the writer, so a paste with no line end never
+        // fills a macOS PTY (1 MiB of `x` is written in about 38 ms). Complete
+        // lines fill the queue the child never reads, and the writer blocks.
         assert!(
             session
                 .input_tx
-                .try_send(InputOperation::Paste("x".repeat(1024 * 1024)))
+                .try_send(InputOperation::Paste(
+                    format!("{}\n", "x".repeat(1023)).repeat(1024)
+                ))
                 .is_ok()
         );
         // Wait for the actor to enter write_all, without depending on a fast host.
