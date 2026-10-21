@@ -129,7 +129,7 @@
       },
       {
         "name": "ghosttea:cargo-lock:sha256",
-        "value": "78500b1cf8241ec274f4ddcd564394d1e480aa699852c6eb3733444440a24bde"
+        "value": "ddd76b89232e1e77abc920e67be108835a23da3882a81e21df8bd9a9deb79739"
       },
       {
         "name": "ghosttea:rust-target",
@@ -1322,19 +1322,19 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/getrandom@0.4.3",
+      "bom-ref": "pkg:cargo/getrandom@0.3.4",
       "name": "getrandom",
-      "version": "0.4.3",
+      "version": "0.3.4",
       "licenses": [
         {
           "expression": "MIT OR Apache-2.0"
         }
       ],
-      "purl": "pkg:cargo/getrandom@0.4.3",
+      "purl": "pkg:cargo/getrandom@0.3.4",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+          "content": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
         }
       ],
       "properties": [
@@ -1944,34 +1944,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rand_core@0.10.1",
-      "name": "rand_core",
-      "version": "0.10.1",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/rand_core@0.10.1",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/read-fonts@0.39.2",
       "name": "read-fonts",
       "version": "0.39.2",
@@ -2112,9 +2084,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls-webpki@0.103.15",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.16",
       "name": "rustls-webpki",
-      "version": "0.103.15",
+      "version": "0.103.16",
       "licenses": [
         {
           "license": {
@@ -2122,11 +2094,11 @@
           }
         }
       ],
-      "purl": "pkg:cargo/rustls-webpki@0.103.15",
+      "purl": "pkg:cargo/rustls-webpki@0.103.16",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+          "content": "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
         }
       ],
       "properties": [
@@ -2142,19 +2114,19 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls@0.23.45",
+      "bom-ref": "pkg:cargo/rustls@0.23.46",
       "name": "rustls",
-      "version": "0.23.45",
+      "version": "0.23.46",
       "licenses": [
         {
           "expression": "Apache-2.0 OR ISC OR MIT"
         }
       ],
-      "purl": "pkg:cargo/rustls@0.23.45",
+      "purl": "pkg:cargo/rustls@0.23.46",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+          "content": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
         }
       ],
       "properties": [
@@ -2904,9 +2876,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/webpki-roots@1.0.8",
+      "bom-ref": "pkg:cargo/webpki-roots@1.0.10",
       "name": "webpki-roots",
-      "version": "1.0.8",
+      "version": "1.0.10",
       "licenses": [
         {
           "license": {
@@ -2914,11 +2886,11 @@
           }
         }
       ],
-      "purl": "pkg:cargo/webpki-roots@1.0.8",
+      "purl": "pkg:cargo/webpki-roots@1.0.10",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf"
+          "content": "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
         }
       ],
       "properties": [
@@ -3599,11 +3571,10 @@
       ]
     },
     {
-      "ref": "pkg:cargo/getrandom@0.4.3",
+      "ref": "pkg:cargo/getrandom@0.3.4",
       "dependsOn": [
         "pkg:cargo/cfg-if@1.0.4",
-        "pkg:cargo/libc@0.2.186",
-        "pkg:cargo/rand_core@0.10.1"
+        "pkg:cargo/libc@0.2.186"
       ]
     },
     {
@@ -3752,10 +3723,6 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rand_core@0.10.1",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:cargo/read-fonts@0.39.2",
       "dependsOn": [
         "pkg:cargo/bytemuck@1.25.1",
@@ -3791,7 +3758,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls-webpki@0.103.15",
+      "ref": "pkg:cargo/rustls-webpki@0.103.16",
       "dependsOn": [
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
@@ -3799,13 +3766,13 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls@0.23.45",
+      "ref": "pkg:cargo/rustls@0.23.46",
       "dependsOn": [
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls-webpki@0.103.15",
+        "pkg:cargo/rustls-webpki@0.103.16",
         "pkg:cargo/subtle@2.6.1",
         "pkg:cargo/zeroize@1.9.0"
       ]
@@ -3899,7 +3866,7 @@
       "ref": "pkg:cargo/tempfile@3.27.0",
       "dependsOn": [
         "pkg:cargo/fastrand@2.4.1",
-        "pkg:cargo/getrandom@0.4.3",
+        "pkg:cargo/getrandom@0.3.4",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/rustix@1.1.4"
       ]
@@ -3956,10 +3923,10 @@
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/percent-encoding@2.3.2",
         "pkg:cargo/rustls-pki-types@1.15.0",
-        "pkg:cargo/rustls@0.23.45",
+        "pkg:cargo/rustls@0.23.46",
         "pkg:cargo/ureq-proto@0.6.0",
         "pkg:cargo/utf8-zero@0.8.1",
-        "pkg:cargo/webpki-roots@1.0.8"
+        "pkg:cargo/webpki-roots@1.0.10"
       ]
     },
     {
@@ -3971,7 +3938,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:cargo/webpki-roots@1.0.8",
+      "ref": "pkg:cargo/webpki-roots@1.0.10",
       "dependsOn": [
         "pkg:cargo/rustls-pki-types@1.15.0"
       ]
