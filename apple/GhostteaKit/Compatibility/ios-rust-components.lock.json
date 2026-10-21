@@ -10,7 +10,7 @@
       "pkg:cargo/ghosttea-font-fixture-ffi@0.12.0"
     ]
   },
-  "cargoLockSha256": "7cdc22165195a7f98749dadbf1de0801225a9a3fcac38cfc0a18b931767268e3",
+  "cargoLockSha256": "78500b1cf8241ec274f4ddcd564394d1e480aa699852c6eb3733444440a24bde",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
@@ -346,15 +346,16 @@
       ]
     },
     {
-      "ref": "pkg:cargo/getrandom@0.3.4",
+      "ref": "pkg:cargo/getrandom@0.4.3",
       "name": "getrandom",
-      "version": "0.3.4",
+      "version": "0.4.3",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT OR Apache-2.0",
-      "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+      "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
       "dependencies": [
         "pkg:cargo/cfg-if@1.0.4",
-        "pkg:cargo/libc@0.2.186"
+        "pkg:cargo/libc@0.2.186",
+        "pkg:cargo/rand_core@0.10.1"
       ]
     },
     {
@@ -606,6 +607,15 @@
       ]
     },
     {
+      "ref": "pkg:cargo/rand_core@0.10.1",
+      "name": "rand_core",
+      "version": "0.10.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69",
+      "dependencies": []
+    },
+    {
       "ref": "pkg:cargo/read-fonts@0.39.2",
       "name": "read-fonts",
       "version": "0.39.2",
@@ -854,7 +864,7 @@
       "checksum": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
       "dependencies": [
         "pkg:cargo/fastrand@2.4.1",
-        "pkg:cargo/getrandom@0.3.4",
+        "pkg:cargo/getrandom@0.4.3",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/rustix@1.1.4"
       ]
