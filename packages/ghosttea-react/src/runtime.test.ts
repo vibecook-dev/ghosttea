@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { unknownSessionActivity, type ConfigSnapshot, type SessionSummary } from "@vibecook/ghosttea-protocol";
 import { GhostteaTerminalRuntime } from "./runtime";
+import { syncSurfaceFocus } from "./TerminalSurface";
 
 class FakeWorker extends EventTarget {
   readonly messages: unknown[] = [];
@@ -359,6 +360,95 @@ afterEach(() => {
 });
 
 describe("GhostteaTerminalRuntime mount ownership", () => {
+  it("publishes a session's first drawn frame once, by session id, and remembers it", () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: new FakePort() as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    const drawn: unknown[] = [];
+    runtime.addEventListener("session-drawn", (event) => drawn.push((event as CustomEvent).detail));
+    runtime.registerSession(session);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(false);
+    // A handle this renderer never registered names no session.
+    worker.dispatchEvent(new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: "stranger" } }));
+    expect(drawn).toEqual([]);
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
+    expect(drawn).toEqual([{ sessionId: session.id }]);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(true);
+    expect(runtime.sessionHasDrawn("unknown")).toBe(false);
+    // Unregistered, the session is forgotten on both sides (the worker drops the
+    // handle's snapshot and its first frame with it); registered again, it announces again.
+    runtime.unregisterSession(session.id);
+    expect(worker.messages).toContainEqual({ type: "drop-session", sessionHandle: session.handle });
+    expect(runtime.sessionHasDrawn(session.id)).toBe(false);
+    runtime.registerSession(session);
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: { type: "session-drawn", sessionHandle: session.handle } }),
+    );
+    expect(drawn).toEqual([{ sessionId: session.id }, { sessionId: session.id }]);
+    expect(runtime.sessionHasDrawn(session.id)).toBe(true);
+    runtime.dispose();
+  });
+
+  it.each(["ports", "routed"] as const)(
+    "records only local births on %s, not registered or listed sessions",
+    async (transport) => {
+      vi.stubGlobal("window", globalThis);
+      const control = new FakePort();
+      const runtime = new GhostteaTerminalRuntime({
+        ...(transport === "routed"
+          ? {
+              transport: "routed" as const,
+              host: {
+                openTicket: async () => {
+                  throw new Error("not mounting");
+                },
+                createSession: async () => session,
+                listSessions: async () => [session],
+              },
+            }
+          : {
+              ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+            }),
+        platform: {
+          writeClipboard: () => undefined,
+          forceCanvasFallback: () => false,
+          setForceCanvasFallback: () => undefined,
+          reload: () => undefined,
+        },
+        workerFactory: () => new FakeWorker() as unknown as Worker,
+      });
+      runtime.registerSession(session);
+      await runtime.listSessions();
+      expect(runtime.sessionCreatedHere(session.id)).toBe(false);
+      const created = await runtime.createSession({
+        executable: "/bin/sh",
+        args: [],
+        cols: 80,
+        rows: 24,
+        persistence: "keep-until-exit",
+      });
+      expect(runtime.sessionCreatedHere(created.id)).toBe(true);
+      expect(runtime.sessionCreatedHere("unknown")).toBe(false);
+      runtime.unregisterSession(created.id);
+      expect(runtime.sessionCreatedHere(created.id)).toBe(true);
+      runtime.dispose();
+    },
+  );
+
   it("refuses scrollback overrides before 1.15 and validates them before send", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();
@@ -1424,6 +1514,59 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     runtime.dispose();
   });
 
+  it("alternates focus a hundred times between an authority and a mirror without the mirror claiming (TP-R4)", async () => {
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    runtime.mount(session.id, session.handle, "authority", canvas());
+    runtime.mount(session.id, session.handle, "mirror", canvas());
+    await flushMicrotasks();
+    // The surfaces' claim effects: the controller claims, the mirror releases.
+    runtime.claimResizeControl(session.handle, "authority", 80, 24);
+    runtime.releaseResizeControl("mirror");
+
+    const authority = { sessionHandle: session.handle, viewId: "authority", cols: 80, rows: 24 };
+    const mirror = { sessionHandle: session.handle, viewId: "mirror", cols: 120, rows: 40 };
+    const authorityPolicy = { takeGeometryOnFocus: true, controlsResize: true, interactive: true };
+    const mirrorPolicy = { takeGeometryOnFocus: true, controlsResize: false, interactive: true };
+    let authorityFocused = false;
+    let mirrorFocused = false;
+    for (let index = 0; index < 100; index += 1) {
+      if (index % 2 === 0) {
+        syncSurfaceFocus(runtime, mirror, false, mirrorFocused, mirrorPolicy);
+        mirrorFocused = false;
+        syncSurfaceFocus(runtime, authority, true, authorityFocused, authorityPolicy);
+        authorityFocused = true;
+      } else {
+        syncSurfaceFocus(runtime, authority, false, authorityFocused, authorityPolicy);
+        authorityFocused = false;
+        syncSurfaceFocus(runtime, mirror, true, mirrorFocused, mirrorPolicy);
+        mirrorFocused = true;
+      }
+      runtime.resize(session.id, "mirror", 120 + (index % 3), 40);
+    }
+
+    const geometry = control.messages.filter(
+      (message) => message.type === "focus-and-resize" || message.type === "resize",
+    );
+    expect(geometry.filter((message) => message.viewId === "mirror")).toEqual([]);
+    // One claim for the authority's attachment; its takes are claims, and a
+    // claim is made once per attachment.
+    expect(geometry).toEqual([expect.objectContaining({ type: "focus-and-resize", viewId: "authority" })]);
+    runtime.dispose();
+  });
+
   it("never turns focus into a geometry claim", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();
@@ -1866,6 +2009,57 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     announce(null, 9);
     announce(null, 9);
     expect(claims()).toHaveLength(2);
+    runtime.dispose();
+  });
+
+  it("treats a take as a claim on the port-pair transport, so it never displaces another pane", async () => {
+    vi.stubGlobal("window", globalThis);
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => new FakeWorker() as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    runtime.mount(session.id, session.handle, "view-1", canvas());
+    await flushMicrotasks();
+    const controlState = (controller: unknown, controlRevision: number): void => {
+      control.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            requestId: 0,
+            type: "control-state",
+            sessionId: session.id,
+            controller,
+            controlRevision,
+            cols: 80,
+            rows: 24,
+            layoutEpoch: 2,
+          },
+        }),
+      );
+    };
+    const claims = (): Record<string, unknown>[] =>
+      control.messages.filter((message) => message.type === "focus-and-resize");
+
+    // Another pane holds the seat: the legacy wire has no transfer, and a
+    // claim never takes a held seat, so the take claims nothing.
+    controlState({ viewId: "other-pane", controlEpoch: 3 }, 5);
+    runtime.takeResizeControl(session.handle, "view-1", 80, 24);
+    expect(claims()).toHaveLength(0);
+
+    // Released, the view that asked takes the empty seat as a claim would.
+    controlState(null, 6);
+    expect(claims()).toHaveLength(1);
+    expect(claims().at(-1)).toMatchObject({ viewId: "view-1", cols: 80, rows: 24, expectedControlRevision: 6 });
+    // The routed seat reader has nothing to say about a port-pair session.
+    expect(runtime.geometryHolder(session.handle)).toBeUndefined();
     runtime.dispose();
   });
 
@@ -2312,9 +2506,20 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     });
     await runtime.connect();
 
-    const first = runtime.mount("session", "handle", "view-1", canvas());
+    const firstCanvas = Object.assign(canvas(), { clientWidth: 642, clientHeight: 418 });
+    const first = runtime.mount("session", "handle", "view-1", firstCanvas);
+    expect(worker.messages).toContainEqual(
+      expect.objectContaining({
+        type: "mount",
+        surfaceId: "view-1",
+        size: { width: 642, height: 418, dpr: 1 },
+      }),
+    );
+    expect(runtime.sessionHasInput("session")).toBe(false);
+    runtime.paste("session", "view-1", "echo hello");
     first.dispose();
     const second = runtime.mount("session", "handle", "view-2", canvas());
+    expect(runtime.sessionHasInput("session")).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 5));
 
     expect(control.messages).toContainEqual({

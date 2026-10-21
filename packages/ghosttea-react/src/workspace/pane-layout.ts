@@ -156,6 +156,14 @@ export function mountSessionInPane(root: PaneNode, paneId: string, session: Sess
   return replacePane(root, target.id, { ...target, session });
 }
 
+/** Replace only current attachments of an expected session, preserving mirrors and geometry. */
+export function replaceSessionInPanes(node: PaneNode, expectedId: string, session: SessionSummary): PaneNode {
+  if (node.kind === "pane") return node.session.id === expectedId ? { ...node, session } : node;
+  const first = replaceSessionInPanes(node.first, expectedId, session);
+  const second = replaceSessionInPanes(node.second, expectedId, session);
+  return first === node.first && second === node.second ? node : { ...node, first, second };
+}
+
 /** @deprecated Use mountSessionInPane; panes no longer own or move sessions. */
 export const placeSessionInPane = mountSessionInPane;
 
@@ -164,13 +172,17 @@ export function updateSession(node: PaneNode, session: SessionSummary): PaneNode
   return { ...node, first: updateSession(node.first, session), second: updateSession(node.second, session) };
 }
 
-export function removePane(node: PaneNode, paneId: string): PaneNode | null {
+export function removePane(node: PaneNode, paneId: string, sizing: SplitSizing = "halves"): PaneNode | null {
   if (node.kind === "pane") return node.id === paneId ? null : node;
-  const first = removePane(node.first, paneId);
-  const second = removePane(node.second, paneId);
+  const first = removePane(node.first, paneId, sizing);
+  const second = removePane(node.second, paneId, sizing);
   if (!first) return second;
   if (!second) return first;
-  return { ...node, first, second };
+  if (first === node.first && second === node.second) return node;
+  const updated = { ...node, first, second };
+  const count = (child: PaneNode): number =>
+    child.kind === "split" && child.axis === node.axis ? count(child.first) + count(child.second) : 1;
+  return sizing === "equal" && count(updated) !== count(node) ? equalizeSplitGroup(updated)[0] : updated;
 }
 
 export function updateSplit(node: PaneNode, splitId: string, update: (split: PaneSplit) => PaneSplit): PaneNode {

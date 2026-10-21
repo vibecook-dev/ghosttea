@@ -35,6 +35,7 @@ import {
   pane,
   persistedWorkspace,
   removePane,
+  replaceSessionInPanes,
   resizeForPane,
   restoreNode,
   updateSession,
@@ -110,6 +111,9 @@ export interface GhostteaWorkspaceContext {
   activateSession: (sessionId: string) => void;
   mountSession: (session: SessionSummary) => void;
   placeSession: (session: SessionSummary) => void;
+  /** Atomically replace an expected session's attachments without activating, splitting or unzooming.
+   * Returns false if it is no longer attached. Safe after an asynchronous session birth. */
+  replaceSession: (expectedId: string, session: SessionSummary) => boolean;
   createSessionInActivePane: () => Promise<SessionSummary | undefined>;
   splitActive: (axis?: SplitAxis) => Promise<SessionSummary | undefined>;
 }
@@ -176,17 +180,27 @@ export interface GhostteaWorkspaceProps {
    * is host policy because the same PTY may be mirrored in another pane/window.
    */
   onPaneClose?: ((context: GhostteaPaneClose) => void) | undefined;
+  /** Override presentation while retaining the configured workspace zoom binding. */
+  onTogglePaneZoom?: (paneId: string) => void;
   onActiveSessionChange?: (session: SessionSummary | undefined) => void;
   createSplitSession?: (activeSession: SessionSummary, axis: SplitAxis) => Promise<SessionSummary>;
-  /** Size new splits by halving the active pane (default) or equalizing its row/column. */
+  /** Size splits by halving the active pane (default) or equalizing its row/column after insertion and removal. */
   splitSizing?: SplitSizing;
   enableRemoteSessions?: boolean;
   active?: boolean;
+  /** Host visibility without remounting panes or changing split geometry. */
+  paneVisibility?: Readonly<Record<string, boolean>> | undefined;
   showTitlebar?: boolean;
   claimExistingSessions?: boolean;
   initialCwd?: string;
   onSessionsChange?: (sessionIds: readonly string[]) => void;
   resizeCommitPolicy?: GhostteaResizeCommitPolicy;
+  /**
+   * Take a session's geometry seat whenever one of its panes gains focus
+   * (`TerminalSurface`'s `takeGeometryOnFocus`), so the pane focused last
+   * sizes the PTY across windows and devices. Off by default.
+   */
+  takeGeometryOnFocus?: boolean;
 }
 
 interface InitialWorkspace {
@@ -324,6 +338,7 @@ interface WorkspacePaneProps {
   zoomed: boolean;
   hiddenByZoom: boolean;
   workspaceActive: boolean;
+  takeGeometryOnFocus: boolean;
   platform: GhostteaWorkspacePlatform;
   theme: TerminalTheme;
   effects: TerminalEffects;
@@ -341,6 +356,7 @@ function WorkspacePane({
   zoomed,
   hiddenByZoom,
   workspaceActive,
+  takeGeometryOnFocus,
   platform,
   theme,
   effects,
@@ -400,7 +416,8 @@ function WorkspacePane({
         active={active}
         {...(platform.platform ? { platform: platform.platform } : {})}
         visible={workspaceActive && !hiddenByZoom}
-        controlsResize={!hiddenByZoom}
+        controlsResize={workspaceActive && !hiddenByZoom}
+        takeGeometryOnFocus={takeGeometryOnFocus}
         onActivate={onActivate}
         readClipboard={platform.readClipboard}
         {...(active && platform.setCanCopy ? { onCopyAvailabilityChange: platform.setCanCopy } : {})}
@@ -418,6 +435,8 @@ interface SplitViewProps {
   node: PaneNode;
   activePaneId: string;
   workspaceActive: boolean;
+  takeGeometryOnFocus: boolean;
+  paneVisibility?: Readonly<Record<string, boolean>> | undefined;
   zoomedPaneId: string | null;
   platform: GhostteaWorkspacePlatform;
   theme: TerminalTheme;
@@ -435,6 +454,8 @@ function SplitView({
   node,
   activePaneId,
   workspaceActive,
+  takeGeometryOnFocus,
+  paneVisibility,
   zoomedPaneId,
   platform,
   theme,
@@ -471,7 +492,8 @@ function SplitView({
         active={workspaceActive && node.id === activePaneId}
         zoomed={node.id === zoomedPaneId}
         hiddenByZoom={zoomedPaneId !== null && node.id !== zoomedPaneId}
-        workspaceActive={workspaceActive}
+        workspaceActive={workspaceActive && paneVisibility?.[node.id] !== false}
+        takeGeometryOnFocus={takeGeometryOnFocus}
         platform={platform}
         theme={theme}
         effects={effects}
@@ -551,6 +573,8 @@ function SplitView({
           node: node.first,
           activePaneId,
           workspaceActive,
+          takeGeometryOnFocus,
+          paneVisibility,
           zoomedPaneId,
           platform,
           theme,
@@ -595,6 +619,8 @@ function SplitView({
           node: node.second,
           activePaneId,
           workspaceActive,
+          takeGeometryOnFocus,
+          paneVisibility,
           zoomedPaneId,
           platform,
           theme,
@@ -622,19 +648,23 @@ export function GhostteaWorkspace({
   paneMeta,
   onRehydratePane,
   onPaneClose,
+  onTogglePaneZoom,
   onActiveSessionChange,
   createSplitSession,
   splitSizing = "halves",
   enableRemoteSessions = true,
   active = true,
+  paneVisibility,
   showTitlebar = true,
   claimExistingSessions = true,
   initialCwd,
   onSessionsChange,
   resizeCommitPolicy,
+  takeGeometryOnFocus = false,
 }: GhostteaWorkspaceProps) {
   const Sidebar = sidebar;
   const terminalRuntime = useGhostteaRuntime();
+  const hostZoom = onTogglePaneZoom !== undefined;
   const [config, setConfig] = useState<ConfigSnapshot | undefined>(terminalRuntime.configSnapshot);
   const [configPreview, setConfigPreview] = useState<ConfigSnapshot>();
   const [layout, setLayout] = useState<PaneNode>();
@@ -714,7 +744,7 @@ export function GhostteaWorkspace({
         if (!mounted) return;
         setLayout(workspace.layout);
         setActivePaneId(workspace.activePaneId);
-        setZoomedPaneId(workspace.zoomedPaneId);
+        setZoomedPaneId(hostZoom ? null : workspace.zoomedPaneId);
       },
       (cause) => {
         if (mounted) setError(cause instanceof Error ? cause.message : String(cause));
@@ -724,7 +754,7 @@ export function GhostteaWorkspace({
       mounted = false;
       mountedRef.current = false;
     };
-  }, [claimExistingSessions, initialCwd, platform.defaultShell, rehydratePane, storageKey, terminalRuntime]);
+  }, [claimExistingSessions, hostZoom, initialCwd, platform.defaultShell, rehydratePane, storageKey, terminalRuntime]);
 
   useEffect(() => {
     layoutRef.current = layout;
@@ -817,6 +847,20 @@ export function GhostteaWorkspace({
     [activatePane, terminalRuntime],
   );
   const placeSession = mountSession;
+
+  const replaceSession = useCallback(
+    (expectedId: string, session: SessionSummary): boolean => {
+      const current = layoutRef.current;
+      if (!mountedRef.current || !current) return false;
+      const updated = replaceSessionInPanes(current, expectedId, session);
+      if (updated === current) return false;
+      terminalRuntime.registerSession(session);
+      layoutRef.current = updated;
+      setLayout(updated);
+      return true;
+    },
+    [terminalRuntime],
+  );
 
   const addSession = useCallback(
     (session: SessionSummary, axis: SplitAxis = "horizontal"): void => {
@@ -964,8 +1008,9 @@ export function GhostteaWorkspace({
       }
       const index = panes.findIndex((candidate) => candidate.id === target.id);
       const next = panes[index === panes.length - 1 ? index - 1 : index + 1]!;
-      const remaining = removePane(current, target.id);
+      const remaining = removePane(current, target.id, splitSizing);
       if (!remaining) return;
+      layoutRef.current = remaining;
       setLayout(remaining);
       setZoomedPaneId(null);
       activatePane(next.id);
@@ -975,7 +1020,7 @@ export function GhostteaWorkspace({
         remainingSessionIds: [...new Set(leaves(remaining).map((pane) => pane.session.id))],
       });
     },
-    [activatePane, onPaneClose, platform],
+    [activatePane, onPaneClose, platform, splitSizing],
   );
 
   const closeActivePane = useCallback((): void => {
@@ -1049,12 +1094,14 @@ export function GhostteaWorkspace({
       } else if (command.type === "equalize") {
         setLayout((current) => (current ? equalize(current) : current));
       } else if (command.type === "toggle-zoom") {
-        setZoomedPaneId((current) => (current ? null : (activePaneId ?? null)));
+        if (onTogglePaneZoom && activePaneId) onTogglePaneZoom(activePaneId);
+        else setZoomedPaneId((current) => (current ? null : (activePaneId ?? null)));
       } else if (command.type === "close-pane") {
         closeActivePane();
       }
     },
     [
+      onTogglePaneZoom,
       activePane?.session.cwd,
       activePaneId,
       closeActivePane,
@@ -1157,6 +1204,7 @@ export function GhostteaWorkspace({
       activateSession,
       mountSession,
       placeSession,
+      replaceSession,
       createSessionInActivePane,
       splitActive: newSplit,
     }),
@@ -1170,6 +1218,7 @@ export function GhostteaWorkspace({
       newSplit,
       panes,
       placeSession,
+      replaceSession,
       sessions,
     ],
   );
@@ -1213,6 +1262,8 @@ export function GhostteaWorkspace({
               node={layout}
               activePaneId={activePaneId}
               workspaceActive={active}
+              takeGeometryOnFocus={takeGeometryOnFocus}
+              paneVisibility={paneVisibility}
               zoomedPaneId={zoomedPaneId}
               platform={platform}
               theme={resolvedTheme}

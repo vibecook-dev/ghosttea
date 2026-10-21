@@ -1,6 +1,6 @@
 import { useTerminalLinks } from "./use-terminal-links.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ClipboardEvent, KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import type { ClipboardEvent, CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import { useGhostteaRuntime } from "./context.js";
 import { terminalKeyboardLayout, terminalKeyDown, terminalKeyUp } from "./keyboard-input.js";
@@ -19,9 +19,71 @@ import {
 } from "./renderers/types.js";
 import { accumulateWheelRows, wheelDeltaPixels } from "./scroll-input.js";
 import { adjustSelectionFocus, usesLocalSelection } from "./selection-input.js";
+import type { GhostteaTerminalRuntime } from "./runtime.js";
 
 export type TerminalMenuAction = "copy" | "paste" | "select-all" | "clear-screen";
 export type TerminalInputPolicy = "inherit" | "read-only";
+
+/** What decides whether a surface's focus gain takes the geometry seat. */
+export interface SurfaceFocusPolicy {
+  /** The host opted in (`takeGeometryOnFocus`). */
+  takeGeometryOnFocus: boolean;
+  /** The surface controls resize; a mirror does not. */
+  controlsResize: boolean;
+  /** The surface takes input; a read-only view is never a controller. */
+  interactive: boolean;
+}
+
+/**
+ * Whether a focus change takes the geometry seat: only a focus gain, only when
+ * the host opted in, and only for a surface that controls resize and takes
+ * input. A `controlsResize: false` mirror never does.
+ */
+export function focusTakesGeometry(focused: boolean, wasFocused: boolean, policy: SurfaceFocusPolicy): boolean {
+  return focused && !wasFocused && policy.takeGeometryOnFocus && policy.controlsResize && policy.interactive;
+}
+
+/**
+ * Whether a press takes the geometry seat: a press of a surface that already
+ * has focus, under a focus gain's own policy. A press of an unfocused surface
+ * focuses it, and that gain takes. A press of a focused one changes no focus, so
+ * without this a pane whose seat another client took while this window kept its
+ * focus (a phone's take) could not be taken back by pressing it.
+ */
+export function pressTakesGeometry(wasFocused: boolean, policy: SurfaceFocusPolicy): boolean {
+  return wasFocused && policy.takeGeometryOnFocus && policy.controlsResize && policy.interactive;
+}
+
+/** A press of the surface, reported before it moves focus: the seat is taken at
+ * the surface's current grid when `pressTakesGeometry` says so. */
+export function syncSurfacePress(
+  runtime: Pick<GhostteaTerminalRuntime, "takeResizeControl">,
+  surface: { sessionHandle: string; viewId: string; cols: number; rows: number },
+  wasFocused: boolean,
+  policy: SurfaceFocusPolicy,
+): void {
+  if (pressTakesGeometry(wasFocused, policy)) {
+    runtime.takeResizeControl(surface.sessionHandle, surface.viewId, surface.cols, surface.rows);
+  }
+}
+
+/**
+ * The surface's focus report. Focus always reaches the runtime as a
+ * scheduling fact; the seat is taken only when `focusTakesGeometry` says so,
+ * at the surface's current grid.
+ */
+export function syncSurfaceFocus(
+  runtime: Pick<GhostteaTerminalRuntime, "setFocused" | "takeResizeControl">,
+  surface: { sessionHandle: string; viewId: string; cols: number; rows: number },
+  focused: boolean,
+  wasFocused: boolean,
+  policy: SurfaceFocusPolicy,
+): void {
+  runtime.setFocused(surface.sessionHandle, surface.viewId, focused, surface.cols, surface.rows);
+  if (focusTakesGeometry(focused, wasFocused, policy)) {
+    runtime.takeResizeControl(surface.sessionHandle, surface.viewId, surface.cols, surface.rows);
+  }
+}
 
 export interface TerminalSurfaceProps {
   session: SessionSummary;
@@ -34,6 +96,16 @@ export interface TerminalSurfaceProps {
   /** Whether the surface is currently visible enough to spend GPU work painting it. */
   visible?: boolean;
   controlsResize?: boolean;
+  /**
+   * Take the session's geometry seat each time this surface gains focus, so
+   * the pane focused last sizes the PTY, whichever window or device it is on
+   * (last write wins). Off by default: focus alone is a scheduling fact and
+   * never changes geometry. It applies only while `controlsResize` is true
+   * and the surface takes input; a mirror never claims, takes or resizes on
+   * focus. The host owns this policy; the runtime verb is
+   * `takeResizeControl`.
+   */
+  takeGeometryOnFocus?: boolean;
   /** Viewer-local input fence. It can make a writable session read-only but never grants server rights. */
   inputPolicy?: TerminalInputPolicy;
   /** Convenience alias for `inputPolicy="read-only"` when false. */
@@ -87,6 +159,7 @@ function TerminalSurfaceSession({
   platform,
   visible = true,
   controlsResize = active,
+  takeGeometryOnFocus = false,
   inputPolicy = "inherit",
   readWrite = true,
   onActivate,
@@ -107,6 +180,12 @@ function TerminalSurfaceSession({
   const links = useTerminalLinks(terminalRuntime, session.handle, inputRef, gridRef, platform, visible);
   const controlsResizeRef = useRef(controlsResize);
   const clientReadWriteRef = useRef(clientReadWrite);
+  // Read by the focus sync, so that a policy change does not re-run it and
+  // flap focus at the runtime.
+  const interactiveRef = useRef(interactive);
+  const takeGeometryOnFocusRef = useRef(takeGeometryOnFocus);
+  // The focus last reported, so that only a gain can take the seat.
+  const focusedRef = useRef(false);
   const [viewId] = useState(() => crypto.randomUUID());
   const [inputFocused, setInputFocused] = useState(false);
   const selectionAnchorRef = useRef<CellPoint | null>(null);
@@ -144,7 +223,9 @@ function TerminalSurfaceSession({
   useEffect(() => {
     controlsResizeRef.current = controlsResize;
     clientReadWriteRef.current = clientReadWrite;
-  }, [clientReadWrite, controlsResize]);
+    interactiveRef.current = interactive;
+    takeGeometryOnFocusRef.current = takeGeometryOnFocus;
+  }, [clientReadWrite, controlsResize, interactive, takeGeometryOnFocus]);
 
   const setLocalSelection = useCallback(
     (selection: { anchor: CellPoint; focus: CellPoint } | null, selectAll = false): void => {
@@ -323,13 +404,22 @@ function TerminalSurfaceSession({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const handle = terminalRuntime.mount(session.id, session.handle, viewId, canvas);
+    const surface = canvas?.parentElement;
+    if (!canvas || !surface) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.setProperty("--ghosttea-canvas-scale", `${1 / dpr}`);
+    const handle = terminalRuntime.mount(session.id, session.handle, viewId, canvas, {
+      width: surface.clientWidth,
+      height: surface.clientHeight,
+      dpr,
+    });
     terminalRuntime.setViewInputPolicy(viewId, clientReadWriteRef.current);
     let { cols, rows } = gridRef.current;
     const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      handle.resize(entry.contentRect.width, entry.contentRect.height, window.devicePixelRatio);
+      if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.style.setProperty("--ghosttea-canvas-scale", `${1 / dpr}`);
+      handle.resize(entry.contentRect.width, entry.contentRect.height, dpr);
       const nextCols = Math.max(2, Math.floor((entry.contentRect.width - ORIGIN_X * 2) / CELL_WIDTH));
       const nextRows = Math.max(1, Math.floor((entry.contentRect.height - ORIGIN_Y * 2) / LINE_HEIGHT));
       if (nextCols !== cols || nextRows !== rows) {
@@ -339,7 +429,7 @@ function TerminalSurfaceSession({
         if (controlsResizeRef.current) terminalRuntime.resize(session.id, viewId, cols, rows);
       }
     });
-    observer.observe(canvas);
+    observer.observe(surface);
     return () => {
       observer.disconnect();
       handle.dispose();
@@ -405,19 +495,26 @@ function TerminalSurfaceSession({
   useEffect(() => {
     const syncFocus = (): void => {
       const { cols, rows } = gridRef.current;
-      terminalRuntime.setFocused(
-        session.handle,
-        viewId,
-        active && inputFocused && document.hasFocus() && document.activeElement === inputRef.current,
-        cols,
-        rows,
+      const focused = active && inputFocused && document.hasFocus() && document.activeElement === inputRef.current;
+      syncSurfaceFocus(
+        terminalRuntime,
+        { sessionHandle: session.handle, viewId, cols, rows },
+        focused,
+        focusedRef.current,
+        {
+          takeGeometryOnFocus: takeGeometryOnFocusRef.current,
+          controlsResize: controlsResizeRef.current,
+          interactive: interactiveRef.current,
+        },
       );
+      focusedRef.current = focused;
     };
     const onWindowBlur = (): void => {
       restoreInputFocusRef.current = restoreInputFocusRef.current || document.activeElement === inputRef.current;
       releaseForwardedKeys();
       const { cols, rows } = gridRef.current;
       terminalRuntime.setFocused(session.handle, viewId, false, cols, rows);
+      focusedRef.current = false;
     };
     const onWindowFocus = (): void => {
       if (active && restoreInputFocusRef.current) inputRef.current?.focus({ preventScroll: true });
@@ -580,6 +677,16 @@ function TerminalSurfaceSession({
   };
 
   const onPointerDown = (event: PointerEvent<HTMLTextAreaElement>): void => {
+    syncSurfacePress(
+      terminalRuntime,
+      { sessionHandle: session.handle, viewId, ...gridRef.current },
+      focusedRef.current,
+      {
+        takeGeometryOnFocus: takeGeometryOnFocusRef.current,
+        controlsResize: controlsResizeRef.current,
+        interactive: interactiveRef.current,
+      },
+    );
     onActivate?.();
     event.currentTarget.focus({ preventScroll: true });
     if (links.begin(event)) {
@@ -740,7 +847,15 @@ function TerminalSurfaceSession({
 
   return (
     <div className="terminal-surface">
-      <canvas ref={canvasRef} aria-label={`Terminal session ${session.id}`} />
+      <canvas
+        ref={canvasRef}
+        aria-label={`Terminal session ${session.id}`}
+        style={
+          {
+            "--ghosttea-canvas-scale": 1 / (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
+          } as CSSProperties
+        }
+      />
       <textarea
         ref={inputRef}
         className="terminal-input"

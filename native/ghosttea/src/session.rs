@@ -4,7 +4,7 @@ use std::{
     io::{Read, Write},
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, RwLock, Weak,
+        Arc, Condvar, Mutex, MutexGuard, RwLock, Weak,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -14,6 +14,9 @@ use std::{
 
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+mod replies;
+use replies::ReplyQueue;
 
 #[cfg(unix)]
 mod unix_process_tree;
@@ -816,6 +819,7 @@ pub struct Session {
     on_exit: ExitCallback,
     authority: Mutex<ViewAuthority>,
     input_tx: mpsc::SyncSender<InputOperation>,
+    replies: Arc<ReplyQueue>,
     input_order: Mutex<InputOrderState>,
     termination_started: AtomicBool,
     requested_termination: Mutex<Option<TerminationSource>>,
@@ -1491,6 +1495,7 @@ impl Session {
             on_exit,
             authority: Mutex::new(ViewAuthority::new(cols, rows)),
             input_tx,
+            replies: Arc::new(ReplyQueue::default()),
             input_order: Mutex::new(InputOrderState::default()),
             termination_started: AtomicBool::new(false),
             requested_termination: Mutex::new(None),
@@ -1503,10 +1508,37 @@ impl Session {
         });
         let _ = session.sample_activity();
         Self::start_input_actor(&session, input_rx);
+        Self::start_reply_writer(&session);
         #[cfg(windows)]
         Self::start_exit_watcher(&session, exit_handle);
         Self::start_reader(&session, reader_source);
         Ok(session)
+    }
+
+    fn start_reply_writer(session: &Arc<Self>) {
+        let queue = session.replies.clone();
+        let id = session.id();
+        let session = Arc::downgrade(session);
+        thread::Builder::new()
+            .name(format!("pty-replies-{id}"))
+            .spawn(move || {
+                while let Some(bytes) = queue.recv() {
+                    let Some(session) = session.upgrade() else {
+                        break;
+                    };
+                    if session.has_exited() {
+                        break;
+                    }
+                    // The writer mutex keeps a reply batch intact relative to
+                    // user input. Neither path holds a model lock during I/O.
+                    if let Err(error) = session.process.write(&bytes) {
+                        eprintln!("[ghosttea] terminal reply write failed for {id}: {error:#}");
+                        break;
+                    }
+                }
+                queue.close();
+            })
+            .expect("PTY reply writer");
     }
 
     fn start_input_actor(session: &Arc<Self>, input_rx: mpsc::Receiver<InputOperation>) {
@@ -1658,13 +1690,14 @@ impl Session {
                     let _operation = session.model_operation.lock().unwrap();
                     let update = session.model.lock().unwrap().feed(&batch, render);
                     match update {
-                        Ok(update) => session.execute_update(update),
+                        Ok(update) => session.execute_update(update, _operation),
                         Err(error) => {
                             eprintln!("terminal model feed failed for {}: {error:#}", session.id())
                         }
                     }
                 }
                 session.exited.store(true, Ordering::Release);
+                session.replies.close();
                 session.exit_latch.notify();
                 // Wake the input actor even when no more user input will arrive.
                 // The actor only holds a Weak reference while blocked, so this
@@ -1699,7 +1732,7 @@ impl Session {
                     // scrutinee temporary otherwise lives through the arm.
                     let update = session.model.lock().unwrap().refresh(RenderRequest::Damage);
                     match update {
-                        Ok(update) => session.execute_update(update),
+                        Ok(update) => session.execute_update(update, _operation),
                         Err(error) => eprintln!(
                             "terminal model final refresh failed for {}: {error:#}",
                             session.id()
@@ -1720,16 +1753,19 @@ impl Session {
             .expect("PTY reader thread");
     }
 
-    fn execute_update(&self, update: TerminalUpdate) {
+    // Publication stays ordered under model_operation. Only the reply handoff
+    // may wait, and it takes ownership of the guard so no caller can
+    // accidentally keep the model locked during transport backpressure.
+    fn execute_update(&self, update: TerminalUpdate, operation: MutexGuard<'_, ()>) {
+        let mut replies = Vec::new();
         self.announce_selections(self.model.lock().unwrap().view_selections());
         for effect in update {
             match effect {
                 TerminalEffect::WriteToTransport(bytes) => {
-                    if let Err(error) = self.process.write(&bytes) {
-                        eprintln!(
-                            "[ghosttea] terminal reply write failed for {}: {error:#}",
-                            self.id()
-                        );
+                    if replies.is_empty() {
+                        replies = bytes;
+                    } else {
+                        replies.extend(bytes);
                     }
                 }
                 TerminalEffect::MetadataChanged(metadata) => {
@@ -1755,6 +1791,11 @@ impl Session {
                     self.frames.publish(frame);
                 }
             }
+        }
+        let reply = (!replies.is_empty()).then(|| self.replies.prepare(replies));
+        drop(operation);
+        if let Some(reply) = reply {
+            self.replies.send(reply);
         }
     }
 
@@ -1924,7 +1965,7 @@ impl Session {
         };
         let _operation = self.model_operation.lock().unwrap();
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(attachment_epoch)
     }
 
@@ -2249,7 +2290,7 @@ impl Session {
     pub fn refresh(&self) -> Result<()> {
         let _operation = self.model_operation.lock().unwrap();
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2454,7 +2495,9 @@ impl Session {
     }
 
     fn execute_input(&self, operation: InputOperation) -> Result<()> {
-        let _operation = self.model_operation.lock().unwrap();
+        // The input actor serializes writes. A child may never read its PTY;
+        // holding model_operation across write_all would freeze output and exit.
+
         match operation {
             InputOperation::Shutdown => Ok(()),
             InputOperation::Text(text) => self.process.write(text.as_bytes()),
@@ -2566,6 +2609,7 @@ impl Session {
     }
 
     fn execute_scroll(&self, rows: isize) -> Result<()> {
+        let operation = self.model_operation.lock().unwrap();
         if rows == 0 {
             return Ok(());
         }
@@ -2582,22 +2626,25 @@ impl Session {
                 (Some(model.scroll(rows, RenderRequest::Damage)?), Vec::new())
             }
         };
+        if let Some(update) = update {
+            self.execute_update(update, operation);
+        } else {
+            drop(operation);
+        }
         if !alternate_input.is_empty() {
             self.process.write(&alternate_input)?;
-        }
-        if let Some(update) = update {
-            self.execute_update(update);
         }
         Ok(())
     }
 
     fn execute_scroll_to(&self, row: usize) -> Result<()> {
+        let _operation = self.model_operation.lock().unwrap();
         let update = self
             .model
             .lock()
             .unwrap()
             .scroll_to(row, RenderRequest::Damage)?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2623,7 +2670,7 @@ impl Session {
                     return Err(error);
                 }
             };
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2640,7 +2687,7 @@ impl Session {
             cursor,
             RenderRequest::Full,
         )?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2659,7 +2706,7 @@ impl Session {
             palette,
             RenderRequest::Full,
         )?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2707,11 +2754,11 @@ impl Session {
             let mut order = self.input_order.lock().unwrap();
             if self.input_tx.try_send(InputOperation::Interrupt).is_ok() {
                 order.record_input(false);
-            } else {
-                let _operation = self.model_operation.lock().unwrap();
-                let _ = self.process.write(b"\x03");
             }
+            // A full input queue must not delay the independent signal ladder.
+            // In particular, never fall back to a synchronous PTY write here.
         }
+        self.replies.close();
         let session = Arc::clone(self);
         if let Err(error) = thread::Builder::new()
             .name(format!("pty-terminate-{}", session.id()))
@@ -2826,6 +2873,68 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn blocked_paste_does_not_hold_the_model_or_prevent_termination() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "stty -echo; exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        assert!(
+            session
+                .input_tx
+                .try_send(InputOperation::Paste("x".repeat(1024 * 1024)))
+                .is_ok()
+        );
+        // Wait for the actor to enter write_all, without depending on a fast host.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.process.writer.try_lock().is_ok() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            session.process.writer.try_lock().is_err(),
+            "paste must fill the PTY"
+        );
+        let model_available = session.model_operation.try_lock().is_ok();
+        // Also exercise the former synchronous fallback with a full input queue.
+        while session.input_tx.try_send(InputOperation::Interrupt).is_ok() {}
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_secs(1),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            model_available,
+            "a blocked write must leave the model available"
+        );
+        assert!(
+            session.has_exited(),
+            "termination must bypass a blocked input actor"
+        );
+    }
+
     /// The Windows integration fixtures create a session, then subscribe and
     /// attach before reading the marker it printed. Their programs return
     /// immediately, so the session has to outlive its child by long enough for
@@ -3224,7 +3333,7 @@ mod tests {
                 .unwrap()
                 .feed(b"\x1b[?1049hfirst\r\nsecond\r\nthird", RenderRequest::None)
                 .unwrap();
-            session.execute_update(update);
+            session.execute_update(update, _operation);
         }
         assert_eq!(
             session.selection_text("view-a", 0, 1, 5, 1, false).unwrap(),
@@ -3250,7 +3359,7 @@ mod tests {
                 .unwrap()
                 .feed(b"\x1b[1S", RenderRequest::None)
                 .unwrap();
-            session.execute_update(update);
+            session.execute_update(update, _operation);
         }
         assert!(view_a.has_changed().unwrap());
         assert!(view_b.has_changed().unwrap());
@@ -3844,5 +3953,192 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("shell did not exit during test cleanup");
         assert!(session.sample_activity().is_none());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod reply_delivery_tests {
+    use super::*;
+
+    struct ProbeWriter {
+        bytes: Arc<Mutex<Vec<u8>>>,
+        started: mpsc::Sender<()>,
+        gate: mpsc::Receiver<()>,
+        done: mpsc::Sender<()>,
+        first: bool,
+    }
+    impl Write for ProbeWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.first {
+                self.first = false;
+                self.started.send(()).unwrap();
+                self.gate.recv_timeout(Duration::from_secs(10)).unwrap();
+            }
+            self.bytes.lock().unwrap().extend_from_slice(bytes);
+            if bytes == b"\x1b[0n" {
+                self.done.send(()).unwrap();
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn replies_survive_a_full_input_queue() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        *session.process.writer.lock().unwrap() = Box::new(ProbeWriter {
+            bytes: bytes.clone(),
+            started: started_tx,
+            gate: gate_rx,
+            done: done_tx,
+            first: true,
+        });
+        session
+            .input_tx
+            .send(InputOperation::Text("X".into()))
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        for _ in 0..1024 {
+            session
+                .input_tx
+                .try_send(InputOperation::Text("x".into()))
+                .unwrap();
+        }
+        let mut update = TerminalUpdate::new();
+        update.push(TerminalEffect::WriteToTransport(b"\x1b[0n".to_vec()));
+        let (complete_tx, complete_rx) = mpsc::channel();
+        let apply = {
+            let session = session.clone();
+            thread::spawn(move || {
+                session.execute_update(update, session.model_operation.lock().unwrap());
+                complete_tx.send(()).unwrap();
+            })
+        };
+        complete_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(session.model_operation.try_lock().is_ok());
+        gate_tx.send(()).unwrap();
+        apply.join().unwrap();
+        done_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        let delivered = bytes.lock().unwrap().windows(4).any(|w| w == b"\x1b[0n");
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_millis(100),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            delivered,
+            "terminal status response was lost when the user-input queue was full"
+        );
+    }
+
+    #[test]
+    fn termination_cancels_reply_backpressure_without_holding_the_model() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel();
+        let (done_tx, _done_rx) = mpsc::channel();
+        *session.process.writer.lock().unwrap() = Box::new(ProbeWriter {
+            bytes: Arc::new(Mutex::new(Vec::new())),
+            started: started_tx,
+            gate: gate_rx,
+            done: done_tx,
+            first: true,
+        });
+        let reply =
+            || std::iter::once(TerminalEffect::WriteToTransport(b"reply".to_vec())).collect();
+        session.execute_update(reply(), session.model_operation.lock().unwrap());
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        session.execute_update(reply(), session.model_operation.lock().unwrap());
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (complete_tx, complete_rx) = mpsc::channel();
+        let producer = {
+            let session = session.clone();
+            thread::spawn(move || {
+                let operation = session.model_operation.lock().unwrap();
+                entered_tx.send(()).unwrap();
+                session.execute_update(reply(), operation);
+                complete_tx.send(()).unwrap();
+            })
+        };
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.model_operation.try_lock().is_err() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let model_available = session.model_operation.try_lock().is_ok();
+        let backpressured = matches!(complete_rx.try_recv(), Err(mpsc::TryRecvError::Empty));
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_millis(100),
+            )
+            .unwrap();
+        complete_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        gate_tx.send(()).unwrap();
+        producer.join().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            backpressured,
+            "the reply writer and its one queue slot must bound pending work"
+        );
+        assert!(model_available, "reply backpressure must release the model");
+        assert!(
+            session.has_exited(),
+            "termination must cancel blocked reply producers"
+        );
     }
 }

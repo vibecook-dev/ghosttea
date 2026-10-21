@@ -137,16 +137,22 @@ function assertRange(condition: boolean, message: string): asserts condition {
   if (!condition) throw new RangeError(`Invalid terminal frame: ${message}`);
 }
 
-export function decodeFrame(buffer: ArrayBuffer): TerminalFrame {
-  assertRange(buffer.byteLength >= FRAME_HEADER_BYTES, "truncated header");
-  assertRange(buffer.byteLength <= MAX_FRAME_BYTES, "packet exceeds limit");
-  const view = new DataView(buffer);
+export function decodeFrame(buffer: ArrayBuffer | Uint8Array): TerminalFrame {
+  // Normalize subclasses (notably Node Buffer) without copying the frame.
+  // Sections borrow this bounded view; retained glyph pixels must still copy.
+  const bytes =
+    buffer instanceof Uint8Array
+      ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      : new Uint8Array(buffer);
+  assertRange(bytes.byteLength >= FRAME_HEADER_BYTES, "truncated header");
+  assertRange(bytes.byteLength <= MAX_FRAME_BYTES, "packet exceeds limit");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   assertRange(view.getUint32(0, true) === FRAME_MAGIC, "bad magic");
   assertRange(view.getUint16(4, true) === FRAME_PROTOCOL_VERSION, "unsupported protocol version");
 
   const sectionCount = view.getUint16(60, true);
   const tableEnd = FRAME_HEADER_BYTES + sectionCount * SECTION_HEADER_BYTES;
-  assertRange(tableEnd <= buffer.byteLength, "truncated section table");
+  assertRange(tableEnd <= bytes.byteLength, "truncated section table");
 
   const sections: FrameSection[] = [];
   for (let index = 0; index < sectionCount; index += 1) {
@@ -157,8 +163,8 @@ export function decodeFrame(buffer: ArrayBuffer): TerminalFrame {
     const length = view.getUint32(base + 8, true);
     const itemCount = view.getUint32(base + 12, true);
     const end = offset + length;
-    assertRange(end >= offset && offset >= tableEnd && end <= buffer.byteLength, "section out of bounds");
-    sections.push({ kind, flags, itemCount, bytes: new Uint8Array(buffer, offset, length) });
+    assertRange(end >= offset && offset >= tableEnd && end <= bytes.byteLength, "section out of bounds");
+    sections.push({ kind, flags, itemCount, bytes: bytes.subarray(offset, end) });
   }
 
   return {
@@ -278,7 +284,7 @@ export function decodeGlyphDefinitions(section: FrameSection): GlyphDefinition[]
       bearingX: view.getInt16(offset - 12, true),
       bearingY: view.getInt16(offset - 10, true),
       format,
-      pixels: section.bytes.slice(offset, offset + pixelLength),
+      pixels: new Uint8Array(section.bytes.subarray(offset, offset + pixelLength)),
     });
     offset += pixelLength;
   }

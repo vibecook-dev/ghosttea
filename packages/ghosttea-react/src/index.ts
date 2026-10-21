@@ -33,12 +33,18 @@ export {
   showsStaleScreen,
   type RemoteInputSuppression,
   type RemoteSessionRuntimeState,
+  type RoutedGeometryHolderChange,
+  type RoutedGeometryHolderState,
   type SelectionScope,
   type TerminalMount,
 } from "./runtime.js";
 export {
+  CELL_WIDTH,
   DEFAULT_EFFECTS,
   DEFAULT_THEME,
+  LINE_HEIGHT,
+  ORIGIN_X,
+  ORIGIN_Y,
   type CellPoint,
   type CellSelection,
   type TerminalEffects,

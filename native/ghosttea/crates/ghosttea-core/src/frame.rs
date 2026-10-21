@@ -2,6 +2,7 @@ use crate::links::TerminalLink;
 use anyhow::{Result, bail};
 use ghosttea_text::{GlyphDefinition, GlyphFormat, GlyphInstance, ShapedRow};
 use ghosttea_vt::{CellStyle, TerminalCell, TerminalScrollbar, TerminalSelection};
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 
 pub const FRAME_MAGIC: u32 = 0x3146_5254;
@@ -314,7 +315,7 @@ fn encode_glyph_instance(bytes: &mut Vec<u8>, glyph: &GlyphInstance, style_id: u
     bytes.extend_from_slice(&glyph.cell_span.to_le_bytes());
 }
 
-pub struct TextSnapshot<'a> {
+pub struct TextSnapshot<'a, S = ShapedRow> {
     pub session_handle: u64,
     pub session_epoch: u64,
     pub layout_epoch: u64,
@@ -322,7 +323,7 @@ pub struct TextSnapshot<'a> {
     pub revision: u64,
     pub cols: u16,
     pub rows: &'a [String],
-    pub shaped_rows: &'a [ShapedRow],
+    pub shaped_rows: &'a [S],
     pub cells: &'a [Vec<TerminalCell>],
     pub updated_rows: &'a [u16],
     pub full_snapshot: bool,
@@ -336,7 +337,7 @@ pub struct TextSnapshot<'a> {
     pub links: Option<&'a [TerminalLink]>,
 }
 
-pub(crate) struct FrameTextSnapshot<'a, C: FrameCell> {
+pub(crate) struct FrameTextSnapshot<'a, C: FrameCell, S = ShapedRow> {
     pub session_handle: u64,
     pub session_epoch: u64,
     pub layout_epoch: u64,
@@ -344,7 +345,7 @@ pub(crate) struct FrameTextSnapshot<'a, C: FrameCell> {
     pub revision: u64,
     pub cols: u16,
     pub rows: &'a [String],
-    pub shaped_rows: &'a [ShapedRow],
+    pub shaped_rows: &'a [S],
     pub cells: &'a [Vec<C>],
     pub updated_rows: &'a [u16],
     pub full_snapshot: bool,
@@ -358,7 +359,9 @@ pub(crate) struct FrameTextSnapshot<'a, C: FrameCell> {
     pub links: Option<&'a [TerminalLink]>,
 }
 
-pub fn encode_text_snapshot(snapshot: TextSnapshot<'_>) -> Result<Vec<u8>> {
+pub fn encode_text_snapshot<S: Borrow<ShapedRow>>(
+    snapshot: TextSnapshot<'_, S>,
+) -> Result<Vec<u8>> {
     encode_frame_text_snapshot(FrameTextSnapshot {
         session_handle: snapshot.session_handle,
         session_epoch: snapshot.session_epoch,
@@ -382,8 +385,8 @@ pub fn encode_text_snapshot(snapshot: TextSnapshot<'_>) -> Result<Vec<u8>> {
     })
 }
 
-pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
-    snapshot: FrameTextSnapshot<'_, C>,
+pub(crate) fn encode_frame_text_snapshot<C: FrameCell, S: Borrow<ShapedRow>>(
+    snapshot: FrameTextSnapshot<'_, C, S>,
 ) -> Result<Vec<u8>> {
     let FrameTextSnapshot {
         session_handle,
@@ -422,7 +425,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
             .iter()
             .map(|row| {
                 let index = *row as usize;
-                prepare_row_styles(&cells[index], &shaped_rows[index], &mut definitions)
+                prepare_row_styles(&cells[index], shaped_rows[index].borrow(), &mut definitions)
             })
             .collect::<Vec<_>>();
         PreparedFrameStyles::Indexed { definitions, rows }
@@ -448,7 +451,7 @@ pub(crate) fn encode_frame_text_snapshot<C: FrameCell>(
     for (updated_index, row) in updated_rows.iter().copied().enumerate() {
         let row_index = row as usize;
         let text = &rows[row_index];
-        let shaped = &shaped_rows[row_index];
+        let shaped = shaped_rows[row_index].borrow();
         let row_cells = &cells[row_index];
         let bytes = text.as_bytes();
         if bytes.len() > u32::MAX as usize {

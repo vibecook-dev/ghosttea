@@ -76,9 +76,10 @@ export interface RoutedExpectedLayout {
 export interface RoutedFramesTransportOptions {
   socketFactory?: (url: string) => WebSocket;
   applyFrame: (
-    packet: ArrayBuffer,
+    packet: ArrayBuffer | Uint8Array,
     identity: RoutedTrfIdentity,
     expectedLayout?: RoutedExpectedLayout,
+    glyphNamespace?: string,
   ) => RoutedAppliedFrame;
   emit: (event: RoutedFramesTransportEvent) => void;
   creditReturned?: (bytes: number) => void;
@@ -138,11 +139,6 @@ const socketClosing = 2;
 
 function exactStamp(left: RoutedSceneContentStamp | undefined, right: RoutedSceneContentStamp): boolean {
   return left !== undefined && compareRoutedSceneContent(left, right) === 0;
-}
-
-function copyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = bytes.slice();
-  return copy.buffer as ArrayBuffer;
 }
 
 function capacitiesFitWithin(accepted: RoutedReceiverCapacities, advertised: RoutedReceiverCapacities): boolean {
@@ -524,7 +520,7 @@ export class RoutedFramesTransport {
     chargedBytes: number,
   ): void {
     if (
-      payload.byteLength > connection.accepted!.protocolLimits.maxPresentationChunkBytes ||
+      payload.byteLength > connection.accepted!.protocolLimits.maxUrgentPresentationUnitBytes ||
       !header.resultContent ||
       header.baseContent === undefined ||
       (header.baseContent !== null && !exactStamp(activation.appliedContent, header.baseContent))
@@ -534,7 +530,7 @@ export class RoutedFramesTransport {
     }
     try {
       this.#emit({ type: "frames-state", activationId: header.activationId, state: "applying" });
-      this.#applyFrame(copyArrayBuffer(payload), activation.identity!);
+      this.#applyFrame(payload, activation.identity!, undefined, header.resultContent.sceneEpoch.cellBootId);
       activation.appliedContent = header.resultContent;
       this.#returnCredit(connection, header.activationId, chargedBytes);
       this.#sceneApplied(connection, activation);
@@ -662,7 +658,12 @@ export class RoutedFramesTransport {
     }
     try {
       this.#emit({ type: "frames-state", activationId: header.activationId, state: "applying" });
-      this.#applyFrame(staging.bytes.buffer as ArrayBuffer, activation.identity!, staging.targetLayout);
+      this.#applyFrame(
+        staging.bytes.buffer as ArrayBuffer,
+        activation.identity!,
+        staging.targetLayout,
+        staging.resultContent.sceneEpoch.cellBootId,
+      );
       activation.appliedContent = staging.resultContent;
       this.#releaseTransfer(activation);
       this.#sceneApplied(connection, activation);

@@ -6749,7 +6749,13 @@ mod protocol_tests {
         let mut client = connect_control(&service).await;
         say_hello(&mut client, CONTROL_PROTOCOL_MINOR).await;
 
-        let created = request(&mut client, short_lived_session(1)).await;
+        // It must still be alive when terminate arrives; `exit 0` races the
+        // command and can correctly leave the session unknown before closing it.
+        let created = request(
+            &mut client,
+            owned_long_running_session(1, "closing-session"),
+        )
+        .await;
         assert_eq!(created["type"], "session-created");
         let session_id = created["session"]["id"].as_str().unwrap().to_owned();
 

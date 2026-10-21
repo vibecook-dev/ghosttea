@@ -17,6 +17,8 @@ import {
   type RemoteHostSummary,
   type RemoteSessionLifecycle,
   type RemoteViewRecord,
+  type RoutedGeometryHolder,
+  type RoutedGeometryRefused,
   type RoutedReceiverCapacities,
   type RoutedSessionAttachGrant,
   type RoutedTerminalOpenTicket,
@@ -31,7 +33,7 @@ import {
   type TerminationSource,
 } from "@vibecook/ghosttea-protocol";
 import { FRAME_MAGIC, FrameFlag } from "@vibecook/ghosttea-frame";
-import type { CellSelection, TerminalEffects, TerminalTheme } from "./renderers/types.js";
+import type { CellSelection, PixelSize, TerminalEffects, TerminalTheme } from "./renderers/types.js";
 import type { TerminalRenderCounterSnapshot, TerminalRenderPerformanceSnapshot } from "./performance.js";
 import { FrameResyncController } from "./frame-resync.js";
 import type { RendererToWorkerMessage, WorkerToRendererMessage } from "./worker-messages.js";
@@ -202,6 +204,8 @@ interface ViewRuntimeState {
   claimedEpoch: number | undefined;
   /** Control revision that claim was made against, for the cleared-controller retry. */
   claimedRevision: number;
+  /** Serial of this view's latest routed claim or take: only the reply to it decides whether its grid landed. */
+  routedGeometrySerial: number;
 }
 
 /** A session's lifecycle as this client currently believes it. */
@@ -239,6 +243,36 @@ export interface RemoteInputSuppression {
   state: RemoteSessionRuntimeState["state"];
 }
 
+/**
+ * One routed session's geometry seat (TPv3 §6), as this runtime last saw it.
+ *
+ * The cell names the holder only in its replies to this client's own geometry
+ * verbs: a commit names the new holder, a refusal names the current one. A
+ * take by another client therefore shows here on this client's next claim,
+ * take or release, not at the moment it happens.
+ */
+export interface RoutedGeometryHolderState {
+  /** The holder, or `null` when the seat was last seen empty. */
+  holder: RoutedGeometryHolder | null;
+  /** The cell's `geometryRevision` at that point: the next claim's or take's compare-and-swap token. */
+  revision: number;
+  /** Whether the holder is this runtime's client, so that one of its own views holds the seat. */
+  local: boolean;
+}
+
+/** Detail of the runtime's `geometry-holder-changed` event. */
+export interface RoutedGeometryHolderChange {
+  sessionId: string;
+  sessionHandle: string;
+  /** `undefined` when nothing was known before. */
+  previous: RoutedGeometryHolderState | undefined;
+  /**
+   * `undefined` once the runtime stops tracking the seat: the session's last
+   * view left, or the session moved to another cell.
+   */
+  current: RoutedGeometryHolderState | undefined;
+}
+
 /** A per-view update from an event, a reconciliation, or an attach response. */
 type RemoteViewStateUpdate = Omit<RemoteViewRecord, "viewId" | "viewStateSeq"> & { viewStateSeq?: number };
 
@@ -253,23 +287,107 @@ interface RoutedActivationRuntime {
   sessionHandle: string;
   state: RoutedActivationState;
   ticket?: RoutedTerminalOpenTicket;
+  /**
+   * The attach grant's client, kept while the ticket is dropped between
+   * mints: a seat this client holds stays its own through a recovery.
+   */
+  clientId?: string;
+  /** Serial of the latest take asked for this session; only the latest take retries. */
+  takeSerial: number;
+  /** A take asked before the control leg could carry it, sent when the leg attaches. */
+  queuedTake?: { viewId: string; serial: number };
   replacesActivationId?: string;
   viewIds: Set<string>;
   start?: Promise<void>;
   attachTimer?: number;
   renewalTimer?: number;
+  cellLeaseTimer?: number;
+  workerLeaseTimer?: number;
   framesResume?: Promise<void>;
+  framesAttachStarted?: boolean;
   recoveryAttempts: number;
   preAuthRemints: { control: number; frames: number };
   protocolFailures: { control: number; frames: number };
 }
 
+interface RoutedGeometryHolderRecord {
+  clientId: string;
+  viewId: string;
+  holderGeneration: number;
+}
+
 interface RoutedGeometryState {
-  holderViewId?: string;
-  holderGeneration?: number;
+  /** The holder the cell last named, whichever client it is; absent while the seat is seen empty. */
+  holder?: RoutedGeometryHolderRecord;
   revision: number;
   cols?: number;
   rows?: number;
+}
+
+function geometryHolderRecord(holder: RoutedGeometryHolder): RoutedGeometryHolderRecord {
+  return { clientId: holder.clientId, viewId: holder.viewId, holderGeneration: holder.holderGeneration };
+}
+
+function sameGeometryHolder(
+  a: RoutedGeometryHolderRecord | undefined,
+  b: RoutedGeometryHolderRecord | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.clientId === b.clientId && a.viewId === b.viewId && a.holderGeneration === b.holderGeneration;
+}
+
+/** A take's context on the control leg: which view and take it is, and the seat state it was built on. */
+class RoutedGeometryTake {
+  readonly viewId: string;
+  /** The view's request serial this take was sent under. */
+  readonly viewSerial: number;
+  /** The session's take serial. */
+  readonly serial: number;
+  readonly attempt: 0 | 1;
+  readonly basisHolder: RoutedGeometryHolderRecord | undefined;
+  readonly basisRevision: number;
+
+  constructor(
+    viewId: string,
+    viewSerial: number,
+    serial: number,
+    attempt: 0 | 1,
+    basis: RoutedGeometryState | undefined,
+  ) {
+    this.viewId = viewId;
+    this.viewSerial = viewSerial;
+    this.serial = serial;
+    this.attempt = attempt;
+    this.basisHolder = basis?.holder;
+    this.basisRevision = basis?.revision ?? 0;
+  }
+}
+
+/** A plain claim's context: the view that sent it, under which serial, and whether it re-sends a grid that did not land. */
+class RoutedGeometryClaim {
+  readonly viewId: string;
+  readonly viewSerial: number;
+  readonly trailing: boolean;
+
+  constructor(viewId: string, viewSerial: number, trailing: boolean) {
+    this.viewId = viewId;
+    this.viewSerial = viewSerial;
+    this.trailing = trailing;
+  }
+}
+
+/** Refusals that describe the seat as it is, so a take built on older news can retry against them. */
+const RETRYABLE_TAKE_REFUSALS = new Set(["SEAT_HELD", "STALE_REVISION", "NOT_HOLDER"]);
+
+/**
+ * Whether a take's refusal names a seat other than the one the take was built
+ * on. A refusal that repeats the take's own view of the seat (a cell that does
+ * not allow the take at all) would only be refused again.
+ */
+function takeRefusalNamesNews(refused: RoutedGeometryRefused, take: RoutedGeometryTake): boolean {
+  if (!RETRYABLE_TAKE_REFUSALS.has(refused.code) || refused.geometryRevision === undefined) return false;
+  const holder = refused.currentHolder === undefined ? undefined : geometryHolderRecord(refused.currentHolder);
+  return refused.geometryRevision !== take.basisRevision || !sameGeometryHolder(holder, take.basisHolder);
 }
 
 const FRAME_SUBSCRIPTION_ACK_TIMEOUT_MS = 10_000;
@@ -301,6 +419,10 @@ export function waitForGhostteaRendererPorts(timeoutMs = 10_000): Promise<Ghostt
 
 export class GhostteaTerminalRuntime extends EventTarget {
   readonly #worker: Worker;
+  readonly #sessionsCreatedHere = new Set<string>();
+  readonly #sessionsWithInput = new Set<string>();
+  readonly #sessionsDrawn = new Set<string>();
+
   readonly #ports: Promise<GhostteaRendererPorts> | undefined;
   readonly #routedHost: GhostteaRoutedHost | undefined;
   readonly #routedReceiverCapacities: RoutedReceiverCapacities | undefined;
@@ -442,6 +564,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
       } else if (data.type === "frame-committed") {
         if (this.#routedHost?.getSession) this.#scheduleMetadataRefresh(data.sessionHandle);
         this.#recordCommittedFrame(data.sessionHandle, data.fullSnapshot);
+      } else if (data.type === "session-drawn") {
+        this.#recordSessionDrawn(data.sessionHandle);
       } else if (data.type === "catalog-pressure") {
         console.warn(
           `[terminal-runtime] native text catalog budget exceeded for ${data.sessionHandle}; using bounded fallback text`,
@@ -461,6 +585,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
         pending.resolve(data.snapshot);
       } else if (data.type === "routed-frames-event") {
         this.#handleRoutedFramesEvent(data.event);
+      } else if (data.type === "terminal-modes") {
+        this.#noteMouseTracking(data.sessionHandle, data.mouseTracking);
       } else if (data.type === "renderer-reload-required") {
         console.error(`[terminal-runtime] renderer requested reload: ${String(data.reason ?? "unknown")}`);
         this.#platform.setForceCanvasFallback(true);
@@ -478,6 +604,29 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#worker.postMessage(message, transfer);
   }
 
+  /** Whether this renderer has attempted terminal input during this session's lifetime.
+   * Restored or externally created sessions must never be treated as unused from this alone. */
+  sessionHasInput(sessionId: string): boolean {
+    return this.#sessionsWithInput.has(sessionId);
+  }
+
+  /**
+   * Whether a committed frame of this session has put something on screen in
+   * this renderer: what a host that just started a program waits for before it
+   * reveals the terminal. Once true it stays true while the session is
+   * registered here (a restart in place is the same session and does not draw
+   * "first" again); a `session-drawn` event (`detail: { sessionId }`) announces
+   * the change, and a session registered again announces again.
+   */
+  sessionHasDrawn(sessionId: string): boolean {
+    return this.#sessionsDrawn.has(sessionId);
+  }
+
+  /** A local birth receipt, never inferred from registration or an empty input history. */
+  sessionCreatedHere(sessionId: string): boolean {
+    return this.#sessionsCreatedHere.has(sessionId);
+  }
+
   get rendererBackend(): string {
     return this.#rendererBackend;
   }
@@ -491,6 +640,49 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const view = this.#views.get(viewId);
     if (!view?.clientReadWrite || view.readWrite === false) return false;
     return this.#routedBySession.get(view.sessionId)?.state.inputAllowed ?? false;
+  }
+
+  /**
+   * The routed session's geometry seat as this runtime last saw it, or
+   * `undefined` before anything was seen (and always on the port-pair
+   * transport). A change of holder also fires `geometry-holder-changed`; a
+   * resize by the same holder only moves `revision`, without an event.
+   */
+  geometryHolder(sessionHandle: string): RoutedGeometryHolderState | undefined {
+    const session = this.#sessionByHandle.get(sessionHandle);
+    const entry = session ? this.#routedBySession.get(session.id) : undefined;
+    const geometry = entry ? this.#routedGeometry.get(entry.sessionId) : undefined;
+    return entry && geometry ? this.#geometryHolderState(entry, geometry) : undefined;
+  }
+
+  #geometryHolderState(entry: RoutedActivationRuntime, geometry: RoutedGeometryState): RoutedGeometryHolderState {
+    const holder = geometry.holder;
+    return {
+      holder: holder === undefined ? null : { ...holder },
+      revision: geometry.revision,
+      local: holder !== undefined && holder.clientId === entry.clientId,
+    };
+  }
+
+  /** Whether this view, under this runtime's client, holds the seat as last seen. */
+  #routedViewHolds(entry: RoutedActivationRuntime, geometry: RoutedGeometryState | undefined, viewId: string): boolean {
+    const holder = geometry?.holder;
+    return holder !== undefined && holder.viewId === viewId && holder.clientId === entry.clientId;
+  }
+
+  /** Every write of a session's seat state goes through here, so a holder change always fires its event. */
+  #setRoutedGeometry(entry: RoutedActivationRuntime, next: RoutedGeometryState | undefined): void {
+    const previous = this.#routedGeometry.get(entry.sessionId);
+    if (next === undefined) this.#routedGeometry.delete(entry.sessionId);
+    else this.#routedGeometry.set(entry.sessionId, next);
+    if ((previous === undefined) === (next === undefined) && sameGeometryHolder(previous?.holder, next?.holder)) return;
+    const detail: RoutedGeometryHolderChange = {
+      sessionId: entry.sessionId,
+      sessionHandle: entry.sessionHandle,
+      previous: previous === undefined ? undefined : this.#geometryHolderState(entry, previous),
+      current: next === undefined ? undefined : this.#geometryHolderState(entry, next),
+    };
+    this.dispatchEvent(new CustomEvent("geometry-holder-changed", { detail }));
   }
 
   #resolvePerformanceRequest(requestId: number, value: TerminalRenderPerformanceSnapshot | undefined): void {
@@ -634,11 +826,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.#returnFrameCredit(data.byteLength);
         return;
       }
-      const tracking = (view.getUint16(6, true) & FrameFlag.MouseTracking) !== 0;
-      if (this.#mouseTrackingByHandle.get(sessionHandle) !== tracking) {
-        this.#mouseTrackingByHandle.set(sessionHandle, tracking);
-        this.dispatchEvent(new CustomEvent("terminal-modes", { detail: { sessionHandle, mouseTracking: tracking } }));
-      }
+      this.#noteMouseTracking(sessionHandle, (view.getUint16(6, true) & FrameFlag.MouseTracking) !== 0);
       this.#scheduleMetadataRefresh(sessionHandle);
       this.#postWorker({ type: "frame", packet: data }, [data]);
     };
@@ -1103,6 +1291,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (this.#routedHost) {
       if (!this.#routedHost.createSession) throw new Error("The routed host does not provide session creation");
       const session = await this.#routedHost.createSession(options);
+      this.#sessionsCreatedHere.add(session.id);
       this.registerSession(session);
       return session;
     }
@@ -1121,6 +1310,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       options: { ...options, ...(this.#sessionOwnerId ? { ownerId: this.#sessionOwnerId } : {}) },
     });
     if (response.type !== "session-created") throw new Error("ghosttead returned an unexpected response");
+    this.#sessionsCreatedHere.add(response.session.id);
     this.registerSession(response.session);
     console.info(`[terminal-runtime] created session ${response.session.id}`);
     return response.session;
@@ -1281,9 +1471,15 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (response.type !== "ok") throw new Error("ghosttead rejected frame resynchronization");
   }
 
-  mount(sessionId: string, sessionHandle: string, viewId: string, canvas: HTMLCanvasElement): TerminalMount {
+  mount(
+    sessionId: string,
+    sessionHandle: string,
+    viewId: string,
+    canvas: HTMLCanvasElement,
+    initialSize?: PixelSize,
+  ): TerminalMount {
     if (this.#disposed) throw new Error("Cannot mount a disposed terminal runtime");
-    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas);
+    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas, initialSize);
     const mounted = this.#mountedCanvases.get(canvas);
     if (mounted) {
       if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
@@ -1298,11 +1494,20 @@ export class GhostteaTerminalRuntime extends EventTarget {
       return this.#createMountLease(mounted);
     }
 
+    const size: PixelSize = initialSize ?? {
+      width: canvas.clientWidth || 0,
+      height: canvas.clientHeight || 0,
+      dpr: window.devicePixelRatio || 1,
+    };
+    // Allocate the first render target at its actual size, too: the backend
+    // must not build a default 300x150 scene texture and immediately replace it.
+    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
     const offscreen = canvas.transferControlToOffscreen();
     const subscription = this.#retainFrameSubscription(sessionHandle);
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen }, [offscreen]);
+    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
     const entry: MountedCanvas = {
       canvas,
       sessionHandle,
@@ -1331,6 +1536,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       lastAttachmentEpoch: undefined,
       claimedEpoch: undefined,
       claimedRevision: 0,
+      routedGeometrySerial: 0,
     };
     this.#views.set(viewId, view);
     const remote = this.#remoteSessions.get(sessionId);
@@ -1388,7 +1594,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     return this.#createMountLease(entry);
   }
 
-  #mountRouted(sessionId: string, sessionHandle: string, viewId: string, canvas: HTMLCanvasElement): TerminalMount {
+  #mountRouted(
+    sessionId: string,
+    sessionHandle: string,
+    viewId: string,
+    canvas: HTMLCanvasElement,
+    initialSize?: PixelSize,
+  ): TerminalMount {
     const mounted = this.#mountedCanvases.get(canvas);
     if (mounted) {
       if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
@@ -1402,10 +1614,19 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return this.#createMountLease(mounted);
     }
+    const size: PixelSize = initialSize ?? {
+      width: canvas.clientWidth || 0,
+      height: canvas.clientHeight || 0,
+      dpr: window.devicePixelRatio || 1,
+    };
+    // Allocate the first render target at its actual size, too: the backend
+    // must not build a default 300x150 scene texture and immediately replace it.
+    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
     const offscreen = canvas.transferControlToOffscreen();
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen }, [offscreen]);
+    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
     const entry: MountedCanvas = {
       canvas,
       sessionHandle,
@@ -1436,6 +1657,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       lastAttachmentEpoch: undefined,
       claimedEpoch: undefined,
       claimedRevision: 0,
+      routedGeometrySerial: 0,
     });
     const activation = this.#routedBySession.get(sessionId);
     if (activation) activation.viewIds.add(viewId);
@@ -1472,6 +1694,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       sessionHandle,
       state: initialRoutedActivation(sessionId, activationId, inputPolicy),
       viewIds: new Set([viewId]),
+      takeSerial: 0,
       recoveryAttempts: 0,
       preAuthRemints: { control: 0, frames: 0 },
       protocolFailures: { control: 0, frames: 0 },
@@ -1529,14 +1752,21 @@ export class GhostteaTerminalRuntime extends EventTarget {
   ): Promise<void> {
     const host = this.#routedHost;
     if (!host || this.#disposed || entry.viewIds.size === 0) return;
+    const activationId = entry.state.activationId;
+    const isCurrent = () =>
+      !this.#disposed &&
+      entry.viewIds.size > 0 &&
+      entry.state.activationId === activationId &&
+      this.#routedByActivation.get(activationId) === entry &&
+      this.#routedBySession.get(entry.sessionId) === entry;
     let ticket: RoutedTerminalOpenTicket;
     try {
       ticket = await host.openTicket(entry.sessionId, { reason });
     } catch (error) {
-      this.#transitionRouted(entry, { type: "no-route", reason: String(error) });
+      if (isCurrent()) this.#transitionRouted(entry, { type: "no-route", reason: String(error) });
       return;
     }
-    if (this.#routedBySession.get(entry.sessionId) !== entry || this.#disposed) return;
+    if (!isCurrent()) return;
     if (!this.#routedTicketMatches(entry, ticket)) {
       this.#transitionRouted(entry, { type: "no-route", reason: "ticket-binding-mismatch" });
       return;
@@ -1544,6 +1774,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#transitionRouted(entry, { type: "ticket-minted", endpointsPresent: ticket.endpoints !== undefined });
     if (!ticket.endpoints) return;
     entry.ticket = ticket;
+    entry.clientId = ticket.attachGrant.claims.clientId;
     this.#transitionRouted(entry, { type: "transport-ready" });
     this.#routedControl!.attach({
       cellBootId: ticket.route.cellBootId,
@@ -1551,10 +1782,26 @@ export class GhostteaTerminalRuntime extends EventTarget {
       transportGrant: ticket.transportGrant,
       attachGrant: ticket.attachGrant,
       activationId: entry.state.activationId,
+      replacePreviousActivation: true,
       ...(entry.replacesActivationId === undefined ? {} : { replacesActivationId: entry.replacesActivationId }),
       initialDemand: this.#routedDemand(entry),
       capabilities: this.#routedCapabilities,
     });
+    this.#armRoutedAttachDeadline(
+      entry,
+      this.#routedAttachDeadlineByCell.get(ticket.route.cellBootId) ??
+        DEFAULT_ROUTED_PROTOCOL_LIMITS.activationAttachDeadlineMs,
+    );
+    this.#scheduleRoutedRenewal(entry);
+  }
+
+  #startRoutedFrames(entry: RoutedActivationRuntime): void {
+    const ticket = entry.ticket;
+    if (!ticket?.endpoints || !entry.state.controlAttached || entry.framesAttachStarted || entry.viewIds.size === 0)
+      return;
+    // Control creates the native activation. The frames socket may already be
+    // warm; sending on both legs at once races that creation on every remount.
+    entry.framesAttachStarted = true;
     this.#postWorker({
       type: "routed-frames-attach",
       request: {
@@ -1569,21 +1816,20 @@ export class GhostteaTerminalRuntime extends EventTarget {
         capabilities: this.#routedCapabilities,
       },
     });
-    this.#armRoutedAttachDeadline(
-      entry,
-      this.#routedAttachDeadlineByCell.get(ticket.route.cellBootId) ??
-        DEFAULT_ROUTED_PROTOCOL_LIMITS.activationAttachDeadlineMs,
-    );
-    this.#scheduleRoutedRenewal(entry);
   }
 
   #stopRoutedActivation(entry: RoutedActivationRuntime): void {
     this.#routedControl?.detach(entry.state.activationId);
     this.#postWorker({ type: "routed-frames-detach", activationId: entry.state.activationId });
+    delete entry.framesAttachStarted;
     if (entry.attachTimer !== undefined) window.clearTimeout(entry.attachTimer);
     delete entry.attachTimer;
     if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
     delete entry.renewalTimer;
+    if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+    delete entry.cellLeaseTimer;
+    if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+    delete entry.workerLeaseTimer;
     delete entry.ticket;
   }
 
@@ -1658,26 +1904,41 @@ export class GhostteaTerminalRuntime extends EventTarget {
         grantGeneration: event.attached.grantGenerationAccepted,
         rights: event.attached.rights,
       });
+      this.#startRoutedFrames(entry);
       const previousGeometry = this.#routedGeometry.get(entry.sessionId);
+      const previousHolder = previousGeometry?.holder;
       if (
         !event.attached.rights.includes("geometry") &&
-        previousGeometry?.holderViewId !== undefined &&
-        entry.viewIds.has(previousGeometry.holderViewId)
+        previousGeometry !== undefined &&
+        previousHolder !== undefined &&
+        this.#routedViewHolds(entry, previousGeometry, previousHolder.viewId) &&
+        entry.viewIds.has(previousHolder.viewId)
       ) {
         // The cell auto-releases a holder when renewal drops the geometry
         // right. Preserve its next CAS revision without retaining authority.
-        this.#routedGeometry.set(entry.sessionId, {
+        this.#setRoutedGeometry(entry, {
           revision: previousGeometry.revision + 1,
           ...(previousGeometry.cols === undefined ? {} : { cols: previousGeometry.cols }),
           ...(previousGeometry.rows === undefined ? {} : { rows: previousGeometry.rows }),
         });
+      }
+      // A take asked before the leg could carry it goes out now. It decides
+      // the seat, so the plain claims below would only draw refusals.
+      const queuedTake = entry.queuedTake;
+      delete entry.queuedTake;
+      if (
+        queuedTake !== undefined &&
+        queuedTake.serial === entry.takeSerial &&
+        this.#sendRoutedTake(entry, queuedTake.viewId, queuedTake.serial, 0)
+      ) {
+        return;
       }
       const geometry = this.#routedGeometry.get(entry.sessionId);
       for (const viewId of entry.viewIds) {
         const view = this.#views.get(viewId);
         if (
           view?.resizeControlRequested &&
-          geometry?.holderViewId !== viewId &&
+          !this.#routedViewHolds(entry, geometry, viewId) &&
           view.desiredCols !== undefined &&
           view.desiredRows !== undefined
         ) {
@@ -1701,9 +1962,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "cell-status") {
       const entry = this.#routedByActivation.get(event.status.activationId);
       if (!entry || event.status.sessionId !== entry.sessionId) return;
+      const previousSequence = entry.state.lastCellStatusSequence;
       this.#transitionRouted(entry, { type: "cell-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastCellStatusSequence;
-      window.setTimeout(() => {
+      if (sequence === previousSequence) return;
+      if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+      entry.cellLeaseTimer = window.setTimeout(() => {
+        delete entry.cellLeaseTimer;
         if (entry.state.lastCellStatusSequence !== sequence) return;
         this.#transitionRouted(entry, { type: "cell-lease-expired" });
       }, event.status.leaseTtlMs);
@@ -1721,14 +1986,23 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "geometry-committed") {
       const entry = event.activationId ? this.#routedByActivation.get(event.activationId) : undefined;
       if (!entry) return;
-      this.#routedGeometry.set(entry.sessionId, {
-        holderViewId: event.committed.holder.viewId,
-        holderGeneration: event.committed.holder.holderGeneration,
+      this.#setRoutedGeometry(entry, {
+        holder: geometryHolderRecord(event.committed.holder),
         revision: event.committed.geometryRevision,
         cols: event.committed.cols,
         rows: event.committed.rows,
       });
-      this.dispatchEvent(new CustomEvent("routed-geometry", { detail: { sessionId: entry.sessionId, ...event } }));
+      this.#trailRoutedResize(entry, event.request?.context, undefined);
+      this.dispatchEvent(
+        new CustomEvent("routed-geometry", {
+          detail: {
+            sessionId: entry.sessionId,
+            type: event.type,
+            ...(event.activationId === undefined ? {} : { activationId: event.activationId }),
+            committed: event.committed,
+          },
+        }),
+      );
       return;
     }
     if (event.type === "geometry-refused") {
@@ -1736,14 +2010,35 @@ export class GhostteaTerminalRuntime extends EventTarget {
       if (entry && event.refused.geometryRevision !== undefined) {
         const previous = this.#routedGeometry.get(entry.sessionId);
         const holder = event.refused.currentHolder;
-        this.#routedGeometry.set(entry.sessionId, {
+        this.#setRoutedGeometry(entry, {
           revision: event.refused.geometryRevision,
-          ...(holder === undefined ? {} : { holderViewId: holder.viewId, holderGeneration: holder.holderGeneration }),
+          ...(holder === undefined ? {} : { holder: geometryHolderRecord(holder) }),
           ...(previous?.cols === undefined ? {} : { cols: previous.cols }),
           ...(previous?.rows === undefined ? {} : { rows: previous.rows }),
         });
       }
-      this.dispatchEvent(new CustomEvent("routed-geometry-refused", { detail: event }));
+      // A take refused on stale news retries once against the seat the
+      // refusal names; only the session's latest take does.
+      const take = event.request?.context instanceof RoutedGeometryTake ? event.request.context : undefined;
+      if (
+        entry &&
+        take &&
+        take.attempt === 0 &&
+        take.serial === entry.takeSerial &&
+        takeRefusalNamesNews(event.refused, take)
+      ) {
+        this.#sendRoutedTake(entry, take.viewId, take.serial, 1);
+      }
+      if (entry) this.#trailRoutedResize(entry, event.request?.context, event.refused.code);
+      this.dispatchEvent(
+        new CustomEvent("routed-geometry-refused", {
+          detail: {
+            type: event.type,
+            ...(event.activationId === undefined ? {} : { activationId: event.activationId }),
+            refused: event.refused,
+          },
+        }),
+      );
       return;
     }
     if (event.type === "transport-closed") {
@@ -1842,9 +2137,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (event.type === "presentation-status") {
       const entry = this.#routedByActivation.get(event.status.activationId);
       if (!entry) return;
+      const previousSequence = entry.state.lastWorkerStatusSequence;
       this.#transitionRouted(entry, { type: "presentation-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastWorkerStatusSequence;
-      window.setTimeout(() => {
+      if (sequence === previousSequence) return;
+      if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+      entry.workerLeaseTimer = window.setTimeout(() => {
+        delete entry.workerLeaseTimer;
         if (entry.state.lastWorkerStatusSequence !== sequence) return;
         this.#transitionRouted(entry, { type: "worker-lease-expired" });
       }, event.status.leaseTtlMs);
@@ -1959,6 +2258,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         return;
       }
       entry.ticket = ticket;
+      entry.clientId = ticket.attachGrant.claims.clientId;
       this.#routedControl?.renew(activationId, ticket.attachGrant);
       this.#scheduleRoutedRenewal(entry);
       this.#postWorker({
@@ -2003,13 +2303,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#transitionRouted(entry, { type: "transport-failed", recoveryExhausted: true });
       return;
     }
-    // Geometry belongs to the cell-side attach/client/view scope. Preserve it
-    // across a same-route leg replacement, but never carry its revision or
-    // holder generation to a newly routed cell.
-    if (reason === "route-stale") this.#routedGeometry.delete(entry.sessionId);
     const previousActivationId = entry.state.activationId;
     this.#routedControl?.detach(previousActivationId);
     this.#postWorker({ type: "routed-frames-detach", activationId: previousActivationId });
+    delete entry.framesAttachStarted;
     this.#routedByActivation.delete(previousActivationId);
     const nextActivationId = crypto.randomUUID();
     entry.replacesActivationId = previousActivationId;
@@ -2032,7 +2329,17 @@ export class GhostteaTerminalRuntime extends EventTarget {
     delete entry.attachTimer;
     if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
     delete entry.renewalTimer;
+    if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+    delete entry.cellLeaseTimer;
+    if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
+    delete entry.workerLeaseTimer;
     delete entry.ticket;
+    // Geometry belongs to the cell-side attach/client/view scope. Preserve it
+    // across a same-route leg replacement, but never carry its revision or
+    // holder generation to a newly routed cell. Forgotten only now, once the
+    // old activation is gone, so a listener of the holder event cannot act
+    // on it.
+    if (reason === "route-stale") this.#setRoutedGeometry(entry, undefined);
     const delay = Math.min(2_000, 100 * 2 ** Math.max(0, entry.recoveryAttempts - 1));
     window.setTimeout(() => {
       if (this.#routedByActivation.get(nextActivationId) !== entry) return;
@@ -2112,6 +2419,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const entry = this.#routedBySession.get(sessionId);
     if (!entry) return;
     entry.viewIds.delete(viewId);
+    if (entry.queuedTake?.viewId === viewId) delete entry.queuedTake;
     if (entry.viewIds.size > 0) {
       const anyWritable =
         this.#routedHost?.encodeInput !== undefined &&
@@ -2126,7 +2434,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#transitionRouted(entry, { type: "detach" });
     this.#routedBySession.delete(sessionId);
     this.#routedByActivation.delete(entry.state.activationId);
-    this.#routedGeometry.delete(sessionId);
+    this.#setRoutedGeometry(entry, undefined);
   }
 
   /**
@@ -2385,6 +2693,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
    * screen: a partial update repaints part of the stale one, which is exactly
    * what would thaw a pane too early.
    */
+  #recordSessionDrawn(sessionHandle: string): void {
+    const sessionId = this.#sessionByHandle.get(sessionHandle)?.id;
+    if (sessionId === undefined || this.#sessionsDrawn.has(sessionId)) return;
+    this.#sessionsDrawn.add(sessionId);
+    this.dispatchEvent(new CustomEvent("session-drawn", { detail: { sessionId } }));
+  }
+
   #recordCommittedFrame(sessionHandle: string, fullSnapshot: boolean): void {
     if (!fullSnapshot) return;
     const sessionId = this.#sessionByHandle.get(sessionHandle)?.id;
@@ -2559,6 +2874,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   sendText(sessionId: string, viewId: string, text: string): void {
+    if (text.length > 0) this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "text", text });
       return;
@@ -2571,6 +2887,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   paste(sessionId: string, viewId: string, text: string): void {
+    if (text.length > 0) this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "paste", text });
       return;
@@ -2583,6 +2900,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   sendKey(sessionId: string, viewId: string, event: TerminalKeyEvent): void {
+    if (event.type === "down" && !["Shift", "Control", "Alt", "Meta"].includes(event.key))
+      this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "key", event });
       return;
@@ -2642,6 +2961,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   isMouseTracking(sessionHandle: string): boolean {
     return this.#mouseTrackingByHandle.get(sessionHandle) ?? false;
+  }
+
+  /** A session's mouse modes, from whichever path carried its frame: the legacy
+   * bridge's header, read here, or the worker's word for a routed frame. */
+  #noteMouseTracking(sessionHandle: string, tracking: boolean): void {
+    if (this.#mouseTrackingByHandle.get(sessionHandle) === tracking) return;
+    this.#mouseTrackingByHandle.set(sessionHandle, tracking);
+    this.dispatchEvent(new CustomEvent("terminal-modes", { detail: { sessionHandle, mouseTracking: tracking } }));
   }
 
   setTheme(sessionHandle: string, theme: TerminalTheme, surfaceId?: string): void {
@@ -2716,20 +3043,166 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#postWorker({ type: "partial-rendering", enabled });
   }
 
-  #claimRoutedGeometry(entry: RoutedActivationRuntime, viewId: string, cols: number, rows: number): void {
+  #claimRoutedGeometry(
+    entry: RoutedActivationRuntime,
+    viewId: string,
+    cols: number,
+    rows: number,
+    trailing = false,
+  ): void {
     const ticket = entry.ticket;
     const view = this.#views.get(viewId);
     if (!ticket || !view?.resizeControlRequested || !entry.state.rights.includes("geometry")) return;
     const geometry = this.#routedGeometry.get(entry.sessionId);
-    this.#routedControl?.claimGeometry(entry.state.activationId, {
+    const viewSerial = view.routedGeometrySerial + 1;
+    const sent = this.#routedControl?.claimGeometry(
+      entry.state.activationId,
+      {
+        sessionId: entry.sessionId,
+        activationId: entry.state.activationId,
+        leaseEpoch: ticket.attachGrant.claims.leaseEpoch ?? 0,
+        claimant: { clientId: ticket.attachGrant.claims.clientId, viewId },
+        cols,
+        rows,
+        expectRevision: geometry?.revision ?? 0,
+      },
+      new RoutedGeometryClaim(viewId, viewSerial, trailing),
+    );
+    if (sent) view.routedGeometrySerial = viewSerial;
+  }
+
+  /**
+   * Overlapping claims from one view name the same revision, so the cell
+   * commits the first and refuses the rest as stale: on a slow control leg
+   * the last grid of a resize would never land. When the reply to a view's
+   * latest claim or take (a commit, or a STALE_REVISION refusal) leaves the
+   * seat with this view at a grid other than the one it shows, that grid goes
+   * once more. Only for the holder, and never after a re-sent claim is
+   * refused.
+   */
+  #trailRoutedResize(entry: RoutedActivationRuntime, context: unknown, refusal: string | undefined): void {
+    const request =
+      context instanceof RoutedGeometryClaim || context instanceof RoutedGeometryTake ? context : undefined;
+    if (request === undefined) return;
+    if (refusal !== undefined) {
+      if (refusal !== "STALE_REVISION") return;
+      if (request instanceof RoutedGeometryClaim && request.trailing) return;
+    }
+    const view = this.#views.get(request.viewId);
+    if (!view?.resizeControlRequested || view.routedGeometrySerial !== request.viewSerial) return;
+    if (view.desiredCols === undefined || view.desiredRows === undefined) return;
+    const geometry = this.#routedGeometry.get(entry.sessionId);
+    if (!geometry || !this.#routedViewHolds(entry, geometry, request.viewId)) return;
+    if (geometry.cols === view.desiredCols && geometry.rows === view.desiredRows) return;
+    this.#claimRoutedGeometry(entry, request.viewId, view.desiredCols, view.desiredRows, true);
+  }
+
+  /**
+   * Send a take of the seat for `viewId`, built on the holder this runtime
+   * last saw. False when it cannot go out: no ticket or attached control leg,
+   * no `geometry` right, or the view no longer asks for resize control.
+   */
+  #sendRoutedTake(entry: RoutedActivationRuntime, viewId: string, serial: number, attempt: 0 | 1): boolean {
+    const ticket = entry.ticket;
+    const view = this.#views.get(viewId);
+    if (
+      !ticket ||
+      !entry.state.controlAttached ||
+      !entry.state.rights.includes("geometry") ||
+      !entry.viewIds.has(viewId) ||
+      !view?.resizeControlRequested ||
+      view.desiredCols === undefined ||
+      view.desiredRows === undefined
+    ) {
+      return false;
+    }
+    const clientId = ticket.attachGrant.claims.clientId;
+    const geometry = this.#routedGeometry.get(entry.sessionId);
+    const holder = geometry?.holder;
+    const viewSerial = view.routedGeometrySerial + 1;
+    const context = new RoutedGeometryTake(viewId, viewSerial, serial, attempt, geometry);
+    const lease = {
       sessionId: entry.sessionId,
       activationId: entry.state.activationId,
       leaseEpoch: ticket.attachGrant.claims.leaseEpoch ?? 0,
-      claimant: { clientId: ticket.attachGrant.claims.clientId, viewId },
-      cols,
-      rows,
-      expectRevision: geometry?.revision ?? 0,
-    });
+    };
+    const expectRevision = geometry?.revision ?? 0;
+    const cols = view.desiredCols;
+    const rows = view.desiredRows;
+    // An empty seat is claimed; a claim of the view's own seat is committed
+    // by the cell as a resize (at the same size, the PTY is left alone).
+    const sent =
+      holder === undefined || (holder.clientId === clientId && holder.viewId === viewId)
+        ? this.#routedControl?.claimGeometry(
+            entry.state.activationId,
+            { ...lease, claimant: { clientId, viewId }, cols, rows, expectRevision },
+            context,
+          )
+        : this.#routedControl?.transferGeometry(
+            entry.state.activationId,
+            { ...lease, from: { ...holder }, to: { clientId, viewId }, expectRevision, cols, rows },
+            context,
+          );
+    if (sent) view.routedGeometrySerial = viewSerial;
+    return sent ?? false;
+  }
+
+  /**
+   * Take the session's geometry seat for `viewId`: the host's policy verb.
+   *
+   * Focus is a scheduling fact. The runtime never turns it into geometry;
+   * the host decides when a view takes the seat. VibeField's rule (DS-D5) is
+   * that the pane focused last holds the PTY's cols×rows, on any device, last
+   * write wins, and `TerminalSurface`'s `takeGeometryOnFocus` applies it.
+   *
+   * On the routed transport the take is built on the holder this runtime last
+   * saw (`geometryHolder`):
+   * - an empty seat draws a `ClaimGeometry`;
+   * - a seat this view holds draws a `ClaimGeometry` of its own seat, which
+   *   the cell commits as a resize;
+   * - a seat held by another view, of this client or another, draws one
+   *   `TransferGeometry {from: holder, to: {clientId, viewId}, expectRevision,
+   *   cols, rows}`, with `clientId` from this session's attach grant.
+   *
+   * A refusal is the only announcement a take gets. The cell answers only the
+   * caller's control leg, so a pane whose seat another client took still
+   * believes it holds it, and its take is a resize that the cell refuses. A
+   * `SEAT_HELD`, `STALE_REVISION` or `NOT_HOLDER` refusal that names a holder
+   * or revision other than the one the take was built on is retried once,
+   * against what it names: one `TransferGeometry` from the named holder at
+   * the named revision; a claim of the view's own seat if it names this
+   * view; a `ClaimGeometry` if it names an empty seat. A refusal that repeats
+   * the take's own view of the seat, or names no seat, is not retried, and
+   * neither is a second refusal. The runtime owns that one retry: a host
+   * calls this once per focus gain of a controller view and never retries
+   * it. Only the session's latest take retries. A take asked before the
+   * control leg attaches is sent when it attaches, unless the view's focus
+   * ends first. Without the grant's `geometry` right nothing is sent.
+   *
+   * On the port-pair transport this is `claimResizeControl`, which never
+   * displaces another view.
+   *
+   * Like `claimResizeControl`, it leaves the view asking for resize control:
+   * its later grid changes resize the PTY while it holds the seat, until
+   * `releaseResizeControl`.
+   */
+  takeResizeControl(sessionHandle: string, viewId: string, cols: number, rows: number): void {
+    if (!this.#routedHost) {
+      this.claimResizeControl(sessionHandle, viewId, cols, rows);
+      return;
+    }
+    const view = this.#views.get(viewId);
+    const session = this.#sessionByHandle.get(sessionHandle);
+    const entry = session ? this.#routedBySession.get(session.id) : undefined;
+    if (!view || !entry || view.sessionId !== entry.sessionId || !entry.viewIds.has(viewId)) return;
+    view.desiredCols = cols;
+    view.desiredRows = rows;
+    view.resizeControlRequested = true;
+    entry.takeSerial += 1;
+    const serial = entry.takeSerial;
+    delete entry.queuedTake;
+    if (this.#sendRoutedTake(entry, viewId, serial, 0)) return;
+    if (!entry.state.controlAttached) entry.queuedTake = { viewId, serial };
   }
 
   claimResizeControl(sessionHandle: string, viewId: string, cols: number, rows: number): void {
@@ -2755,9 +3228,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
     view.resizeControlRequested = false;
     if (this.#routedHost) {
       const entry = this.#routedBySession.get(view.sessionId);
+      if (entry?.queuedTake?.viewId === viewId) delete entry.queuedTake;
       const geometry = this.#routedGeometry.get(view.sessionId);
       const ticket = entry?.ticket;
-      if (entry && ticket && geometry?.holderViewId === viewId && geometry.holderGeneration !== undefined) {
+      const holder = geometry?.holder;
+      if (entry && ticket && geometry && holder && this.#routedViewHolds(entry, geometry, viewId)) {
         const sent = this.#routedControl?.releaseGeometry(entry.state.activationId, {
           sessionId: view.sessionId,
           activationId: entry.state.activationId,
@@ -2765,13 +3240,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
           holder: {
             clientId: ticket.attachGrant.claims.clientId,
             viewId,
-            holderGeneration: geometry.holderGeneration,
+            holderGeneration: holder.holderGeneration,
           },
         });
         if (sent) {
           // T1 sends no success body for release. The ordered control leg and
-          // cell state machine make the next revision deterministic.
-          this.#routedGeometry.set(view.sessionId, {
+          // cell state machine make the next revision deterministic; if the
+          // seat had moved on, the cell's refusal names the holder instead.
+          this.#setRoutedGeometry(entry, {
             revision: geometry.revision + 1,
             ...(geometry.cols === undefined ? {} : { cols: geometry.cols }),
             ...(geometry.rows === undefined ? {} : { rows: geometry.rows }),
@@ -2820,7 +3296,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (!session) return;
     if (this.#routedHost) {
       const entry = this.#routedBySession.get(session.id);
-      if (entry) this.#declareRoutedDemand(entry);
+      if (!entry) return;
+      // The focus that asked for a take still waiting on the leg has ended.
+      if (!focused && entry.queuedTake?.viewId === viewId) delete entry.queuedTake;
+      this.#declareRoutedDemand(entry);
       return;
     }
     this.#sendViewInput(
@@ -2875,6 +3354,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   interrupt(sessionId: string, viewId: string): void {
+    this.#sessionsWithInput.add(sessionId);
     if (this.#routedHost) {
       this.#sendRoutedInput(sessionId, viewId, { kind: "interrupt" });
       return;
@@ -2930,6 +3410,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#remoteSessions.delete(sessionId);
     this.#controlBySession.delete(sessionId);
     this.#recoveredSessions.delete(sessionId);
+    // The worker forgets the handle's first frame with its snapshot (`drop-session`).
+    this.#sessionsDrawn.delete(sessionId);
     if (subscriptionChanged) {
       this.#frameSubscriptionVersion += 1;
       this.#syncFrameSubscriptionsInBackground();
@@ -3042,6 +3524,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     for (const entry of this.#routedBySession.values()) {
       if (entry.attachTimer !== undefined) window.clearTimeout(entry.attachTimer);
       if (entry.renewalTimer !== undefined) window.clearTimeout(entry.renewalTimer);
+      if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
+      if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
     }
     this.#routedBySession.clear();
     this.#routedByActivation.clear();

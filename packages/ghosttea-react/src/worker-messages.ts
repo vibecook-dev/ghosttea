@@ -1,5 +1,5 @@
 import type { TerminalLink } from "@vibecook/ghosttea-frame";
-import type { CellSelection, TerminalEffects, TerminalTheme } from "./renderers/types.js";
+import type { CellSelection, PixelSize, TerminalEffects, TerminalTheme } from "./renderers/types.js";
 import type { TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import type { TerminalRenderCounterSnapshot, TerminalRenderPerformanceSnapshot } from "./performance.js";
 import type { RoutedFramesAttachRequest, RoutedFramesTransportEvent } from "./routed-frames.js";
@@ -7,7 +7,7 @@ import type { RoutedFramesAttachRequest, RoutedFramesTransportEvent } from "./ro
 export type RendererToWorkerMessage =
   | { type: "renderer-config"; forceCanvasFallback: boolean }
   | { type: "partial-rendering"; enabled: boolean }
-  | { type: "mount"; surfaceId: string; sessionHandle: string; canvas: OffscreenCanvas }
+  | { type: "mount"; surfaceId: string; sessionHandle: string; canvas: OffscreenCanvas; size: PixelSize }
   | { type: "unmount"; surfaceId: string }
   | { type: "drop-session"; sessionHandle: string }
   | { type: "resize"; surfaceId: string; width: number; height: number; dpr: number }
@@ -51,6 +51,19 @@ export type WorkerToRendererMessage =
       frameSequence: bigint;
       fullSnapshot: boolean;
     }
+  /**
+   * The first committed frame of this handle that put something on screen (a
+   * glyph, or text that is not blank). Posted once per handle until the handle
+   * is dropped; the runtime publishes it per session as `session-drawn`.
+   */
+  | { type: "session-drawn"; sessionHandle: string }
+  /**
+   * A routed session's mouse modes, as of the frame just committed. The legacy
+   * bridge's frames pass the main thread, which reads them from each header; a
+   * routed frame reaches only this worker, so the worker says them — once per
+   * change, and again after the session's activation re-attaches.
+   */
+  | { type: "terminal-modes"; sessionHandle: string; mouseTracking: boolean }
   | { type: "catalog-pressure"; sessionHandle: string; reason: "working-set-exceeds-budget" }
   | { type: "frame-credit"; bytes: number }
   | { type: "performance-started"; requestId: number }
