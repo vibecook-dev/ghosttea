@@ -2918,7 +2918,17 @@ mod tests {
             session.process.writer.try_lock().is_err(),
             "paste must fill the PTY"
         );
+        // The reader holds model_operation while it feeds each batch of output,
+        // and the paste is echoed until `stty -echo` runs, so the reader can be
+        // feeding that echo at the instant the writer blocks. What must hold is
+        // that the model comes free while the write stays blocked, so wait for
+        // it rather than sample one instant.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.model_operation.try_lock().is_err() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
         let model_available = session.model_operation.try_lock().is_ok();
+        let still_blocked = session.process.writer.try_lock().is_err();
         // Also exercise the former synchronous fallback with a full input queue.
         while session.input_tx.try_send(InputOperation::Interrupt).is_ok() {}
         session
@@ -2934,6 +2944,10 @@ mod tests {
         assert!(
             model_available,
             "a blocked write must leave the model available"
+        );
+        assert!(
+            still_blocked,
+            "the model must come free while the write is still blocked"
         );
         assert!(
             session.has_exited(),
