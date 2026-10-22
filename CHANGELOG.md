@@ -88,6 +88,8 @@ share one version.
 - Terminal replies go through a bounded, ordered mailbox independent of the
   user-input queue. A saturated input queue no longer holds them back, and
   termination bypasses it.
+- A write the terminal's program never reads, such as a large paste, no
+  longer keeps its session alive.
 - Terminal pixels survive pane transitions: workers mount with the surface's
   real geometry and keep their bitmap scale across a resize. Split groups
   equalize when a pane is removed.
