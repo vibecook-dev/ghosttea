@@ -22,13 +22,14 @@ interface GlyphLike {
   pixels: { byteLength: number };
 }
 
-export function glyphCatalogFits<T extends GlyphLike>(
+export function glyphCatalogFits<T extends GlyphLike, K = number>(
   sessionDefinitions: ReadonlyMap<number, T>,
   sessionPixelBytes: number,
-  sharedDefinitions: ReadonlyMap<number, { definition: T }>,
+  sharedDefinitions: ReadonlyMap<K, { definition: T }>,
   sharedPixelBytes: number,
   definitions: readonly T[],
   budget: GlyphCatalogBudget,
+  sharedKey: (id: number) => K = (id: number) => id as K,
 ): boolean {
   if (definitions.length === 0) return true;
   let nextDefinitionCount = sessionDefinitions.size;
@@ -39,7 +40,7 @@ export function glyphCatalogFits<T extends GlyphLike>(
   for (const definition of definitions) {
     if (sessionDefinitions.has(definition.id) || pending.has(definition.id)) continue;
     pending.add(definition.id);
-    const shared = sharedDefinitions.get(definition.id);
+    const shared = sharedDefinitions.get(sharedKey(definition.id));
     const pixelBytes = shared?.definition.pixels.byteLength ?? definition.pixels.byteLength;
     nextDefinitionCount += 1;
     nextSessionPixelBytes += pixelBytes;

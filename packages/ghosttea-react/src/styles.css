@@ -9,10 +9,21 @@
 .terminal-surface {
   position: relative;
   cursor: text;
+  overflow: hidden;
 }
 
 .terminal-surface canvas {
   display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* OffscreenCanvas updates the placeholder's intrinsic dimensions with its
+     bitmap. A CSS 100% size would stretch the previous bitmap while resize is
+     in flight. Keep bitmap pixels at device-pixel scale and clip at the surface. */
+  width: auto;
+  height: auto;
+  transform: scale(var(--ghosttea-canvas-scale, 1));
+  transform-origin: top left;
   pointer-events: none;
 }
 

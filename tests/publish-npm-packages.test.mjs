@@ -31,9 +31,10 @@ const NPM_0_12_0 = {
 /**
  * A registry that serves each upload `delays[name]` after accepting it, on a
  * clock that only moves when the publisher sleeps. `accepted` holds uploads an
- * earlier attempt made, by when; `refuses` names uploads that fail outright.
+ * earlier attempt made, by when; `refuses` names uploads that fail outright;
+ * `latest` holds each package's current `latest` dist-tag, where it has one.
  */
-function simulatedNpm({ delays = {}, accepted = {}, refuses = [] } = {}) {
+function simulatedNpm({ delays = {}, accepted = {}, refuses = [], latest = {} } = {}) {
   let now = 0;
   const acceptedAt = new Map(Object.entries(accepted));
   const resolvedAt = (name) => acceptedAt.get(name) + (delays[name] ?? 0);
@@ -53,8 +54,9 @@ function simulatedNpm({ delays = {}, accepted = {}, refuses = [] } = {}) {
     },
     registry: {
       resolves: (name) => acceptedAt.has(name) && now >= resolvedAt(name),
-      publish(name) {
-        uploads.push({ name, at: now });
+      latest: (name) => latest[name] ?? "",
+      publish(name, { tag } = {}) {
+        uploads.push({ name, at: now, tag });
         if (refuses.includes(name)) return { ok: false, alreadyPublished: false };
         if (acceptedAt.has(name)) return { ok: false, alreadyPublished: true };
         acceptedAt.set(name, now);
@@ -203,4 +205,32 @@ test("every workspace package a published package depends on publishes with it",
   for (const entry of fullPlan()) {
     assert.deepEqual(entry.requires, [], `${entry.name} depends on packages that never publish`);
   }
+});
+
+// The release channel (scripts/release-channel.mjs): npm 11 refuses to apply
+// `latest` implicitly to a version below it, so an older line's patch names its
+// own dist-tag, and the newest line's release keeps taking `latest`.
+const latestEverywhere = (version) => Object.fromEntries(publishedPackages().map((name) => [name, version]));
+const tags = (npm) => Object.fromEntries(npm.uploads.map((upload) => [upload.name, upload.tag]));
+
+test("the newest line's release publishes every package as latest", async () => {
+  const npm = simulatedNpm({ delays: NPM_0_12_0, latest: latestEverywhere("0.12.0") });
+  await publishPlan(fullPlan(), "0.13.0", npm);
+  assert.deepEqual(new Set(Object.values(tags(npm))), new Set(["latest"]));
+});
+
+test("a patch on an older line publishes under release-X.Y and leaves latest on the newest line", async () => {
+  const npm = simulatedNpm({ delays: NPM_0_12_0, latest: latestEverywhere("0.12.0") });
+  await publishPlan(fullPlan(), "0.10.3", npm);
+  assert.deepEqual(new Set(Object.values(tags(npm))), new Set(["release-0.10"]));
+  assert.equal(npm.uploads.length, publishedPackages().length);
+});
+
+test("a package npm does not hold yet publishes as latest, whatever its siblings' channel", async () => {
+  const latest = latestEverywhere("0.12.0");
+  delete latest["@vibecook/ghosttead"];
+  const npm = simulatedNpm({ delays: NPM_0_12_0, latest });
+  await publishPlan(fullPlan(), "0.10.3", npm);
+  assert.equal(tags(npm)["@vibecook/ghosttead"], "latest");
+  assert.equal(tags(npm)["@vibecook/ghosttea"], "release-0.10");
 });

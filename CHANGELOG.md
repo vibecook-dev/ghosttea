@@ -3,6 +3,122 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.0 - 2026-10-22
+
+### Added
+
+- Light adaptation. Under a light theme, a pane whose application paints its
+  own dark background is remapped to the theme. It engages when at least 60% of
+  the pane's cells carry an explicit dark background, and releases below 35%.
+  Surfaces mirror their OKLab lightness around the theme background, neutral
+  ink keeps its distance from its cell background, and accents land in an APCA
+  mid-tone band with their hue kept. A light theme's own chromatic ANSI colors
+  (1–6, 9–14) are kept where they stay legible. Programs that follow the theme
+  are never touched. The WebGPU and Metal renderers both apply it.
+  `ghosttea-light-adaptation = auto|off` controls it. It is the first Ghosttea
+  extension key, accepted beside the pinned Ghostty schema, and defaults to
+  `auto`. Embedders can pass `lightAdaptation: "off"` through the workspace
+  theme override.
+- `minimum-contrast` (Ghostty's key, 1–21) is applied to text glyphs and their
+  decorations, preserving hue rather than snapping to black or white. Box
+  drawing, block elements and color glyphs are exempt. Both settings reach
+  remote views through the terminal presentation, the protocol validates them,
+  and Settings → Appearance → Readability writes them, on the desktop and on
+  iOS.
+- TRF1 section 13 (StylePalette) carries the palette index beside the resolved
+  RGB for styles whose explicit colors came from the terminal palette.
+- Programs that ask for the color scheme get an answer. `CSI ? 996 n` is
+  answered from the default background: light when dark text out-contrasts
+  light text. A theme change that flips the scheme sends `CSI ? 997 ; 1|2 n` to
+  a program that enabled mode 2031, so automatic themes follow a theme reload.
+  New sessions also get `COLORFGBG`, unless the caller set one.
+- Hosts decide who holds a routed session's geometry.
+  - `takeResizeControl(sessionHandle, viewId, cols, rows)` takes the seat.
+    Depending on the seat the runtime last saw, it claims an empty seat,
+    resizes the view's own, or sends one transfer from the holder.
+  - A refusal that names a different holder or revision is retried once. The
+    runtime owns that retry, and a host never retries a take itself.
+  - `TerminalSurface` and `GhostteaWorkspace` accept `takeGeometryOnFocus`
+    (default `false`). With it, a focus gain, or a press of a pane that already
+    has focus, takes the seat, but only while the surface controls resize and
+    takes input. A mirror never takes.
+  - On the port-pair transport a take is `claimResizeControl`.
+- `geometryHolder(sessionHandle)` and the `geometry-holder-changed` event
+  report the routed seat's holder, another client's included. The cell names a
+  holder only in replies to this client's own verbs.
+- `sessionHasDrawn(sessionId)` and the `session-drawn` event say when a
+  session's first frame put something on screen. The cell metrics
+  (`CELL_WIDTH`, `LINE_HEIGHT`, `ORIGIN_X`, `ORIGIN_Y`) are exported.
+- `sessionCreatedHere(sessionId)` says whether this runtime created a session:
+  a routed or port-backed birth, never a registered or restored one. A host can
+  use it to cover the workspace's initial shell with its own unused-session
+  policy.
+- The workspace context's `replaceSession(expectedId, replacement)` replaces an
+  expected pane's session atomically, keeping focus, zoom, mirrors, pane ids and
+  split geometry. It returns `false` once that pane was detached or reassigned.
+  `replaceSessionInPanes` is its pure form.
+
+### Changed
+
+- Truffle 0.7.19 on both planes: `truffle-core = "=0.7.19"`, and the Swift
+  package at exactly 0.7.19 with TailscaleKit
+  `tailscalekit-59d4bb82-ts1.104.1-go1.27.2` (libtailscale 59d4bb82, Tailscale
+  1.104.1, Go 1.27.2).
+- The terminal pipeline does less work per frame:
+  - Shaped rows are reused across scrolling, and each cell's glyph catalog is
+    kept apart from the others.
+  - Atlas pages are lazy and bounded, and their slots are reserved before
+    encoding.
+  - Exact unchanged rows are reused, and a retained scene scrolls its pixels
+    with one shared staging texture, repainting only the exposed, edge and
+    cursor rows.
+
+### Fixed
+
+- A routed session's mouse modes reach the renderer. The wheel goes to a
+  program that tracks the mouse instead of becoming arrow keys on the
+  alternate screen.
+- Routed input works again after a pane reattaches. Overlapping replacements
+  and renewals can no longer leave a late reply on the wrong activation.
+- Each control-leg geometry reply reaches the request that earned it. A
+  refused release no longer takes the next claim's reply slot. The wire is
+  unchanged.
+- A routed holder's last grid lands when its claims overlap during a drag,
+  instead of leaving the PTY at the first of the sizes.
+- Terminal replies go through a bounded, ordered mailbox independent of the
+  user-input queue. A saturated input queue no longer holds them back, and
+  termination bypasses it.
+- A write the terminal's program never reads, such as a large paste, no
+  longer keeps its session alive.
+- Terminal pixels survive pane transitions: workers mount with the surface's
+  real geometry and keep their bitmap scale across a resize. Split groups
+  equalize when a pane is removed.
+- The prebuilt `ghosttead` daemons build against rustls 0.23.46, rustls-webpki
+  0.103.16, quinn-proto 0.11.19, and webpki-roots and webpki-root-certs 1.0.10.
+  These fix RUSTSEC-2026-0338 to -0342, -0346 to -0349 and -0381 to -0383 in
+  the TLS and QUIC stack under the Truffle mesh transport. Crates.io consumers
+  resolve their own versions.
+
+### Compatibility
+
+- **Rust consumers must move their `truffle-core` pin** to `=0.7.19`. Every
+  crate sharing an application-owned Truffle node must resolve the same
+  version. Swift consumers get Truffle 0.7.19 through Ghosttea's exact pin.
+- This is a 0.x minor release, also because public Rust structs gain fields,
+  which breaks downstream exhaustive struct literals:
+  - `ghosttea_config::RendererConfig` and `TerminalPresentationConfig` gain
+    `minimum_contrast` and `light_adaptation`;
+  - the frame's style records carry a `StylePalette`;
+  - `TextSnapshot` carries shaped rows.
+- The wire stays compatible. Section 13 is additive and TRF1 remains version
+  1: older decoders skip it and render the same RGB, and it is omitted when no
+  style has palette provenance. Older clients validate only the renderer
+  fields they know.
+- `takeGeometryOnFocus` defaults to `false`, so hosts that do not opt in see no
+  change in who holds the seat.
+- The Apple native artifact is rebuilt for this release, so Apple devices get
+  section 13 and the new settings.
+
 ## 0.12.0 - 2026-09-25
 
 ### Added

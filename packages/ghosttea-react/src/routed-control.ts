@@ -27,6 +27,9 @@ export interface RoutedControlAttachRequest {
   attachGrant: RoutedSessionAttachGrant;
   activationId: string;
   replacesActivationId?: string;
+  /** Replace this connection's last admitted activation for the session.
+   * A pending predecessor is resolved first, including after local detach. */
+  replacePreviousActivation?: boolean;
   initialDemand: RoutedSourceDemand;
   capabilities?: string[];
 }
@@ -37,14 +40,34 @@ export interface RoutedExtensionMessageContext {
   readonly channel: "control";
 }
 
+/** The geometry verb a control-leg reply answers. */
+export type RoutedGeometryRequestKind = "claim" | "transfer" | "release";
+
+/** The request a geometry reply answers, with the context its sender attached. */
+export interface RoutedGeometryRequest {
+  readonly kind: RoutedGeometryRequestKind;
+  /** Opaque to the transport; handed back unchanged with the reply. */
+  readonly context?: unknown;
+}
+
 export type RoutedControlTransportEvent =
   | { type: "transport-ready"; cellBootId: string; accepted: RoutedConnectionAccepted }
   | { type: "control-attached"; attached: RoutedControlLegAttached }
   | { type: "attach-refused"; activationId?: string; code: string; retryable: boolean }
   | { type: "cell-status"; status: RoutedCellActivationStatus }
   | { type: "demand-accepted"; activationId?: string; demandSequence: number }
-  | { type: "geometry-committed"; activationId?: string; committed: RoutedGeometryCommitted }
-  | { type: "geometry-refused"; activationId?: string; refused: RoutedGeometryRefused }
+  | {
+      type: "geometry-committed";
+      activationId?: string;
+      request?: RoutedGeometryRequest;
+      committed: RoutedGeometryCommitted;
+    }
+  | {
+      type: "geometry-refused";
+      activationId?: string;
+      request?: RoutedGeometryRequest;
+      refused: RoutedGeometryRefused;
+    }
   | {
       type: "extension-message";
       message: Readonly<Record<string, unknown>>;
@@ -66,6 +89,14 @@ interface ControlActivation {
   lastDemand: RoutedSourceDemand;
 }
 
+/** One geometry request still owed its reply, oldest first. */
+interface PendingGeometryReply {
+  activationId: string;
+  request: RoutedGeometryRequest;
+  /** A release only: the sequence of the heartbeat sent right behind it. */
+  fence?: number;
+}
+
 interface ControlConnection {
   cellBootId: string;
   controlUrl: string;
@@ -74,12 +105,21 @@ interface ControlConnection {
   socket: WebSocket;
   accepted?: RoutedConnectionAccepted;
   activationIds: Set<string>;
-  pendingGeometry: string[];
+  pendingGeometry: PendingGeometryReply[];
+  replacements: Map<string, ControlReplacement>;
   heartbeatSequence: number;
   heartbeatAckSequence: number;
   heartbeatTimer?: number;
   heartbeatDeadlineTimer?: number;
   refusal?: RoutedConnectionRefused;
+}
+
+/** One cell-side identity per session, not a history of DOM mounts. Retained
+ * after demand-none until replacement, cell revocation, or connection death. */
+interface ControlReplacement {
+  admitted?: string;
+  pending?: RoutedControlAttachRequest;
+  queued?: ControlActivation;
 }
 
 const socketOpen = 1;
@@ -137,10 +177,17 @@ export class RoutedControlTransport {
   declareDemand(activationId: string, demand: RoutedSourceDemand): number | undefined {
     const activation = this.#activations.get(activationId);
     if (!activation) return undefined;
+    activation.lastDemand = demand;
     const connection = this.#connections.get(activation.request.cellBootId);
     if (!connection?.accepted) return undefined;
+    const replacement = connection.replacements.get(activation.request.attachGrant.claims.sessionId);
+    if (
+      activation.request.replacePreviousActivation &&
+      replacement?.pending?.activationId !== activationId &&
+      replacement?.admitted !== activationId
+    )
+      return undefined;
     activation.demandSequence += 1;
-    activation.lastDemand = demand;
     const body: RoutedDeclareDemand = {
       sessionId: activation.request.attachGrant.claims.sessionId,
       activationId,
@@ -152,22 +199,43 @@ export class RoutedControlTransport {
     return activation.demandSequence;
   }
 
-  claimGeometry(activationId: string, claim: RoutedClaimGeometry): boolean {
+  /** `context` comes back unchanged on the reply this claim earns. */
+  claimGeometry(activationId: string, claim: RoutedClaimGeometry, context?: unknown): boolean {
     if (claim.activationId !== activationId) return false;
-    return this.#sendGeometry(activationId, encodeRoutedMessage("ClaimGeometry", claim));
+    return this.#sendGeometry(activationId, encodeRoutedMessage("ClaimGeometry", claim), {
+      kind: "claim",
+      ...(context === undefined ? {} : { context }),
+    });
   }
 
+  /**
+   * T1 answers a release only when it refuses it; a success has no body. A
+   * heartbeat sent right behind the release fences it: the cell answers a
+   * control leg in order, so a refusal arrives before that heartbeat's ack
+   * and the ack alone proves a success. Without the fence a refused release
+   * would take the next claim's or transfer's reply as its own. Refusals are
+   * routine once another client can take the seat, because a release names
+   * the holder this client last knew.
+   */
   releaseGeometry(activationId: string, release: RoutedReleaseGeometry): boolean {
     if (release.activationId !== activationId) return false;
-    // A successful release is intentionally fire-and-forget on T1; only a
-    // refusal produces a response. Do not leave an unanswerable FIFO entry
-    // that would steal the next claim/transfer acknowledgement.
-    return this.#sendActivation(activationId, encodeRoutedMessage("ReleaseGeometry", release));
+    const activation = this.#activations.get(activationId);
+    const connection = activation ? this.#connections.get(activation.request.cellBootId) : undefined;
+    if (!connection || !this.#sendActivation(activationId, encodeRoutedMessage("ReleaseGeometry", release))) {
+      return false;
+    }
+    const fence = this.#sendHeartbeat(connection);
+    if (fence !== undefined) connection.pendingGeometry.push({ activationId, request: { kind: "release" }, fence });
+    return true;
   }
 
-  transferGeometry(activationId: string, transfer: RoutedTransferGeometry): boolean {
+  /** `context` comes back unchanged on the reply this transfer earns. */
+  transferGeometry(activationId: string, transfer: RoutedTransferGeometry, context?: unknown): boolean {
     if (transfer.activationId !== activationId) return false;
-    return this.#sendGeometry(activationId, encodeRoutedMessage("TransferGeometry", transfer));
+    return this.#sendGeometry(activationId, encodeRoutedMessage("TransferGeometry", transfer), {
+      kind: "transfer",
+      ...(context === undefined ? {} : { context }),
+    });
   }
 
   /**
@@ -184,7 +252,10 @@ export class RoutedControlTransport {
     if (!activation) return;
     this.declareDemand(activationId, { mode: "none" });
     this.#activations.delete(activationId);
-    this.#connections.get(activation.request.cellBootId)?.activationIds.delete(activationId);
+    const connection = this.#connections.get(activation.request.cellBootId);
+    connection?.activationIds.delete(activationId);
+    const replacement = connection?.replacements.get(activation.request.attachGrant.claims.sessionId);
+    if (replacement?.queued === activation) delete replacement.queued;
   }
 
   dispose(): void {
@@ -219,6 +290,7 @@ export class RoutedControlTransport {
       socket,
       activationIds: new Set(),
       pendingGeometry: [],
+      replacements: new Map(),
       heartbeatSequence: 0,
       heartbeatAckSequence: 0,
     };
@@ -312,9 +384,34 @@ export class RoutedControlTransport {
         connection.heartbeatAckSequence = message.sequence;
         this.#armHeartbeatDeadline(connection);
       }
+      // The ack follows every reply to what was sent before its heartbeat, so
+      // a release fenced by it that drew no refusal succeeded.
+      connection.pendingGeometry = connection.pendingGeometry.filter(
+        (pending) => pending.fence === undefined || pending.fence > message.sequence,
+      );
       return;
     }
     if (message.type === "ControlLegAttached") {
+      const replacement = connection.replacements.get(message.sessionId);
+      const pending = replacement?.pending;
+      if (replacement && pending?.activationId === message.activationId) {
+        if (
+          message.grantGenerationAccepted !== pending.attachGrant.claims.grantGeneration ||
+          message.rights.some((right) => !pending.attachGrant.claims.rights.includes(right))
+        ) {
+          this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "control attach binding mismatch", true);
+          return;
+        }
+        replacement.admitted = message.activationId;
+        delete replacement.pending;
+        // Detach retires the UI consumer, not the cell's identity. A late ACK
+        // still resolves a queued replacement, but must not resurrect a view.
+        if (connection.activationIds.has(message.activationId)) {
+          this.#emit({ type: "control-attached", attached: message });
+        }
+        this.#drainReplacement(connection, message.sessionId, replacement);
+        return;
+      }
       const activation = this.#activations.get(message.activationId);
       if (!connection.activationIds.has(message.activationId) && !activation) return;
       if (
@@ -331,6 +428,22 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "AttachRefused") {
+      for (const [sessionId, replacement] of connection.replacements) {
+        if (message.activationId === undefined || replacement.pending?.activationId !== message.activationId) continue;
+        // A refused attempt never became the native predecessor. Keep the
+        // admitted id, even if this reply arrives after that attempt detached.
+        delete replacement.pending;
+        if (connection.activationIds.has(message.activationId)) {
+          this.#emit({
+            type: "attach-refused",
+            activationId: message.activationId,
+            code: message.code,
+            retryable: message.retryable,
+          });
+        }
+        this.#drainReplacement(connection, sessionId, replacement);
+        return;
+      }
       if (message.activationId !== undefined && !connection.activationIds.has(message.activationId)) {
         if (!this.#activations.has(message.activationId)) return;
         this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "attach refusal binding mismatch", true);
@@ -345,6 +458,11 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "CellActivationStatus") {
+      const replacement = connection.replacements.get(message.sessionId);
+      if (replacement?.admitted === message.activationId && message.presentation.state === "revoked") {
+        delete replacement.admitted;
+        if (!replacement.pending && !replacement.queued) connection.replacements.delete(message.sessionId);
+      }
       const activation = this.#activations.get(message.activationId);
       if (!connection.activationIds.has(message.activationId) && !activation) return;
       if (
@@ -368,19 +486,19 @@ export class RoutedControlTransport {
       return;
     }
     if (message.type === "GeometryCommitted") {
-      const activationId = connection.pendingGeometry.shift();
+      const pending = this.#geometryReplyTarget(connection, false);
       this.#emit({
         type: "geometry-committed",
-        ...(activationId === undefined ? {} : { activationId }),
+        ...(pending === undefined ? {} : { activationId: pending.activationId, request: pending.request }),
         committed: message,
       });
       return;
     }
     if (message.type === "GeometryRefused") {
-      const activationId = connection.pendingGeometry.shift();
+      const pending = this.#geometryReplyTarget(connection, true);
       this.#emit({
         type: "geometry-refused",
-        ...(activationId === undefined ? {} : { activationId }),
+        ...(pending === undefined ? {} : { activationId: pending.activationId, request: pending.request }),
         refused: message,
       });
       return;
@@ -396,17 +514,44 @@ export class RoutedControlTransport {
   }
 
   #sendAttach(connection: ControlConnection, activation: ControlActivation): void {
+    let replacesActivationId = activation.request.replacesActivationId;
+    if (activation.request.replacePreviousActivation) {
+      const sessionId = activation.request.attachGrant.claims.sessionId;
+      let replacement = connection.replacements.get(sessionId);
+      if (!replacement) {
+        replacement = {};
+        connection.replacements.set(sessionId, replacement);
+      }
+      if (replacement.pending) {
+        replacement.queued = activation;
+        return;
+      }
+      replacement.pending = activation.request;
+      replacesActivationId =
+        replacement.admitted === activation.request.activationId ? undefined : replacement.admitted;
+    }
     this.#send(
       connection,
       encodeRoutedMessage("AttachControlLeg", {
         activationId: activation.request.activationId,
         attachGrant: activation.request.attachGrant,
-        ...(activation.request.replacesActivationId === undefined
-          ? {}
-          : { replacesActivationId: activation.request.replacesActivationId }),
+        ...(replacesActivationId === undefined ? {} : { replacesActivationId }),
         initialDemand: activation.lastDemand,
       }),
     );
+  }
+
+  #drainReplacement(connection: ControlConnection, sessionId: string, replacement: ControlReplacement): void {
+    const queued = replacement.queued;
+    delete replacement.queued;
+    if (
+      queued &&
+      this.#connections.get(connection.cellBootId) === connection &&
+      this.#activations.get(queued.request.activationId) === queued
+    ) {
+      this.#sendAttach(connection, queued);
+    }
+    if (!replacement.admitted && !replacement.pending && !replacement.queued) connection.replacements.delete(sessionId);
   }
 
   #sendActivation(activationId: string, text: string): boolean {
@@ -420,30 +565,47 @@ export class RoutedControlTransport {
     return true;
   }
 
-  #sendGeometry(activationId: string, text: string): boolean {
+  #sendGeometry(activationId: string, text: string, request: RoutedGeometryRequest): boolean {
     const activation = this.#activations.get(activationId);
     if (!activation) return false;
     const connection = this.#connections.get(activation.request.cellBootId);
     if (!connection || !this.#sendActivation(activationId, text)) return false;
-    connection.pendingGeometry.push(activationId);
+    connection.pendingGeometry.push({ activationId, request });
     return true;
+  }
+
+  /**
+   * The oldest request a geometry reply can answer. A release still waiting
+   * on its fence is answered only by a refusal, so a commit passes it: the
+   * release succeeded, and the commit belongs to a later request.
+   */
+  #geometryReplyTarget(connection: ControlConnection, refusal: boolean): PendingGeometryReply | undefined {
+    if (!refusal) {
+      while (connection.pendingGeometry[0]?.request.kind === "release") connection.pendingGeometry.shift();
+    }
+    return connection.pendingGeometry.shift();
+  }
+
+  #sendHeartbeat(connection: ControlConnection): number | undefined {
+    if (!connection.accepted || connection.socket.readyState !== socketOpen) return undefined;
+    connection.heartbeatSequence += 1;
+    this.#send(
+      connection,
+      encodeRoutedMessage("LegHeartbeat", {
+        connectionSetId: connection.accepted.connectionSetId,
+        channel: "control",
+        legGeneration: connection.accepted.legGeneration,
+        sequence: connection.heartbeatSequence,
+      }),
+    );
+    return connection.heartbeatSequence;
   }
 
   #scheduleHeartbeat(connection: ControlConnection): void {
     if (connection.heartbeatTimer !== undefined) clearTimeout(connection.heartbeatTimer);
     connection.heartbeatTimer = setTimeout(
       () => {
-        if (!connection.accepted || connection.socket.readyState !== socketOpen) return;
-        connection.heartbeatSequence += 1;
-        this.#send(
-          connection,
-          encodeRoutedMessage("LegHeartbeat", {
-            connectionSetId: connection.accepted.connectionSetId,
-            channel: "control",
-            legGeneration: connection.accepted.legGeneration,
-            sequence: connection.heartbeatSequence,
-          }),
-        );
+        if (this.#sendHeartbeat(connection) === undefined) return;
         this.#scheduleHeartbeat(connection);
       },
       Math.max(

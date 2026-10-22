@@ -92,7 +92,7 @@ daemon, and loads the addon — the registry serves objects the gate never
 executed, and this keeps "published" and "verified" the same claim.
 
 Development and published Rust builds pin the registry release of
-`truffle-core` 0.7.12. Every crate sharing an application-owned Truffle node
+`truffle-core` 0.7.19. Every crate sharing an application-owned Truffle node
 must resolve the same version and source so its `Node` type is identical.
 
 ## Release gate
@@ -331,6 +331,24 @@ overwrites notes that were edited afterwards.
 What a release says about upgrading, and what evidence qualified it, is
 editorial and is not generated. Add it to the release afterwards — unlike a
 registry version, a release stays editable.
+
+## A release on an older line
+
+A patch on an older line, such as 0.10.2 after 0.12.0, is cut from its own
+`release/X.Y.Z` branch and tagged there, and goes through the same workflow.
+It publishes beside the newest line rather than over it: its npm packages take
+the dist-tag `release-X.Y` instead of `latest`, and its GitHub release leaves
+Latest on the newest line. `scripts/release-channel.mjs` makes both choices
+from what npm and the repository already hold, for `publish-npm-packages.mjs`
+and `create-release-if-missing.sh`. Without them the release would stop
+partway: npm 11 refuses to apply `latest` implicitly to a version below it,
+and the npm packages publish after every crate has uploaded. A release on the
+newest line takes `latest` and Latest as it always has. crates.io and SwiftPM
+need nothing, because both resolve the highest version.
+
+The `Published packages smoke` run that follows a release resolves `latest`,
+so after an older line's release it verifies the newest line again. Dispatch
+it on the release branch with the older version to verify what was published.
 
 ## Trusted publishing
 

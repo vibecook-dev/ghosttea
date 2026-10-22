@@ -1,6 +1,6 @@
 {
   "name": "ghosttea-desktop-pipeline-lab",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Electron compositor lab: race terminal scene/view architectures.",
   "author": "James Yong",
   "license": "MIT",
@@ -28,10 +28,10 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.2.0",
     "@webgpu/types": "^0.1.71",
-    "electron": "43.1.1",
+    "electron": "43.8.1",
     "electron-vite": "5.0.0",
     "typescript": "7.0.2",
-    "vite": "7.3.6",
+    "vite": "7.3.7",
     "vitest": "4.1.10"
   }
 }

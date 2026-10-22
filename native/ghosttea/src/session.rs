@@ -4,7 +4,7 @@ use std::{
     io::{Read, Write},
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, RwLock, Weak,
+        Arc, Condvar, Mutex, MutexGuard, RwLock, Weak,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -14,6 +14,9 @@ use std::{
 
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+mod replies;
+use replies::{ReplyQueue, Sent};
 
 #[cfg(unix)]
 mod unix_process_tree;
@@ -816,6 +819,7 @@ pub struct Session {
     on_exit: ExitCallback,
     authority: Mutex<ViewAuthority>,
     input_tx: mpsc::SyncSender<InputOperation>,
+    replies: Arc<ReplyQueue>,
     input_order: Mutex<InputOrderState>,
     termination_started: AtomicBool,
     requested_termination: Mutex<Option<TerminationSource>>,
@@ -844,7 +848,10 @@ struct PtyProcess {
     /// Released when the session ends. On Windows that release is what lets the
     /// reader observe end of file; see `Session::start_exit_watcher`.
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// Shared with the reply writer, which writes through it without holding
+    /// the session: a write the PTY's peer never reads must not keep the
+    /// session alive.
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     /// Addresses the process group when signalling. Windows has no equivalent
     /// and consumes the identifier at spawn to build `tree` instead, so it
@@ -893,17 +900,19 @@ const TERMINATE_GRACE: Duration = Duration::from_secs(2);
 #[cfg(unix)]
 const FORCE_EOF_GRACE: Duration = Duration::from_secs(1);
 
-impl PtyProcess {
-    fn write(&self, bytes: &[u8]) -> Result<()> {
-        if bytes.is_empty() {
-            return Ok(());
-        }
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(bytes)?;
-        writer.flush()?;
-        Ok(())
+/// Writes one batch whole: the writer mutex keeps it intact relative to every
+/// other write to the PTY.
+fn write_to_pty(writer: &Mutex<Box<dyn Write + Send>>, bytes: &[u8]) -> Result<()> {
+    if bytes.is_empty() {
+        return Ok(());
     }
+    let mut writer = writer.lock().unwrap();
+    writer.write_all(bytes)?;
+    writer.flush()?;
+    Ok(())
+}
 
+impl PtyProcess {
     fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         let master = self.master.lock().unwrap();
         // Released once the session ends; a late resize has nothing to apply.
@@ -1471,7 +1480,7 @@ impl Session {
             created_at_ms,
             process: PtyProcess {
                 master: Mutex::new(Some(pair.master)),
-                writer: Mutex::new(writer),
+                writer: Arc::new(Mutex::new(writer)),
                 child: Mutex::new(child),
                 #[cfg(unix)]
                 pid,
@@ -1491,6 +1500,7 @@ impl Session {
             on_exit,
             authority: Mutex::new(ViewAuthority::new(cols, rows)),
             input_tx,
+            replies: Arc::new(ReplyQueue::default()),
             input_order: Mutex::new(InputOrderState::default()),
             termination_started: AtomicBool::new(false),
             requested_termination: Mutex::new(None),
@@ -1503,14 +1513,41 @@ impl Session {
         });
         let _ = session.sample_activity();
         Self::start_input_actor(&session, input_rx);
+        Self::start_reply_writer(&session);
         #[cfg(windows)]
         Self::start_exit_watcher(&session, exit_handle);
         Self::start_reader(&session, reader_source);
         Ok(session)
     }
 
+    fn start_reply_writer(session: &Arc<Self>) {
+        let queue = session.replies.clone();
+        let writer = session.process.writer.clone();
+        let id = session.id();
+        thread::Builder::new()
+            .name(format!("pty-replies-{id}"))
+            .spawn(move || {
+                // The thread holds the queue and the writer, never the session:
+                // a reply the PTY's peer never reads must not keep the session
+                // alive. It delivers every batch it receives, including one
+                // queued before the session concluded, and stops once the queue
+                // is closed and empty or a write fails.
+                while let Some(bytes) = queue.recv() {
+                    // The writer mutex keeps a reply batch intact relative to
+                    // user input. Neither path holds a model lock during I/O.
+                    if let Err(error) = write_to_pty(&writer, &bytes) {
+                        eprintln!("[ghosttea] terminal reply write failed for {id}: {error:#}");
+                        break;
+                    }
+                }
+                queue.close();
+            })
+            .expect("PTY reply writer");
+    }
+
     fn start_input_actor(session: &Arc<Self>, input_rx: mpsc::Receiver<InputOperation>) {
         let session_id = session.id();
+        let writer = session.process.writer.clone();
         let session = Arc::downgrade(session);
         std::thread::Builder::new()
             .name(format!("pty-input-{session_id}"))
@@ -1519,19 +1556,24 @@ impl Session {
                     if matches!(operation, InputOperation::Shutdown) {
                         break;
                     }
-                    let Some(session) = Weak::upgrade(&session) else {
-                        break;
+                    // The session is held only while the operation is encoded
+                    // and applied to the model. The write that follows can wait
+                    // on a peer that never reads, and must not keep it alive.
+                    // One actor thread and the writer mutex keep input in order
+                    // and each batch whole.
+                    let input = {
+                        let Some(alive) = Weak::upgrade(&session) else {
+                            break;
+                        };
+                        if alive.has_exited() {
+                            break;
+                        }
+                        alive.prepare_input(operation)
                     };
-                    if session.has_exited() {
-                        break;
+                    if let Err(error) = input.and_then(|bytes| write_to_pty(&writer, &bytes)) {
+                        eprintln!("[ghosttea] PTY input failed for {session_id}: {error:#}");
                     }
-                    if let Err(error) = session.execute_input(operation) {
-                        eprintln!(
-                            "[ghosttea] PTY input failed for {}: {error:#}",
-                            session.id()
-                        );
-                    }
-                    if session.has_exited() {
+                    if Weak::upgrade(&session).is_none_or(|alive| alive.has_exited()) {
                         break;
                     }
                 }
@@ -1599,7 +1641,12 @@ impl Session {
                     let Some(alive) = Weak::upgrade(&session) else {
                         return;
                     };
-                    alive.process.master.lock().unwrap().take();
+                    let master = alive.process.master.lock().unwrap().take();
+                    // Closing the pseudoconsole can wait on conhost, so the
+                    // session is let go first: nothing holds it alive while it
+                    // waits on the PTY's peer.
+                    drop(alive);
+                    drop(master);
                     return;
                 }
             })
@@ -1658,13 +1705,14 @@ impl Session {
                     let _operation = session.model_operation.lock().unwrap();
                     let update = session.model.lock().unwrap().feed(&batch, render);
                     match update {
-                        Ok(update) => session.execute_update(update),
+                        Ok(update) => session.execute_update(update, _operation),
                         Err(error) => {
                             eprintln!("terminal model feed failed for {}: {error:#}", session.id())
                         }
                     }
                 }
                 session.exited.store(true, Ordering::Release);
+                session.replies.close();
                 session.exit_latch.notify();
                 // Wake the input actor even when no more user input will arrive.
                 // The actor only holds a Weak reference while blocked, so this
@@ -1699,7 +1747,7 @@ impl Session {
                     // scrutinee temporary otherwise lives through the arm.
                     let update = session.model.lock().unwrap().refresh(RenderRequest::Damage);
                     match update {
-                        Ok(update) => session.execute_update(update),
+                        Ok(update) => session.execute_update(update, _operation),
                         Err(error) => eprintln!(
                             "terminal model final refresh failed for {}: {error:#}",
                             session.id()
@@ -1720,16 +1768,19 @@ impl Session {
             .expect("PTY reader thread");
     }
 
-    fn execute_update(&self, update: TerminalUpdate) {
+    // Publication stays ordered under model_operation. Only the reply handoff
+    // may wait, and it takes ownership of the guard so no caller can
+    // accidentally keep the model locked during transport backpressure.
+    fn execute_update(&self, update: TerminalUpdate, operation: MutexGuard<'_, ()>) {
+        let mut replies = Vec::new();
         self.announce_selections(self.model.lock().unwrap().view_selections());
         for effect in update {
             match effect {
                 TerminalEffect::WriteToTransport(bytes) => {
-                    if let Err(error) = self.process.write(&bytes) {
-                        eprintln!(
-                            "[ghosttea] terminal reply write failed for {}: {error:#}",
-                            self.id()
-                        );
+                    if replies.is_empty() {
+                        replies = bytes;
+                    } else {
+                        replies.extend(bytes);
                     }
                 }
                 TerminalEffect::MetadataChanged(metadata) => {
@@ -1754,6 +1805,22 @@ impl Session {
                 TerminalEffect::FrameReady(frame) => {
                     self.frames.publish(frame);
                 }
+            }
+        }
+        let reply = (!replies.is_empty()).then(|| self.replies.prepare(replies));
+        drop(operation);
+        if let Some(reply) = reply {
+            // One line per overflow: every later reply is dropped with it until
+            // the writer takes the batch.
+            if let Sent::Dropped {
+                bytes,
+                overflow_began: true,
+            } = self.replies.send(reply)
+            {
+                eprintln!(
+                    "[ghosttea] dropping terminal replies for {} from a {bytes}-byte reply on: it is terminating and its PTY stopped reading",
+                    self.id()
+                );
             }
         }
     }
@@ -1924,7 +1991,7 @@ impl Session {
         };
         let _operation = self.model_operation.lock().unwrap();
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(attachment_epoch)
     }
 
@@ -2249,7 +2316,7 @@ impl Session {
     pub fn refresh(&self) -> Result<()> {
         let _operation = self.model_operation.lock().unwrap();
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2453,47 +2520,42 @@ impl Session {
         )
     }
 
-    fn execute_input(&self, operation: InputOperation) -> Result<()> {
-        let _operation = self.model_operation.lock().unwrap();
+    /// Encodes an input operation and applies whatever it does to the model,
+    /// returning the bytes the PTY should receive. Nothing here writes: the
+    /// input actor lets the session go before the write, which can wait on a
+    /// peer that never reads. Holding model_operation across that write would
+    /// freeze output and exit as well.
+    fn prepare_input(&self, operation: InputOperation) -> Result<Vec<u8>> {
         match operation {
-            InputOperation::Shutdown => Ok(()),
-            InputOperation::Text(text) => self.process.write(text.as_bytes()),
-            InputOperation::Paste(text) => {
-                let bytes = self.model.lock().unwrap().encode_paste(&text)?;
-                self.process.write(&bytes)
-            }
-            InputOperation::Key(input) => self.execute_key(&input),
-            InputOperation::Mouse(input) => self.execute_mouse(&input),
-            InputOperation::Scroll(rows) => self.execute_scroll(rows),
-            InputOperation::ScrollTo(row) => self.execute_scroll_to(row),
-            InputOperation::Focus(focused) => {
-                let bytes = self.model.lock().unwrap().encode_focus(focused)?;
-                self.process.write(&bytes)
-            }
-            InputOperation::Interrupt => self.process.write(b"\x03"),
-            InputOperation::Automation(operation) => self.execute_automation_input(operation),
+            InputOperation::Shutdown => Ok(Vec::new()),
+            InputOperation::Text(text) => Ok(text.into_bytes()),
+            InputOperation::Paste(text) => self.model.lock().unwrap().encode_paste(&text),
+            InputOperation::Key(input) => self.encode_key_input(&input),
+            InputOperation::Mouse(input) => self.encode_mouse_input(&input),
+            InputOperation::Scroll(rows) => self.apply_scroll(rows),
+            InputOperation::ScrollTo(row) => self.apply_scroll_to(row),
+            InputOperation::Focus(focused) => self.model.lock().unwrap().encode_focus(focused),
+            InputOperation::Interrupt => Ok(b"\x03".to_vec()),
+            InputOperation::Automation(operation) => self.encode_automation_input(operation),
         }
     }
 
-    fn execute_automation_input(&self, operation: AutomationInputOperation) -> Result<()> {
+    fn encode_automation_input(&self, operation: AutomationInputOperation) -> Result<Vec<u8>> {
         match operation {
-            AutomationInputOperation::Text { text } => self.process.write(text.as_bytes()),
+            AutomationInputOperation::Text { text } => Ok(text.into_bytes()),
             AutomationInputOperation::Paste { text, submit } => {
-                let bytes = {
-                    let mut model = self.model.lock().unwrap();
-                    let mut bytes = model.encode_paste(&text)?;
-                    if submit {
-                        bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
-                    }
-                    bytes
-                };
-                self.process.write(&bytes)
+                let mut model = self.model.lock().unwrap();
+                let mut bytes = model.encode_paste(&text)?;
+                if submit {
+                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
+                }
+                Ok(bytes)
             }
-            AutomationInputOperation::Interrupt => self.process.write(b"\x03"),
+            AutomationInputOperation::Interrupt => Ok(b"\x03".to_vec()),
         }
     }
 
-    fn execute_key(&self, input: &KeyInput) -> Result<()> {
+    fn encode_key_input(&self, input: &KeyInput) -> Result<Vec<u8>> {
         let mut mods = 0_u16;
         if input.shift {
             mods |= 1 << 0;
@@ -2520,17 +2582,16 @@ impl Session {
         } else {
             ""
         };
-        let bytes = self.model.lock().unwrap().encode_key(
+        self.model.lock().unwrap().encode_key(
             &input.code,
             text,
             input.unshifted_codepoint,
             mods,
             action,
-        )?;
-        self.process.write(&bytes)
+        )
     }
 
-    fn execute_mouse(&self, input: &MouseInput) -> Result<()> {
+    fn encode_mouse_input(&self, input: &MouseInput) -> Result<Vec<u8>> {
         let action = match input.action {
             MouseAction::Press => 0,
             MouseAction::Release => 1,
@@ -2549,7 +2610,7 @@ impl Session {
         if input.meta {
             mods |= 1 << 3;
         }
-        let bytes = self.model.lock().unwrap().encode_mouse(
+        self.model.lock().unwrap().encode_mouse(
             action,
             input.button,
             mods,
@@ -2561,13 +2622,15 @@ impl Session {
             input.cell_height,
             input.padding_left,
             input.padding_top,
-        )?;
-        self.process.write(&bytes)
+        )
     }
 
-    fn execute_scroll(&self, rows: isize) -> Result<()> {
+    /// Scrolls the viewport, or, on an alternate screen that asked for it,
+    /// returns the arrow keys that scroll the program instead.
+    fn apply_scroll(&self, rows: isize) -> Result<Vec<u8>> {
+        let operation = self.model_operation.lock().unwrap();
         if rows == 0 {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let (update, alternate_input) = {
             let mut model = self.model.lock().unwrap();
@@ -2582,23 +2645,23 @@ impl Session {
                 (Some(model.scroll(rows, RenderRequest::Damage)?), Vec::new())
             }
         };
-        if !alternate_input.is_empty() {
-            self.process.write(&alternate_input)?;
-        }
         if let Some(update) = update {
-            self.execute_update(update);
+            self.execute_update(update, operation);
+        } else {
+            drop(operation);
         }
-        Ok(())
+        Ok(alternate_input)
     }
 
-    fn execute_scroll_to(&self, row: usize) -> Result<()> {
+    fn apply_scroll_to(&self, row: usize) -> Result<Vec<u8>> {
+        let _operation = self.model_operation.lock().unwrap();
         let update = self
             .model
             .lock()
             .unwrap()
             .scroll_to(row, RenderRequest::Damage)?;
-        self.execute_update(update);
-        Ok(())
+        self.execute_update(update, _operation);
+        Ok(Vec::new())
     }
 
     fn apply_resize(
@@ -2623,7 +2686,7 @@ impl Session {
                     return Err(error);
                 }
             };
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2640,7 +2703,7 @@ impl Session {
             cursor,
             RenderRequest::Full,
         )?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2659,7 +2722,7 @@ impl Session {
             palette,
             RenderRequest::Full,
         )?;
-        self.execute_update(update);
+        self.execute_update(update, _operation);
         Ok(())
     }
 
@@ -2707,11 +2770,15 @@ impl Session {
             let mut order = self.input_order.lock().unwrap();
             if self.input_tx.try_send(InputOperation::Interrupt).is_ok() {
                 order.record_input(false);
-            } else {
-                let _operation = self.model_operation.lock().unwrap();
-                let _ = self.process.write(b"\x03");
             }
+            // A full input queue must not delay the independent signal ladder.
+            // In particular, never fall back to a synchronous PTY write here.
         }
+        // Reply producers stop waiting for capacity, but their replies are
+        // still delivered: the terminal may be waiting on one itself (ConPTY
+        // asks for the cursor position as it starts and waits for the answer).
+        // The queue closes when the session concludes.
+        self.replies.stop_waiting();
         let session = Arc::clone(self);
         if let Err(error) = thread::Builder::new()
             .name(format!("pty-terminate-{}", session.id()))
@@ -2826,6 +2893,96 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn blocked_paste_does_not_hold_the_model_or_prevent_termination() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "stty -echo; exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        // Lines, not one long line: XNU drops canonical input past the line
+        // limit rather than block the writer, so a paste with no line end never
+        // fills a macOS PTY (1 MiB of `x` is written in about 38 ms). Complete
+        // lines fill the queue the child never reads, and the writer blocks.
+        assert!(
+            session
+                .input_tx
+                .try_send(InputOperation::Paste(
+                    format!("{}\n", "x".repeat(1023)).repeat(1024)
+                ))
+                .is_ok()
+        );
+        // Wait for the actor to enter write_all, without depending on a fast host.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.process.writer.try_lock().is_ok() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            session.process.writer.try_lock().is_err(),
+            "paste must fill the PTY"
+        );
+        // The reader holds model_operation while it feeds each batch of output,
+        // and the paste is echoed until `stty -echo` runs, so the reader can be
+        // feeding that echo at the instant the writer blocks. What must hold is
+        // that the model comes free while the write stays blocked, so wait for
+        // it rather than sample one instant.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.model_operation.try_lock().is_err() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let model_available = session.model_operation.try_lock().is_ok();
+        let still_blocked = session.process.writer.try_lock().is_err();
+        // The input actor let the session go before the write that does not
+        // return: only this test and the frame thread, which holds it until end
+        // of file, keep it now.
+        let holders_while_blocked = Arc::strong_count(&session);
+        // Also exercise the former synchronous fallback with a full input queue.
+        while session.input_tx.try_send(InputOperation::Interrupt).is_ok() {}
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_secs(1),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            model_available,
+            "a blocked write must leave the model available"
+        );
+        assert!(
+            still_blocked,
+            "the model must come free while the write is still blocked"
+        );
+        assert_eq!(
+            holders_while_blocked, 2,
+            "a paste's blocked write must not keep the session alive"
+        );
+        assert!(
+            session.has_exited(),
+            "termination must bypass a blocked input actor"
+        );
+    }
+
     /// The Windows integration fixtures create a session, then subscribe and
     /// attach before reading the marker it printed. Their programs return
     /// immediately, so the session has to outlive its child by long enough for
@@ -3224,7 +3381,7 @@ mod tests {
                 .unwrap()
                 .feed(b"\x1b[?1049hfirst\r\nsecond\r\nthird", RenderRequest::None)
                 .unwrap();
-            session.execute_update(update);
+            session.execute_update(update, _operation);
         }
         assert_eq!(
             session.selection_text("view-a", 0, 1, 5, 1, false).unwrap(),
@@ -3250,7 +3407,7 @@ mod tests {
                 .unwrap()
                 .feed(b"\x1b[1S", RenderRequest::None)
                 .unwrap();
-            session.execute_update(update);
+            session.execute_update(update, _operation);
         }
         assert!(view_a.has_changed().unwrap());
         assert!(view_b.has_changed().unwrap());
@@ -3844,5 +4001,217 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("shell did not exit during test cleanup");
         assert!(session.sample_activity().is_none());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod reply_delivery_tests {
+    use super::*;
+
+    struct ProbeWriter {
+        bytes: Arc<Mutex<Vec<u8>>>,
+        started: mpsc::Sender<()>,
+        gate: mpsc::Receiver<()>,
+        done: mpsc::Sender<()>,
+        first: bool,
+    }
+    impl Write for ProbeWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.first {
+                self.first = false;
+                self.started.send(()).unwrap();
+                self.gate.recv_timeout(Duration::from_secs(10)).unwrap();
+            }
+            self.bytes.lock().unwrap().extend_from_slice(bytes);
+            if bytes == b"\x1b[0n" {
+                self.done.send(()).unwrap();
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn replies_survive_a_full_input_queue() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        let bytes = Arc::new(Mutex::new(Vec::new()));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        *session.process.writer.lock().unwrap() = Box::new(ProbeWriter {
+            bytes: bytes.clone(),
+            started: started_tx,
+            gate: gate_rx,
+            done: done_tx,
+            first: true,
+        });
+        session
+            .input_tx
+            .send(InputOperation::Text("X".into()))
+            .unwrap();
+        started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        for _ in 0..1024 {
+            session
+                .input_tx
+                .try_send(InputOperation::Text("x".into()))
+                .unwrap();
+        }
+        let mut update = TerminalUpdate::new();
+        update.push(TerminalEffect::WriteToTransport(b"\x1b[0n".to_vec()));
+        let (complete_tx, complete_rx) = mpsc::channel();
+        let apply = {
+            let session = session.clone();
+            thread::spawn(move || {
+                session.execute_update(update, session.model_operation.lock().unwrap());
+                complete_tx.send(()).unwrap();
+            })
+        };
+        complete_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(session.model_operation.try_lock().is_ok());
+        gate_tx.send(()).unwrap();
+        apply.join().unwrap();
+        done_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        let delivered = bytes.lock().unwrap().windows(4).any(|w| w == b"\x1b[0n");
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_millis(100),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            delivered,
+            "terminal status response was lost when the user-input queue was full"
+        );
+    }
+
+    #[test]
+    fn termination_cancels_reply_backpressure_without_holding_the_model() {
+        let session = Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel();
+        let (done_tx, _done_rx) = mpsc::channel();
+        let written = Arc::new(Mutex::new(Vec::new()));
+        *session.process.writer.lock().unwrap() = Box::new(ProbeWriter {
+            bytes: written.clone(),
+            started: started_tx,
+            gate: gate_rx,
+            done: done_tx,
+            first: true,
+        });
+        let replies_written = || {
+            written
+                .lock()
+                .unwrap()
+                .windows(b"reply".len())
+                .filter(|window| *window == b"reply")
+                .count()
+        };
+        let reply =
+            || std::iter::once(TerminalEffect::WriteToTransport(b"reply".to_vec())).collect();
+        session.execute_update(reply(), session.model_operation.lock().unwrap());
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        session.execute_update(reply(), session.model_operation.lock().unwrap());
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (complete_tx, complete_rx) = mpsc::channel();
+        let producer = {
+            let session = session.clone();
+            thread::spawn(move || {
+                let operation = session.model_operation.lock().unwrap();
+                entered_tx.send(()).unwrap();
+                session.execute_update(reply(), operation);
+                complete_tx.send(()).unwrap();
+            })
+        };
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.model_operation.try_lock().is_err() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let model_available = session.model_operation.try_lock().is_ok();
+        let backpressured = matches!(complete_rx.try_recv(), Err(mpsc::TryRecvError::Empty));
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_millis(100),
+            )
+            .unwrap();
+        // Termination stops the parked producer waiting; it does not drop its
+        // reply.
+        complete_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        // The writer is still inside its first write, and the session must
+        // conclude anyway.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let concluded_while_writing = session.has_exited();
+        gate_tx.send(()).unwrap();
+        producer.join().unwrap();
+        // Once the write returns, the released producer's reply follows the two
+        // before it.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while replies_written() < 3 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            backpressured,
+            "the reply writer and its one queue slot must bound pending work"
+        );
+        assert!(model_available, "reply backpressure must release the model");
+        assert!(
+            concluded_while_writing,
+            "termination must release blocked reply producers and conclude while a reply write never returns"
+        );
+        assert_eq!(
+            replies_written(),
+            3,
+            "termination must stop reply producers waiting, never their delivery"
+        );
     }
 }

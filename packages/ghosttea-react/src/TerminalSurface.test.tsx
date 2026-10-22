@@ -1,7 +1,14 @@
 import { isValidElement } from "react";
 import { unknownSessionActivity, type SessionSummary } from "@vibecook/ghosttea-protocol";
 import { describe, expect, it } from "vitest";
-import { TerminalSurface, viewportSelection } from "./TerminalSurface";
+import {
+  focusTakesGeometry,
+  pressTakesGeometry,
+  syncSurfaceFocus,
+  syncSurfacePress,
+  TerminalSurface,
+  viewportSelection,
+} from "./TerminalSurface";
 import { DEFAULT_THEME } from "./renderers/types";
 
 function session(id: string, handle: string): SessionSummary {
@@ -48,5 +55,66 @@ describe("viewportSelection", () => {
       focus: { column: 79, row: 9 },
     });
     expect(viewportSelection(selection, { total: 100, offset: 70, length: 10 }, 80, 10)).toBeNull();
+  });
+});
+
+describe("focus and the geometry seat", () => {
+  const controller = { takeGeometryOnFocus: true, controlsResize: true, interactive: true };
+
+  it("takes the seat only on a focus gain the host opted into, and never for a mirror", () => {
+    expect(focusTakesGeometry(true, false, controller)).toBe(true);
+    // Still focused is not a gain; a blur never takes.
+    expect(focusTakesGeometry(true, true, controller)).toBe(false);
+    expect(focusTakesGeometry(false, true, controller)).toBe(false);
+    expect(focusTakesGeometry(false, false, controller)).toBe(false);
+    expect(focusTakesGeometry(true, false, { ...controller, takeGeometryOnFocus: false })).toBe(false);
+    expect(focusTakesGeometry(true, false, { ...controller, controlsResize: false })).toBe(false);
+    expect(focusTakesGeometry(true, false, { ...controller, interactive: false })).toBe(false);
+  });
+
+  it("always reports focus as a scheduling fact, and takes the seat at the surface's grid on a gain", () => {
+    const calls: unknown[][] = [];
+    const runtime = {
+      setFocused: (...args: unknown[]) => {
+        calls.push(["setFocused", ...args]);
+      },
+      takeResizeControl: (...args: unknown[]) => {
+        calls.push(["takeResizeControl", ...args]);
+      },
+    };
+    const surface = { sessionHandle: "11", viewId: "view-a", cols: 90, rows: 30 };
+    syncSurfaceFocus(runtime, surface, true, false, controller);
+    syncSurfaceFocus(runtime, surface, true, true, controller);
+    syncSurfaceFocus(runtime, surface, false, true, controller);
+    syncSurfaceFocus(runtime, surface, true, false, { ...controller, controlsResize: false });
+
+    expect(calls).toEqual([
+      ["setFocused", "11", "view-a", true, 90, 30],
+      ["takeResizeControl", "11", "view-a", 90, 30],
+      ["setFocused", "11", "view-a", true, 90, 30],
+      ["setFocused", "11", "view-a", false, 90, 30],
+      ["setFocused", "11", "view-a", true, 90, 30],
+    ]);
+  });
+
+  it("takes the seat on a press of a surface that already has focus, and on no other press", () => {
+    expect(pressTakesGeometry(true, controller)).toBe(true);
+    // A press of an unfocused surface focuses it, and that gain takes instead.
+    expect(pressTakesGeometry(false, controller)).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, takeGeometryOnFocus: false })).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, controlsResize: false })).toBe(false);
+    expect(pressTakesGeometry(true, { ...controller, interactive: false })).toBe(false);
+
+    const calls: unknown[][] = [];
+    const runtime = {
+      takeResizeControl: (...args: unknown[]) => {
+        calls.push(["takeResizeControl", ...args]);
+      },
+    };
+    const surface = { sessionHandle: "11", viewId: "view-a", cols: 90, rows: 30 };
+    syncSurfacePress(runtime, surface, true, controller);
+    syncSurfacePress(runtime, surface, false, controller);
+    syncSurfacePress(runtime, surface, true, { ...controller, controlsResize: false });
+    expect(calls).toEqual([["takeResizeControl", "11", "view-a", 90, 30]]);
   });
 });

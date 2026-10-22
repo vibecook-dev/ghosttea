@@ -86,7 +86,7 @@ pub struct TerminalModelOptions {
     pub scrollback_bytes: usize,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct RowShapeKey {
     text: String,
     spans: Vec<(usize, usize, FontStyle)>,
@@ -99,7 +99,7 @@ struct CachedRow {
 }
 
 struct RenderCache {
-    rows: Vec<Option<CachedRow>>,
+    rows: Vec<Option<Arc<CachedRow>>>,
     sent_glyphs: HashSet<u32>,
     force_full: bool,
     reset_catalog: bool,
@@ -513,10 +513,15 @@ impl TerminalModel {
                 cache.reset_catalog = false;
             }
 
-            let wait_started = Instant::now();
-            let mut engine = self.runtime.text_engine.lock().unwrap();
-            let wait = wait_started.elapsed();
-            let hold_started = Instant::now();
+            // Retain this model's visible working set by content, not position.
+            // A scroll moves rows; other sessions must not evict those shapes.
+            let previous_rows = cache.rows.clone();
+            let previous_by_key: HashMap<_, _> = previous_rows
+                .iter()
+                .flatten()
+                .map(|cached| (&cached.key, cached))
+                .collect();
+            let mut missing = Vec::new();
             for row_index in updated.iter().copied() {
                 let row = &snapshot.rows[row_index as usize];
                 let cells = &snapshot.cells[row_index as usize];
@@ -549,6 +554,10 @@ impl TerminalModel {
                 {
                     continue;
                 }
+                if let Some(cached) = previous_by_key.get(&key) {
+                    cache.rows[row_index as usize] = Some(Arc::clone(cached));
+                    continue;
+                }
                 let spans: Vec<_> = span_tuples
                     .into_iter()
                     .map(|(byte_start, byte_end, style)| StyleSpan {
@@ -557,21 +566,33 @@ impl TerminalModel {
                         style,
                     })
                     .collect();
-                let shaped = engine
-                    .shape_styled_row(row, &spans)
-                    .with_context(|| format!("shape terminal row {row_index}"))?;
-                cache.rows[row_index as usize] = Some(CachedRow { key, shaped });
+                missing.push((row_index, key, spans));
             }
-            drop(engine);
-            let hold = hold_started.elapsed();
+            // Only actual shaping takes the shared engine lock. Cache lookup,
+            // row movement and frame assembly remain local to the session.
+            let (wait, hold) = if missing.is_empty() {
+                (Duration::ZERO, Duration::ZERO)
+            } else {
+                let wait_started = Instant::now();
+                let mut engine = self.runtime.text_engine.lock().unwrap();
+                let wait = wait_started.elapsed();
+                let hold_started = Instant::now();
+                for (row_index, key, spans) in missing {
+                    let shaped = engine
+                        .shape_styled_row(&key.text, &spans)
+                        .with_context(|| format!("shape terminal row {row_index}"))?;
+                    cache.rows[row_index as usize] = Some(Arc::new(CachedRow { key, shaped }));
+                }
+                (wait, hold_started.elapsed())
+            };
             cache.force_full = false;
             let shaped_rows: Vec<_> = cache
                 .rows
                 .iter()
                 .map(|row| {
-                    row.as_ref()
-                        .map(|cached| cached.shaped.clone())
-                        .unwrap_or_default()
+                    // Every visible slot is populated above. Borrow its vectors
+                    // through frame assembly instead of cloning all cached rows.
+                    &row.as_ref().expect("visible row has been shaped").shaped
                 })
                 .collect();
             let mut new_definitions = BTreeMap::<u32, GlyphDefinition>::new();
@@ -592,7 +613,11 @@ impl TerminalModel {
                 hold,
             )
         };
-        self.text_engine_performance.record(wait, hold);
+        if hold.is_zero() {
+            self.text_engine_performance.record_no_acquisition();
+        } else {
+            self.text_engine_performance.record(wait, hold);
+        }
 
         encode_text_snapshot(TextSnapshot {
             session_handle: self.session_handle,
@@ -690,6 +715,44 @@ fn logical_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrolling_reuses_each_models_rows_beyond_the_shared_cache_capacity() {
+        let runtime = Arc::new(TerminalRuntime::discover().unwrap());
+        let mut models = Vec::new();
+        for session_handle in 1..=8 {
+            let mut model = TerminalModel::new(
+                runtime.clone(),
+                TerminalModelOptions {
+                    session_handle,
+                    session_epoch: 1,
+                    layout_epoch: 1,
+                    cols: 40,
+                    rows: 40,
+                    scrollback_bytes: 2 * 1024 * 1024,
+                },
+            )
+            .unwrap();
+            let text = (0..40)
+                .map(|row| format!("pane {session_handle} row {row}"))
+                .collect::<Vec<_>>()
+                .join("\r\n");
+            model.feed(text.as_bytes(), RenderRequest::Full).unwrap();
+            models.push(model);
+        }
+        for model in &mut models {
+            let previous = model.render_cache.rows.clone();
+            model.feed(b"\x1b[1S", RenderRequest::Damage).unwrap();
+            for row in 0..39 {
+                assert!(Arc::ptr_eq(
+                    previous[row + 1].as_ref().unwrap(),
+                    model.render_cache.rows[row].as_ref().unwrap()
+                ));
+            }
+            model.refresh(RenderRequest::Full).unwrap();
+            assert_eq!(model.text_engine_performance().acquisition_count, 0);
+        }
+    }
 
     #[test]
     #[cfg(unix)]

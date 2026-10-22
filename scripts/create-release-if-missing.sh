@@ -22,5 +22,11 @@ fi
 # publishing a release that describes nothing.
 notes="$(node "$(dirname "$0")/release-notes.mjs" "$version")"
 
-gh release create "$tag" --title "Ghosttea ${version}" --latest --notes "$notes"
+# A patch on an older line leaves Latest on the newest line
+# (scripts/release-channel.mjs). Without a tag, `gh release view` reads the
+# current Latest.
+current="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+latest_flag="$(node "$(dirname "$0")/release-channel.mjs" github-latest "$version" "$current")"
+
+gh release create "$tag" --title "Ghosttea ${version}" "$latest_flag" --notes "$notes"
 echo "created release $tag"

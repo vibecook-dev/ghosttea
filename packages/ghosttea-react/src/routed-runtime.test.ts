@@ -8,7 +8,8 @@ import {
   type RoutedTerminalOpenTicket,
   type SessionSummary,
 } from "@vibecook/ghosttea-protocol";
-import { GhostteaTerminalRuntime, type GhostteaRoutedHost } from "./runtime";
+import { GhostteaTerminalRuntime, type GhostteaRoutedHost, type RoutedGeometryHolderChange } from "./runtime";
+import { syncSurfaceFocus, type SurfaceFocusPolicy } from "./TerminalSurface";
 
 class FakeWorker extends EventTarget {
   readonly messages: unknown[] = [];
@@ -139,7 +140,456 @@ async function flush(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
+type SentMessage = Record<string, unknown> & { type: string };
+
+interface RoutedSeatHarness {
+  runtime: GhostteaTerminalRuntime;
+  socket: FakeSocket;
+  activationId: string;
+  /** Every `geometry-holder-changed` detail, in order. */
+  holderEvents: RoutedGeometryHolderChange[];
+  /** The geometry verbs sent since just before the control leg attached. */
+  verbs(): SentMessage[];
+  reply(type: "GeometryCommitted" | "GeometryRefused", body: Record<string, unknown>): void;
+  /** Acknowledge every heartbeat sent so far, settling fenced releases. */
+  ackHeartbeats(): void;
+}
+
+/** One routed session ("session-a", handle "11", client "window-1") with its control leg attached. */
+async function routedSeat(
+  options: { views?: string[]; rights?: string[]; attach?: boolean } = {},
+): Promise<RoutedSeatHarness> {
+  vi.stubGlobal("window", globalThis);
+  const worker = new FakeWorker();
+  const socket = new FakeSocket();
+  const runtime = new GhostteaTerminalRuntime({
+    transport: "routed",
+    host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+    platform: {
+      writeClipboard: () => undefined,
+      forceCanvasFallback: () => false,
+      setForceCanvasFallback: () => undefined,
+      reload: () => undefined,
+    },
+    websocketFactory: () => socket as unknown as WebSocket,
+    workerFactory: () => worker as unknown as Worker,
+  });
+  const summary = session("session-a", "11");
+  runtime.registerSession(summary);
+  for (const viewId of options.views ?? ["view-a"]) runtime.mount(summary.id, summary.handle, viewId, canvas());
+  await flush();
+  socket.open();
+  socket.receive(
+    encodeRoutedMessage("ConnectionAccepted", {
+      selectedProtocolVersion: { major: 1, minor: 0 },
+      connectionSetId: "set-a",
+      channel: "control",
+      legGeneration: 1,
+      heartbeatTtlMs: 15_000,
+      protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+      capabilities: ["resume"],
+    }),
+  );
+  const attach = JSON.parse(socket.sent.at(-1)!) as SentMessage & { activationId: string };
+  expect(attach.type).toBe("AttachControlLeg");
+  const holderEvents: RoutedGeometryHolderChange[] = [];
+  runtime.addEventListener("geometry-holder-changed", (event) => {
+    holderEvents.push((event as CustomEvent<RoutedGeometryHolderChange>).detail);
+  });
+  const start = socket.sent.length;
+  const harness: RoutedSeatHarness = {
+    runtime,
+    socket,
+    activationId: attach.activationId,
+    holderEvents,
+    verbs: () =>
+      socket.sent
+        .slice(start)
+        .map((text) => JSON.parse(text) as SentMessage)
+        .filter((message) => ["ClaimGeometry", "TransferGeometry", "ReleaseGeometry"].includes(message.type)),
+    reply: (type, body) => socket.receive(encodeRoutedMessage(type, body as never)),
+    ackHeartbeats: () => {
+      for (const text of socket.sent) {
+        const message = JSON.parse(text) as SentMessage & { sequence?: number };
+        if (message.type === "LegHeartbeat") {
+          socket.receive(encodeRoutedMessage("LegHeartbeatAck", { sequence: message.sequence! }));
+        }
+      }
+    },
+  };
+  if (options.attach !== false) attachControl(harness, options.rights);
+  return harness;
+}
+
+function attachControl(harness: RoutedSeatHarness, rights = ["geometry", "input", "read"]): void {
+  harness.socket.receive(
+    encodeRoutedMessage("ControlLegAttached", {
+      sessionId: "session-a",
+      activationId: harness.activationId,
+      grantGenerationAccepted: 1,
+      rights,
+    }),
+  );
+}
+
+function holder(clientId: string, viewId: string, holderGeneration: number) {
+  return { clientId, viewId, holderGeneration };
+}
+
 describe("routed terminal runtime", () => {
+  function inputFixture(openTicket?: GhostteaRoutedHost["openTicket"]) {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const socket = new FakeSocket();
+    const first = session("session-a", "11");
+    let generation = 0;
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: {
+        openTicket:
+          openTicket ??
+          (async () => {
+            const result = ticket("cell-a", first.id, "set-a");
+            result.attachGrant.claims.grantGeneration = ++generation;
+            return result;
+          }),
+        encodeInput: (context) => ({ type: "TerminalInput", ...context }),
+      },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      websocketFactory: () => socket as unknown as WebSocket,
+      workerFactory: () => worker as unknown as Worker,
+    });
+    runtime.registerSession(first);
+    const mount = (viewId: string) => runtime.mount(first.id, first.handle, viewId, canvas());
+    const attaches = () => socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "AttachControlLeg");
+    const framesAttaches = () => worker.messages.filter((m) => (m as { type: string }).type === "routed-frames-attach");
+    const connect = async () => {
+      await flush();
+      socket.open();
+      socket.receive(
+        encodeRoutedMessage("ConnectionAccepted", {
+          selectedProtocolVersion: { major: 1, minor: 0 },
+          connectionSetId: "set-a",
+          channel: "control",
+          legGeneration: 1,
+          heartbeatTtlMs: 15_000,
+          protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+          capabilities: ["resume"],
+        }),
+      );
+    };
+    const accept = (activationId: string, grantGenerationAccepted: number) => {
+      socket.receive(
+        encodeRoutedMessage("ControlLegAttached", {
+          sessionId: first.id,
+          activationId,
+          grantGenerationAccepted,
+          rights: ["geometry", "input", "read"],
+        }),
+      );
+    };
+    const present = (activationId: string) => {
+      const stamp = { sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: 1 };
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-attached",
+          attached: {
+            sessionId: first.id,
+            activationId,
+            resumeToken: "resume",
+            trfIdentity: { sessionHandle: "11", viewHandle: "12" },
+            outcome: { kind: "seed-required", reason: "no-cursor" },
+          },
+        },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: { type: "frames-state", activationId, state: "active", appliedContent: stamp },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "presentation-status",
+          status: {
+            activationId,
+            workerStatusSequence: 1,
+            state: "active",
+            sceneContent: stamp,
+            leaseTtlMs: 10_000,
+          },
+        },
+      });
+      socket.receive(
+        encodeRoutedMessage("CellActivationStatus", {
+          sessionId: first.id,
+          activationId,
+          cellStatusSequence: 1,
+          leaseTtlMs: 10_000,
+          acceptedContent: stamp,
+          presentation: { state: "presenting" },
+          input: { state: "allowed" },
+        }),
+      );
+    };
+    const dispose = () => {
+      runtime.dispose();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    };
+    return { runtime, worker, socket, first, mount, attaches, framesAttaches, connect, accept, present, dispose };
+  }
+
+  it("restores input after repeated last-pane detach and reattach with a fresh presentation lease", async () => {
+    const h = inputFixture();
+    try {
+      let mounted = h.mount("view-0");
+      await h.connect();
+      let previous: string | undefined;
+      for (let index = 0; index < 10; index++) {
+        const attach = h.attaches().at(-1)!;
+        expect(attach.replacesActivationId).toBe(previous);
+        expect(h.framesAttaches()).toHaveLength(index);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        h.accept(attach.activationId, index + 1);
+        h.accept(attach.activationId, index + 1); // a duplicate ACK must not attach frames twice
+        expect(h.framesAttaches()).toHaveLength(index + 1);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        if (previous) {
+          h.present(previous); // old leases cannot admit input on the replacement
+          expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(false);
+        }
+        h.present(attach.activationId);
+        expect(h.runtime.routedViewInputAllowed(`view-${index}`)).toBe(true);
+        h.runtime.sendText(h.first.id, `view-${index}`, "probe");
+        expect(JSON.parse(h.socket.sent.at(-1)!)).toMatchObject({
+          type: "TerminalInput",
+          activationId: attach.activationId,
+        });
+        if (index === 9) break;
+        previous = attach.activationId;
+        mounted.dispose();
+        await vi.advanceTimersByTimeAsync(1);
+        mounted = h.mount(`view-${index + 1}`);
+        await flush();
+      }
+      const retained = h.mount("second-pane");
+      await flush();
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.runtime.routedViewInputAllowed("second-pane")).toBe(true);
+      expect(h.attaches()).toHaveLength(10);
+      retained.dispose();
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("recovers a replacement refusal against the admitted identity instead of the refused attempt", async () => {
+    const h = inputFixture();
+    try {
+      const mounted = h.mount("old-view");
+      await h.connect();
+      const old = h.attaches().at(-1)!.activationId;
+      h.accept(old, 1);
+      h.present(old);
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      h.mount("new-view");
+      await flush();
+      const refused = h.attaches().at(-1)!.activationId;
+      h.socket.receive(
+        encodeRoutedMessage("AttachRefused", { activationId: refused, code: "CAPACITY", retryable: true }),
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      const retry = h.attaches().at(-1)!;
+      expect(retry.activationId).not.toBe(refused);
+      expect(retry.replacesActivationId).toBe(old);
+      expect(h.framesAttaches()).toHaveLength(1);
+      h.accept(retry.activationId, 3);
+      h.present(retry.activationId);
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("does not start frames for a pane detached before its control reply", async () => {
+    const h = inputFixture();
+    try {
+      const mounted = h.mount("old-view");
+      await h.connect();
+      const old = h.attaches().at(-1)!.activationId;
+      mounted.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      h.mount("new-view");
+      await flush();
+      expect(h.attaches()).toHaveLength(1);
+      h.accept(old, 1);
+      expect(h.framesAttaches()).toHaveLength(0);
+      const next = h.attaches().at(-1)!;
+      expect(next.replacesActivationId).toBe(old);
+      h.accept(next.activationId, 2);
+      h.present(next.activationId);
+      expect(h.framesAttaches()).toHaveLength(1);
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a retired pane's open ticket that settles late (%s)",
+    async (settlement) => {
+      let resolve!: (value: RoutedTerminalOpenTicket) => void;
+      let reject!: (reason: Error) => void;
+      const pending = new Promise<RoutedTerminalOpenTicket>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      const openTicket = vi
+        .fn<GhostteaRoutedHost["openTicket"]>()
+        .mockReturnValueOnce(pending)
+        .mockResolvedValue(ticket("cell-a", "session-a", "set-a"));
+      const h = inputFixture(openTicket);
+      try {
+        const old = h.mount("old-view");
+        await flush();
+        old.dispose();
+        await vi.advanceTimersByTimeAsync(1);
+        h.mount("new-view");
+        await h.connect();
+        const current = h.attaches().at(-1)!;
+        h.accept(current.activationId, 1);
+        h.present(current.activationId);
+        if (settlement === "resolve") resolve(ticket("cell-a", "session-a", "set-a"));
+        else reject(new Error("old ticket failed"));
+        await flush();
+        expect(h.attaches()).toHaveLength(1);
+        expect(h.framesAttaches()).toHaveLength(1);
+        expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+      } finally {
+        h.dispose();
+      }
+    },
+  );
+
+  it("bounds lease timers and does not renew leases for stale status messages", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const socket = new FakeSocket();
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      websocketFactory: () => socket as unknown as WebSocket,
+      workerFactory: () => worker as unknown as Worker,
+    });
+    try {
+      const first = session("session-a", "11");
+      runtime.registerSession(first);
+      runtime.mount(first.id, first.handle, "view-a", canvas());
+      await flush();
+      socket.open();
+      socket.receive(
+        encodeRoutedMessage("ConnectionAccepted", {
+          selectedProtocolVersion: { major: 1, minor: 0 },
+          connectionSetId: "set-a",
+          channel: "control",
+          legGeneration: 1,
+          heartbeatTtlMs: 15_000,
+          protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+          capabilities: ["resume"],
+        }),
+      );
+      const { activationId } = JSON.parse(socket.sent.at(-1)!);
+      socket.receive(
+        encodeRoutedMessage("ControlLegAttached", {
+          sessionId: first.id,
+          activationId,
+          grantGenerationAccepted: 1,
+          rights: ["read"],
+        }),
+      );
+      const stamp = { sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: 1 };
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-attached",
+          attached: {
+            sessionId: first.id,
+            activationId,
+            resumeToken: "resume-a",
+            trfIdentity: { sessionHandle: "11", viewHandle: "12" },
+            outcome: { kind: "seed-required", reason: "no-cursor" },
+          },
+        },
+      });
+      worker.emit({
+        type: "routed-frames-event",
+        event: {
+          type: "frames-state",
+          activationId,
+          state: "active",
+          appliedContent: stamp,
+        },
+      });
+      const sendStatus = (sequence: number) => {
+        socket.receive(
+          encodeRoutedMessage("CellActivationStatus", {
+            sessionId: first.id,
+            activationId,
+            cellStatusSequence: sequence,
+            leaseTtlMs: 1_000,
+            acceptedContent: stamp,
+            presentation: { state: "presenting" },
+            input: { state: "allowed" },
+          }),
+        );
+        worker.emit({
+          type: "routed-frames-event",
+          event: {
+            type: "presentation-status",
+            status: {
+              activationId,
+              workerStatusSequence: sequence,
+              state: "active",
+              sceneContent: stamp,
+              leaseTtlMs: 1_000,
+            },
+          },
+        });
+      };
+      sendStatus(1);
+      expect(runtime.routedActivation(first.id)?.presentationReady).toBe(true);
+      const timerCount = vi.getTimerCount();
+      for (let sequence = 2; sequence <= 200; sequence++) sendStatus(sequence);
+      expect(vi.getTimerCount()).toBe(timerCount);
+      await vi.advanceTimersByTimeAsync(900);
+      sendStatus(200);
+      sendStatus(199);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(runtime.routedActivation(first.id)?.cellLeaseDeadline).toBe(0);
+      expect(runtime.routedActivation(first.id)?.workerLeaseDeadline).toBe(0);
+      expect(runtime.routedActivation(first.id)?.presentationReady).toBe(false);
+    } finally {
+      runtime.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("refreshes registered metadata 200ms after a routed frame commit", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);
@@ -193,6 +643,43 @@ describe("routed terminal runtime", () => {
 
     runtime.dispose();
     vi.useRealTimers();
+  });
+
+  it("takes a routed session's mouse modes from the worker, once per change", () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const first = session("session-a", "11");
+    const runtime = new GhostteaTerminalRuntime({
+      transport: "routed",
+      host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    const modes = vi.fn();
+    runtime.addEventListener("terminal-modes", modes);
+    runtime.registerSession(first);
+    // A routed frame never passes the main thread, so before the worker says
+    // otherwise the wheel scrolls locally — codex's history went unscrolled.
+    expect(runtime.isMouseTracking(first.handle)).toBe(false);
+
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: true });
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: true });
+    expect(runtime.isMouseTracking(first.handle)).toBe(true);
+    expect(modes).toHaveBeenCalledOnce();
+    expect((modes.mock.calls[0]![0] as CustomEvent).detail).toEqual({
+      sessionHandle: first.handle,
+      mouseTracking: true,
+    });
+
+    worker.emit({ type: "terminal-modes", sessionHandle: first.handle, mouseTracking: false });
+    expect(runtime.isMouseTracking(first.handle)).toBe(false);
+    expect(modes).toHaveBeenCalledTimes(2);
+    runtime.dispose();
   });
 
   it("coalesces routed metadata reads without overlapping them", async () => {
@@ -787,7 +1274,7 @@ describe("routed terminal runtime", () => {
             (message as { type?: string }).type === "routed-frames-attach",
         )
         .map((message) => message.request.cellBootId),
-    ).toEqual(["cell-a", "cell-b"]);
+    ).toEqual([]); // the native control attachment must exist before frames starts
     for (const socket of sockets) socket.open();
     const helloA = JSON.parse(sockets[0]!.sent[0]!) as Record<string, unknown>;
     const helloB = JSON.parse(sockets[1]!.sent[0]!) as Record<string, unknown>;
@@ -818,6 +1305,9 @@ describe("routed terminal runtime", () => {
         rights: ["geometry", "input", "read"],
       }),
     );
+    expect(
+      worker.messages.filter((message) => (message as { type: string }).type === "routed-frames-attach"),
+    ).toHaveLength(1);
     expect(JSON.parse(sockets[0]!.sent.at(-1)!)).toMatchObject({
       type: "ClaimGeometry",
       activationId: attachA.activationId,
@@ -936,5 +1426,676 @@ describe("routed terminal runtime", () => {
       },
     });
     runtime.dispose();
+  });
+});
+
+describe("routed geometry seat", () => {
+  it("tracks the holder the cell names, another client's included", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toMatchObject([
+        { type: "ClaimGeometry", claimant: { clientId: "window-1", viewId: "view-a" }, expectRevision: 0 },
+      ]);
+      expect(seat.runtime.geometryHolder("11")).toBeUndefined();
+
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-1", "view-a", 1),
+        revision: 1,
+        local: true,
+      });
+
+      // A pane on another desktop took the seat. The cell does not announce
+      // it here; this client's next verb draws the refusal that names it.
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      expect(seat.verbs().at(-1)).toMatchObject({ type: "ClaimGeometry", expectRevision: 1, cols: 100, rows: 30 });
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 2,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-2", "remote-view", 2),
+        revision: 2,
+        local: false,
+      });
+
+      // The same holder resizing moves only the revision: no event.
+      seat.runtime.resize("session-a", "view-a", 90, 30);
+      seat.reply("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 3,
+      });
+      expect(seat.runtime.geometryHolder("11")?.revision).toBe(3);
+      expect(seat.holderEvents).toEqual([
+        {
+          sessionId: "session-a",
+          sessionHandle: "11",
+          previous: undefined,
+          current: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+        },
+        {
+          sessionId: "session-a",
+          sessionHandle: "11",
+          previous: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+          current: { holder: holder("window-2", "remote-view", 2), revision: 2, local: false },
+        },
+      ]);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("clears the seat on its own release, and a refused release restores the holder the cell names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.releaseResizeControl("view-a");
+      expect(seat.verbs().at(-1)).toMatchObject({
+        type: "ReleaseGeometry",
+        holder: holder("window-1", "view-a", 1),
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({ holder: null, revision: 2, local: false });
+      seat.ackHeartbeats();
+      expect(seat.holderEvents.at(-1)?.current).toEqual({ holder: null, revision: 2, local: false });
+
+      // Claim again; another client then takes the seat unseen, so the next
+      // release names a stale holder and the cell refuses it.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs().at(-1)).toMatchObject({ type: "ClaimGeometry", expectRevision: 2 });
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 2),
+        geometryRevision: 3,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.releaseResizeControl("view-a");
+      expect(seat.runtime.geometryHolder("11")?.holder).toBeNull();
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-2", "remote-view", 5),
+        geometryRevision: 4,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-2", "remote-view", 5),
+        revision: 4,
+        local: false,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("lands the holder's last grid when its resize claims overlap on a slow leg", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      // Two grid changes before either is answered: both claims name revision 1.
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      seat.runtime.resize("session-a", "view-a", 110, 32);
+      expect(seat.verbs().slice(1)).toMatchObject([
+        { type: "ClaimGeometry", expectRevision: 1, cols: 100, rows: 30 },
+        { type: "ClaimGeometry", expectRevision: 1, cols: 110, rows: 32 },
+      ]);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 2,
+        cols: 100,
+        rows: 30,
+      });
+      expect(seat.verbs()).toHaveLength(3);
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-1", "view-a", 1),
+        geometryRevision: 2,
+      });
+      // The PTY is at 100x30 but the view shows 110x32: the last grid goes
+      // again, against the revision the refusal named.
+      expect(seat.verbs()).toHaveLength(4);
+      expect(seat.verbs()[3]).toMatchObject({ type: "ClaimGeometry", expectRevision: 2, cols: 110, rows: 32 });
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 3,
+        cols: 110,
+        rows: 32,
+      });
+      expect(seat.verbs()).toHaveLength(4);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("re-sends a grid that did not land once, not again when that is refused too", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      const stale = (geometryRevision: number) => ({
+        code: "STALE_REVISION",
+        currentHolder: holder("window-1", "view-a", 1),
+        geometryRevision,
+      });
+      seat.reply("GeometryRefused", stale(3));
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toMatchObject({ type: "ClaimGeometry", expectRevision: 3, cols: 100, rows: 30 });
+      seat.reply("GeometryRefused", stale(4));
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("never re-sends a refused resize while another client holds the seat", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.resize("session-a", "view-a", 100, 30);
+      seat.reply("GeometryRefused", {
+        code: "STALE_REVISION",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 2,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("stops tracking the seat when the session's last view leaves", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.unregisterSession("session-a");
+      expect(seat.runtime.geometryHolder("11")).toBeUndefined();
+      expect(seat.holderEvents.at(-1)).toEqual({
+        sessionId: "session-a",
+        sessionHandle: "11",
+        previous: { holder: holder("window-1", "view-a", 1), revision: 1, local: true },
+        current: undefined,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+});
+
+describe("routed geometry take", () => {
+  const seatHeldByWindow2 = {
+    code: "SEAT_HELD",
+    currentHolder: holder("window-2", "remote-view", 2),
+    geometryRevision: 5,
+  };
+
+  it("claims an empty seat with one ClaimGeometry", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toEqual([
+        expect.objectContaining({
+          type: "ClaimGeometry",
+          activationId: seat.activationId,
+          claimant: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 0,
+          cols: 80,
+          rows: 24,
+        }),
+      ]);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("takes a seat another client holds with one TransferGeometry from the holder it last saw", async () => {
+    const seat = await routedSeat();
+    try {
+      // The holder is learned the ordinary way: a plain claim refused SEAT_HELD.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(1);
+
+      seat.runtime.takeResizeControl("11", "view-a", 100, 30);
+      expect(seat.verbs().slice(1)).toEqual([
+        {
+          type: "TransferGeometry",
+          sessionId: "session-a",
+          activationId: seat.activationId,
+          leaseEpoch: 4,
+          from: holder("window-2", "remote-view", 2),
+          to: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 5,
+          cols: 100,
+          rows: 30,
+        },
+      ]);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 3),
+        geometryRevision: 6,
+        cols: 100,
+        rows: 30,
+      });
+      expect(seat.runtime.geometryHolder("11")).toEqual({
+        holder: holder("window-1", "view-a", 3),
+        revision: 6,
+        local: true,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("moves the seat from this client's other view with a transfer", async () => {
+    const seat = await routedSeat({ views: ["view-a", "view-b"] });
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-b", 90, 28);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-1", "view-a", 1),
+          to: { clientId: "window-1", viewId: "view-b" },
+          expectRevision: 1,
+          cols: 90,
+          rows: 28,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("re-asserts a seat this view holds with a claim the cell commits as a resize", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "ClaimGeometry",
+          claimant: { clientId: "window-1", viewId: "view-a" },
+          expectRevision: 1,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("retries once against the seat a refusal names, then lets the second refusal stand", async () => {
+    const seat = await routedSeat();
+    try {
+      // Nothing seen yet: the take claims, and the refusal names the holder.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-2", "remote-view", 2),
+          expectRevision: 5,
+        }),
+      );
+
+      // A third client took the seat in between: the retry is refused and stands.
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-3", "phone-view", 7),
+        geometryRevision: 6,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.runtime.geometryHolder("11")?.holder).toEqual(holder("window-3", "phone-view", 7));
+
+      // The next take starts from the seat that refusal named.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs().at(-1)).toEqual(
+        expect.objectContaining({
+          type: "TransferGeometry",
+          from: holder("window-3", "phone-view", 7),
+          expectRevision: 6,
+        }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("does not retry a refusal that repeats the seat the take was built on or names none", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      // A cell that does not allow a take to the caller refuses it with the
+      // seat unchanged; asking again would only be refused again.
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", {
+        code: "NOT_HOLDER",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 5,
+      });
+      expect(seat.verbs()).toHaveLength(2);
+
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", { code: "DESTINATION_INELIGIBLE" });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("retries only the session's latest take", async () => {
+    const seat = await routedSeat({ views: ["view-a", "view-b"] });
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      seat.runtime.takeResizeControl("11", "view-b", 80, 24);
+      expect(seat.verbs()).toHaveLength(2);
+
+      // view-a's take is refused with news, but view-b asked later: no retry.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+
+      // view-b's take, refused the same way, retries.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual(
+        expect.objectContaining({ type: "TransferGeometry", to: { clientId: "window-1", viewId: "view-b" } }),
+      );
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("sends a take asked before the control leg attaches when it attaches, in place of the plain claims", async () => {
+    const seat = await routedSeat({ attach: false });
+    try {
+      seat.runtime.setFocused("11", "view-a", true, 80, 24);
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()).toHaveLength(0);
+
+      attachControl(seat);
+      expect(seat.verbs()).toHaveLength(1);
+      // It is the take, not a plain claim: a refusal naming a holder draws the transfer.
+      seat.reply("GeometryRefused", seatHeldByWindow2);
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual(expect.objectContaining({ type: "TransferGeometry" }));
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("drops a queued take when its view's focus ends, and sends nothing without the geometry right", async () => {
+    const queued = await routedSeat({ attach: false });
+    try {
+      queued.runtime.setFocused("11", "view-a", true, 80, 24);
+      queued.runtime.takeResizeControl("11", "view-a", 80, 24);
+      queued.runtime.setFocused("11", "view-a", false, 80, 24);
+      attachControl(queued);
+      // The view still asks for resize control, so the attach sends its plain
+      // claim, and a plain claim's refusal is not retried.
+      expect(queued.verbs()).toHaveLength(1);
+      queued.reply("GeometryRefused", seatHeldByWindow2);
+      expect(queued.verbs()).toHaveLength(1);
+    } finally {
+      queued.runtime.dispose();
+    }
+
+    const readOnly = await routedSeat({ rights: ["input", "read"] });
+    try {
+      readOnly.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(readOnly.verbs()).toHaveLength(0);
+    } finally {
+      readOnly.runtime.dispose();
+    }
+  });
+});
+
+describe("a take's refusal is its announcement", () => {
+  // The cell answers only the caller's control leg: a pane whose seat was
+  // taken hears nothing until its own next verb is refused, and that refusal
+  // names the seat. The take retries once against it, and the host never does.
+  const remote = holder("window-2", "remote-view", 4);
+  const phone = holder("window-3", "phone-view", 6);
+  const transferToViewA = (from: ReturnType<typeof holder>, expectRevision: number) => ({
+    type: "TransferGeometry",
+    sessionId: "session-a",
+    leaseEpoch: 4,
+    from,
+    to: { clientId: "window-1", viewId: "view-a" },
+    expectRevision,
+    cols: 80,
+    rows: 24,
+  });
+
+  it("STALE_REVISION: focus back on the pane that lost the seat takes it back with one transfer", async () => {
+    const seat = await routedSeat();
+    try {
+      // view-a held the seat; a pane on another desktop took it unannounced.
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryCommitted", {
+        holder: holder("window-1", "view-a", 1),
+        geometryRevision: 1,
+        cols: 80,
+        rows: 24,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      // It still believes it holds the seat, so its take is a resize.
+      expect(seat.verbs()[1]).toMatchObject({
+        type: "ClaimGeometry",
+        claimant: { clientId: "window-1", viewId: "view-a" },
+        expectRevision: 1,
+      });
+      seat.reply("GeometryRefused", { code: "STALE_REVISION", currentHolder: remote, geometryRevision: 4 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual({ ...transferToViewA(remote, 4), activationId: seat.activationId });
+
+      // Refused again: the runtime gives up until the host takes again.
+      seat.reply("GeometryRefused", { code: "STALE_REVISION", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("NOT_HOLDER: a transfer from a holder that moved on goes once more, from the holder the refusal names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", {
+        code: "SEAT_HELD",
+        currentHolder: holder("window-2", "remote-view", 2),
+        geometryRevision: 3,
+      });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()[1]).toEqual({
+        ...transferToViewA(holder("window-2", "remote-view", 2), 3),
+        activationId: seat.activationId,
+      });
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toEqual({ ...transferToViewA(phone, 6), activationId: seat.activationId });
+
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", currentHolder: remote, geometryRevision: 7 });
+      expect(seat.verbs()).toHaveLength(3);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("SEAT_HELD: a claim of a seat thought empty goes once more as a transfer from the holder the refusal names", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      expect(seat.verbs()[0]).toMatchObject({ type: "ClaimGeometry", expectRevision: 0 });
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: remote, geometryRevision: 4 });
+      expect(seat.verbs()).toHaveLength(2);
+      expect(seat.verbs()[1]).toEqual({ ...transferToViewA(remote, 4), activationId: seat.activationId });
+
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: phone, geometryRevision: 6 });
+      expect(seat.verbs()).toHaveLength(2);
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("draws no retry from a refusal that names no seat", async () => {
+    for (const code of ["STALE_REVISION", "NOT_HOLDER", "SEAT_HELD"]) {
+      const seat = await routedSeat();
+      try {
+        seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+        seat.reply("GeometryRefused", { code });
+        expect(seat.verbs(), code).toHaveLength(1);
+      } finally {
+        seat.runtime.dispose();
+      }
+    }
+  });
+
+  it("claims, once, a seat a refusal names as empty", async () => {
+    const seat = await routedSeat();
+    try {
+      seat.runtime.claimResizeControl("11", "view-a", 80, 24);
+      seat.reply("GeometryRefused", { code: "SEAT_HELD", currentHolder: remote, geometryRevision: 4 });
+      seat.runtime.takeResizeControl("11", "view-a", 80, 24);
+      // The holder released the seat before the transfer arrived.
+      seat.reply("GeometryRefused", { code: "NOT_HOLDER", geometryRevision: 5 });
+      expect(seat.verbs()).toHaveLength(3);
+      expect(seat.verbs()[2]).toMatchObject({
+        type: "ClaimGeometry",
+        claimant: { clientId: "window-1", viewId: "view-a" },
+        expectRevision: 5,
+      });
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+});
+
+describe("focus and the routed geometry seat (TP-R4)", () => {
+  const authority = { sessionHandle: "11", viewId: "authority", cols: 80, rows: 24 };
+  const mirror = { sessionHandle: "11", viewId: "mirror", cols: 120, rows: 40 };
+
+  /** A hundred focus moves between the two surfaces, driven as TerminalSurface drives the runtime. */
+  function alternateFocus(
+    runtime: GhostteaTerminalRuntime,
+    authorityPolicy: SurfaceFocusPolicy,
+    mirrorPolicy: SurfaceFocusPolicy,
+  ): void {
+    let authorityFocused = false;
+    let mirrorFocused = false;
+    for (let index = 0; index < 100; index += 1) {
+      if (index % 2 === 0) {
+        syncSurfaceFocus(runtime, mirror, false, mirrorFocused, mirrorPolicy);
+        mirrorFocused = false;
+        syncSurfaceFocus(runtime, authority, true, authorityFocused, authorityPolicy);
+        authorityFocused = true;
+      } else {
+        syncSurfaceFocus(runtime, authority, false, authorityFocused, authorityPolicy);
+        authorityFocused = false;
+        syncSurfaceFocus(runtime, mirror, true, mirrorFocused, mirrorPolicy);
+        mirrorFocused = true;
+      }
+      // A mirror's own surface never asks to resize; the runtime refuses it anyway.
+      runtime.resize("session-a", "mirror", 120 + (index % 3), 40);
+    }
+  }
+
+  async function authorityAndMirror(): Promise<RoutedSeatHarness> {
+    const seat = await routedSeat({ views: ["authority", "mirror"] });
+    // The surfaces' claim effects: the controller claims, the mirror releases.
+    seat.runtime.claimResizeControl("11", "authority", 80, 24);
+    seat.runtime.releaseResizeControl("mirror");
+    seat.reply("GeometryCommitted", {
+      holder: holder("window-1", "authority", 1),
+      geometryRevision: 1,
+      cols: 80,
+      rows: 24,
+    });
+    return seat;
+  }
+
+  it("never lets the mirror claim, take or resize, even when its host opts in", async () => {
+    const seat = await authorityAndMirror();
+    try {
+      alternateFocus(
+        seat.runtime,
+        { takeGeometryOnFocus: true, controlsResize: true, interactive: true },
+        // `controlsResize: false` alone keeps the mirror off the seat.
+        { takeGeometryOnFocus: true, controlsResize: false, interactive: true },
+      );
+      const verbs = seat.verbs();
+      expect(verbs.filter((message) => JSON.stringify(message).includes('"mirror"'))).toEqual([]);
+      // The authority's claim, then one take per focus gain, each of its own seat.
+      expect(verbs).toHaveLength(51);
+      for (const message of verbs) {
+        expect(message).toMatchObject({ type: "ClaimGeometry", claimant: { viewId: "authority" } });
+      }
+    } finally {
+      seat.runtime.dispose();
+    }
+  });
+
+  it("turns no focus into geometry when the host has not opted in", async () => {
+    const seat = await authorityAndMirror();
+    try {
+      alternateFocus(
+        seat.runtime,
+        { takeGeometryOnFocus: false, controlsResize: true, interactive: true },
+        { takeGeometryOnFocus: false, controlsResize: false, interactive: true },
+      );
+      expect(seat.verbs()).toHaveLength(1);
+    } finally {
+      seat.runtime.dispose();
+    }
   });
 });

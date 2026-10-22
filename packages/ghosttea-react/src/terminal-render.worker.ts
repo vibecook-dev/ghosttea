@@ -35,6 +35,7 @@ import {
 import { WebGpuTerminalRenderer } from "./renderers/webgpu-renderer.js";
 import { classifyFrame } from "./frame-sequence.js";
 import { cursorActivityChangesPixels } from "./cursor-invalidation.js";
+import { rowDamage, selectionDamageRows, shiftDamage } from "./row-damage.js";
 import {
   emptyRenderMetrics,
   type TerminalRenderCounterSnapshot,
@@ -50,6 +51,7 @@ interface SessionSnapshot {
   nativeRows: GlyphInstance[][];
   nativeStyleRows: StyleRun[][];
   glyphDefinitions: Map<number, GlyphDefinition>;
+  glyphNamespace: string;
   glyphPixelBytes: number;
   styleDefinitions: Map<number, StyleDefinition>;
   rowRevisions: bigint[];
@@ -70,7 +72,7 @@ interface SurfaceSnapshot {
   selection: CellSelection | null;
   theme: TerminalTheme;
   effects: TerminalEffects;
-  damage: { full: boolean; rows: Set<number>; geometryChanged: boolean };
+  damage: { full: boolean; rows: Set<number>; geometryChanged: boolean; scrollRows?: number };
 }
 
 interface MountedCanvas {
@@ -106,7 +108,21 @@ const MAX_PERFORMANCE_SAMPLES = 100_000;
 const FRAME_CREDIT_BATCH_BYTES = 4 * 1024 * 1024;
 const FRAME_CREDIT_MAX_DELAY_MS = 8;
 const snapshots = new Map<string, SessionSnapshot>();
-const sharedGlyphDefinitions = new Map<number, { definition: GlyphDefinition; references: number }>();
+/**
+ * Handles whose committed frames have put something on screen. A host that just
+ * started a program waits for this before revealing its terminal; checked only
+ * until a handle has drawn once, and forgotten with its snapshot.
+ */
+const drawnSessions = new Set<string>();
+/**
+ * The mouse-tracking flag each routed session's last committed frame carried,
+ * as last said to the renderer (`terminal-modes`). Forgotten when the session's
+ * activation attaches again, so a re-attached session says it once more.
+ */
+const routedMouseTracking = new Map<string, boolean>();
+const sharedGlyphDefinitions = new Map<string, { definition: GlyphDefinition; references: number }>();
+// Renderer IDs never repeat while the GPU atlas survives, even after a cell restart.
+let nextRendererGlyphId = 1;
 let sharedGlyphPixelBytes = 0;
 let retainedStyleDefinitions = 0;
 const surfaces = new Map<string, SurfaceSnapshot>();
@@ -335,6 +351,7 @@ function emptySessionSnapshot(): SessionSnapshot {
     nativeRows: [],
     nativeStyleRows: [],
     glyphDefinitions: new Map(),
+    glyphNamespace: "",
     glyphPixelBytes: 0,
     styleDefinitions: new Map(),
     rowRevisions: [],
@@ -360,30 +377,39 @@ function snapshot(sessionHandle: string): SessionSnapshot {
 
 function clearSessionCatalog(session: SessionSnapshot): void {
   for (const glyphId of session.glyphDefinitions.keys()) {
-    const shared = sharedGlyphDefinitions.get(glyphId);
+    const key = `${session.glyphNamespace}:${glyphId}`;
+    const shared = sharedGlyphDefinitions.get(key);
     if (!shared) continue;
     shared.references -= 1;
     if (shared.references <= 0) {
-      sharedGlyphDefinitions.delete(glyphId);
+      sharedGlyphDefinitions.delete(key);
       sharedGlyphPixelBytes -= shared.definition.pixels.byteLength;
     }
   }
-  session.glyphDefinitions.clear();
+  session.glyphDefinitions = new Map();
   session.glyphPixelBytes = 0;
   retainedStyleDefinitions -= session.styleDefinitions.size;
   session.styleDefinitions.clear();
 }
 
-function installGlyphDefinitions(session: SessionSnapshot, definitions: readonly GlyphDefinition[]): void {
+function installGlyphDefinitions(
+  session: SessionSnapshot,
+  definitions: readonly GlyphDefinition[],
+  previousDefinitions?: ReadonlyMap<number, GlyphDefinition>,
+): void {
   for (const decoded of definitions) {
     if (session.glyphDefinitions.has(decoded.id)) continue;
-    let shared = sharedGlyphDefinitions.get(decoded.id);
+    const key = `${session.glyphNamespace}:${decoded.id}`;
+    let shared = sharedGlyphDefinitions.get(key);
     const pixelBytes = shared?.definition.pixels.byteLength ?? decoded.pixels.byteLength;
     if (shared) {
       shared.references += 1;
     } else {
-      shared = { definition: decoded, references: 1 };
-      sharedGlyphDefinitions.set(decoded.id, shared);
+      shared = {
+        definition: { ...decoded, id: previousDefinitions?.get(decoded.id)?.id ?? nextRendererGlyphId++ },
+        references: 1,
+      };
+      sharedGlyphDefinitions.set(key, shared);
       sharedGlyphPixelBytes += decoded.pixels.byteLength;
     }
     session.glyphDefinitions.set(decoded.id, shared.definition);
@@ -403,6 +429,12 @@ function dropSessionSnapshot(sessionHandle: string): void {
   const session = snapshots.get(sessionHandle);
   if (session) clearSessionCatalog(session);
   snapshots.delete(sessionHandle);
+  drawnSessions.delete(sessionHandle);
+}
+
+/** A row replacement that shows something: a glyph to rasterize, or text that is not blank. */
+function rowShowsContent(row: { text: string; glyphs: readonly unknown[] }): boolean {
+  return row.glyphs.length > 0 || /\S/.test(row.text);
 }
 
 function defaults(sessionHandle: string): SessionPresentationDefaults {
@@ -549,6 +581,7 @@ async function recoverDevice(info: GPUDeviceLostInfo): Promise<void> {
   try {
     const next = await rendererPromise;
     renderer = next;
+    next.setPerformanceMeasurementEnabled?.(performanceMeasurement !== undefined);
     recoveryAttempts = 0;
     recovering = false;
     for (const [id, mount] of mounts) {
@@ -612,7 +645,10 @@ function scheduleShaderAnimation(): void {
 
 async function flush(): Promise<void> {
   const backend = await ensureRenderer();
-  const ids = [...dirty].filter((id) => !occluded.has(id));
+  const ids = [...dirty].filter((id) => {
+    const size = mounts.get(id)?.size;
+    return !occluded.has(id) && size !== undefined && size.width > 0 && size.height > 0;
+  });
   if (performanceMeasurement && ids.length > 0) {
     performanceMeasurement.scheduling.flushes += 1;
     appendPerformanceSample(performanceMeasurement.scheduling.panesPerFlush, ids.length);
@@ -634,14 +670,23 @@ async function flush(): Promise<void> {
       const metrics = backend.renderBatch
         ? backend.renderBatch(entries)
         : entries.map(({ id, view }) => backend.render(id, view));
-      for (const metric of metrics) recordLifetimeRenderMetrics(metric ?? emptyRenderMetrics());
+      const submission = backend.submission?.();
+      if (submission) {
+        lifetimeRenderer.queueSubmits += submission.queueSubmits;
+        lifetimeRenderer.presents += submission.surfaceIds.length;
+      } else {
+        for (const metric of metrics) recordLifetimeRenderMetrics(metric ?? emptyRenderMetrics());
+      }
+      const submitted = submission ? new Set(submission.surfaceIds) : undefined;
       const renderedAt = active ? performance.now() : 0;
       for (const { id } of entries) {
+        if (submitted && !submitted.has(id)) continue;
         const damage = surfaces.get(id)?.damage;
         if (!damage) continue;
         damage.full = false;
         damage.rows.clear();
         damage.geometryChanged = false;
+        delete damage.scrollRows;
       }
       if (active && performanceMeasurement === active) {
         active.scheduling.renderCalls += entries.length;
@@ -682,6 +727,7 @@ function invalidateFull(id: string): void {
   damage.full = true;
   damage.rows.clear();
   damage.geometryChanged = true;
+  delete damage.scrollRows;
   markDirty(id);
 }
 
@@ -706,16 +752,50 @@ function invalidateSessionFull(sessionHandle: string): void {
   for (const surfaceId of surfaceIdsForSession(sessionHandle)) invalidateFull(surfaceId);
 }
 
+function invalidateScroll(id: string, shift: number, rows: number[], rowCount: number): void {
+  const value = surfaces.get(id);
+  if (!value) return;
+  const damage = value.damage;
+  if (
+    !partialRenderingEnabled ||
+    damage.full ||
+    value.selection ||
+    Math.abs((damage.scrollRows ?? 0) + shift) >= rowCount
+  ) {
+    invalidateFull(id);
+    return;
+  }
+  shiftDamage(damage.rows, shift, rowCount);
+  damage.scrollRows = (damage.scrollRows ?? 0) + shift;
+  invalidateRows(id, rows, true);
+}
+
+function changeSelection(id: string, selection: CellSelection | null): void {
+  const value = surfaces.get(id);
+  if (!value || (value.selection === null && selection === null)) return;
+  const rows = selectionDamageRows(value.selection, selection, snapshots.get(value.sessionHandle)?.rows.length ?? 0);
+  value.selection = selection;
+  // Selection is anchored to the viewport, whereas pending text moves with a
+  // scroll. Avoid composing these two coordinate spaces before a paint.
+  if (value.damage.scrollRows) invalidateFull(id);
+  else invalidateRows(id, rows, true);
+}
+
 function invalidateSessionRows(sessionHandle: string, rows: Iterable<number>, geometryChanged = false): void {
   const damagedRows = [...rows];
   for (const surfaceId of surfaceIdsForSession(sessionHandle)) invalidateRows(surfaceId, damagedRows, geometryChanged);
 }
 
-async function mount(surfaceId: string, sessionHandle: string, canvas: OffscreenCanvas): Promise<void> {
+async function mount(
+  surfaceId: string,
+  sessionHandle: string,
+  canvas: OffscreenCanvas,
+  size: PixelSize,
+): Promise<void> {
   if (mounts.has(surfaceId)) renderer?.unmount(surfaceId);
   snapshot(sessionHandle);
   surface(surfaceId, sessionHandle);
-  const entry: MountedCanvas = { canvas, size: { width: 1, height: 1, dpr: 1 }, sessionHandle };
+  const entry: MountedCanvas = { canvas, size, sessionHandle };
   mounts.set(surfaceId, entry);
   const backend = await ensureRenderer();
   if (mounts.get(surfaceId) !== entry) return;
@@ -726,9 +806,10 @@ async function mount(surfaceId: string, sessionHandle: string, canvas: Offscreen
 }
 
 function applyFrame(
-  packet: ArrayBuffer,
+  packet: ArrayBuffer | Uint8Array,
   expectedIdentity?: RoutedTrfIdentity,
   expectedLayout?: RoutedExpectedLayout,
+  glyphNamespace?: string,
 ): RoutedAppliedFrame | undefined {
   const active = performanceMeasurement;
   const applyStarted = active ? performance.now() : 0;
@@ -836,6 +917,7 @@ function applyFrame(
   for (const replacement of replacements) {
     if (replacement.row >= frame.rows) throw new RangeError("Row replacement exceeds viewport");
   }
+  const firstDrawn = !drawnSessions.has(id) && replacements.some(rowShowsContent);
   const linkSection = frame.sections.find((candidate) => candidate.kind === SectionKind.LinkTargets);
   const links = linkSection ? decodeLinkTargets(linkSection, frame.cols, frame.rows) : [];
   const nextCursor = decodeCursorState(cursorSection);
@@ -865,13 +947,33 @@ function applyFrame(
     throw new Error("transfer scrollback layout does not match TRF1");
   }
   if (active) active.frames.glyphDefinitions += glyphDefinitions.length;
-  const resetsCatalog = replacingScene || changedSession || completingResync || catalogReset;
+  // Routed frames name the process incarnation. Legacy/direct streams are
+  // isolated by session epoch because they cannot prove a shared engine.
+  const namespace = glyphNamespace === undefined ? `session:${id}:${frame.sessionEpoch}` : `cell:${glyphNamespace}`;
+  const resetsCatalog =
+    replacingScene || changedSession || completingResync || catalogReset || previous.glyphNamespace !== namespace;
+  const styleChanged = styleDefinitions.some((definition) => {
+    const old = previous.styleDefinitions.get(definition.id);
+    return old !== undefined && JSON.stringify(old) !== JSON.stringify(definition);
+  });
+  const canReuseRows =
+    !resetsCatalog &&
+    !styleChanged &&
+    previous.cols === frame.cols &&
+    previous.rows.length === frame.rows &&
+    previous.layoutEpoch === frame.layoutEpoch;
   const wasCatalogFallback = previous.catalogFallback;
   if (resetsCatalog) {
+    // A reset replaces the retained CPU catalog, not the engine's immutable
+    // glyph identities. Keep IDs for the overlap so the GPU can reuse its atlas.
+    // This map lives only for this replacement; removed glyphs retain no cache
+    // entry, and a new engine namespace can never inherit the old engine's IDs.
+    const previousDefinitions = previous.glyphNamespace === namespace ? previous.glyphDefinitions : undefined;
     previous.rows = [];
     previous.nativeRows = [];
     previous.nativeStyleRows = [];
     clearSessionCatalog(previous);
+    previous.glyphNamespace = namespace;
     previous.rowRevisions = [];
     const catalogFits =
       glyphCatalogFits(
@@ -881,6 +983,7 @@ function applyFrame(
         sharedGlyphPixelBytes,
         glyphDefinitions,
         GLYPH_CATALOG_BUDGET,
+        (glyphId) => `${namespace}:${glyphId}`,
       ) &&
       definitionCatalogFits(
         previous.styleDefinitions,
@@ -892,7 +995,7 @@ function applyFrame(
     const admission = catalogAdmission(true, wasCatalogFallback, catalogFits);
     previous.catalogFallback = admission === "text-fallback";
     if (admission === "install") {
-      installGlyphDefinitions(previous, glyphDefinitions);
+      installGlyphDefinitions(previous, glyphDefinitions, previousDefinitions);
       installStyleDefinitions(previous, styleDefinitions);
     } else if (!wasCatalogFallback) {
       postToRenderer({
@@ -910,6 +1013,7 @@ function applyFrame(
         sharedGlyphPixelBytes,
         glyphDefinitions,
         GLYPH_CATALOG_BUDGET,
+        (glyphId) => `${namespace}:${glyphId}`,
       ) &&
       definitionCatalogFits(
         previous.styleDefinitions,
@@ -960,7 +1064,7 @@ function applyFrame(
     ? Array.from({ length: frame.rows }, () => [] as StyleRun[])
     : previous.nativeStyleRows.slice();
   const rowRevisions = fullRows ? Array<bigint>(frame.rows).fill(0n) : previous.rowRevisions.slice();
-  const damagedRows: number[] = [];
+  let damagedRows: number[] = [];
   if (active) active.frames.rowsDecoded += replacements.length;
   for (const replacement of replacements) {
     if (replacement.revision < (rowRevisions[replacement.row] ?? 0n)) continue;
@@ -970,12 +1074,24 @@ function applyFrame(
     rowRevisions[replacement.row] = replacement.revision;
     damagedRows.push(replacement.row);
   }
+  let scrollRows = 0;
+  if (fullRows && canReuseRows) {
+    const damage = rowDamage(previous, { rows, nativeRows, nativeStyleRows });
+    scrollRows = damage.scrollRows;
+    damagedRows = damage.rows;
+    const changed = new Set(damagedRows);
+    for (let row = 0; row < rows.length; row++) {
+      if (changed.has(row)) continue;
+      nativeRows[row] = previous.nativeRows[row + scrollRows]!;
+      nativeStyleRows[row] = previous.nativeStyleRows[row + scrollRows]!;
+    }
+  }
   previous.cols = frame.cols;
   previous.rows = rows;
   previous.nativeRows = nativeRows;
   previous.nativeStyleRows = nativeStyleRows;
   previous.rowRevisions = rowRevisions;
-  const geometryChanged = damagedRows.length > 0;
+  const geometryChanged = damagedRows.length > 0 || scrollRows !== 0;
   const previousCursor = previous.cursor;
   const cursorChanged =
     nextCursor.x !== previousCursor.x ||
@@ -1000,12 +1116,14 @@ function applyFrame(
   if (clipboardText !== undefined) postToRenderer({ type: "clipboard-write", text: clipboardText });
   if (scrollbarChanged && scrollbar) postToRenderer({ type: "scrollbar-state", sessionHandle: id, scrollbar });
   if (completingResync) postToRenderer({ type: "frame-resync-complete", sessionHandle: id });
-  const requiresFullRedraw = fullRows || changedSession || completingResync;
-  if (!requiresFullRedraw && cursorChanged) damagedRows.push(previousCursor.y, nextCursor.y);
+  const requiresFullRedraw = !canReuseRows;
+  if (!requiresFullRedraw && (cursorChanged || scrollRows !== 0))
+    damagedRows.push(previousCursor.y - scrollRows, nextCursor.y);
   const hasRowDamage = damagedRows.length > 0;
   for (const surfaceId of surfaceIdsForSession(id)) {
     if (cursorChanged) scheduleCursorBlink(surfaceId, true);
     if (requiresFullRedraw) invalidateFull(surfaceId);
+    else if (scrollRows !== 0) invalidateScroll(surfaceId, scrollRows, damagedRows, rows.length);
     else if (hasRowDamage) invalidateRows(surfaceId, damagedRows, geometryChanged);
   }
   // Announced only once the frame is committed and its redraw scheduled, so a
@@ -1020,6 +1138,20 @@ function applyFrame(
     // recovered screen apart from a partial update of the stale one.
     fullSnapshot: fullFrame,
   });
+  // The renderer sends the wheel to a program that tracks the mouse and
+  // scrolls locally otherwise (`isMouseTracking`). Routed frames never pass the
+  // main thread, where the legacy bridge reads the flag, so it is said here.
+  if (expectedIdentity) {
+    const mouseTracking = (frame.flags & FrameFlag.MouseTracking) !== 0;
+    if (routedMouseTracking.get(id) !== mouseTracking) {
+      routedMouseTracking.set(id, mouseTracking);
+      postToRenderer({ type: "terminal-modes", sessionHandle: id, mouseTracking });
+    }
+  }
+  if (firstDrawn) {
+    drawnSessions.add(id);
+    postToRenderer({ type: "session-drawn", sessionHandle: id });
+  }
   lifetimeFrames.applies += 1;
   counters.applies += 1;
   if (active) appendPerformanceSample(active.samples.frameApplyMs, performance.now() - applyStarted);
@@ -1032,8 +1164,8 @@ function applyFrame(
 }
 
 const routedFrames = new RoutedFramesTransport({
-  applyFrame: (packet, identity, expectedLayout) => {
-    const applied = applyFrame(packet, identity, expectedLayout);
+  applyFrame: (packet, identity, expectedLayout, glyphNamespace) => {
+    const applied = applyFrame(packet, identity, expectedLayout, glyphNamespace);
     if (!applied) throw new Error("routed TRF1 frame was not applied");
     return applied;
   },
@@ -1048,7 +1180,7 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
   const message = event.data;
   try {
     if (message.type === "mount") {
-      void mount(message.surfaceId, message.sessionHandle, message.canvas).catch((error) => {
+      void mount(message.surfaceId, message.sessionHandle, message.canvas, message.size).catch((error) => {
         console.error("[terminal-renderer] mount failed", error);
       });
     } else if (message.type === "renderer-config") {
@@ -1133,13 +1265,12 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
       scheduleShaderAnimation();
     } else if (message.type === "selection") {
       if (message.surfaceId) {
-        surface(message.surfaceId, message.sessionHandle).selection = message.selection;
-        invalidateFull(message.surfaceId);
+        surface(message.surfaceId, message.sessionHandle);
+        changeSelection(message.surfaceId, message.selection);
       } else {
         defaults(message.sessionHandle).selection = message.selection;
         for (const surfaceId of surfaceIdsForSession(message.sessionHandle)) {
-          surfaces.get(surfaceId)!.selection = message.selection;
-          invalidateFull(surfaceId);
+          changeSelection(surfaceId, message.selection);
         }
       }
     } else if (message.type === "visibility") {
@@ -1209,6 +1340,7 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
     } else if (message.type === "performance-counters") {
       postToRenderer({ type: "performance-counters", requestId: message.requestId, snapshot: counterSnapshot() });
     } else if (message.type === "routed-frames-attach") {
+      routedMouseTracking.delete(message.request.sessionHandle);
       routedFrames.attach(message.request);
     } else if (message.type === "routed-frames-detach") {
       routedFrames.detach(message.activationId);

@@ -25,6 +25,12 @@
 // already holds the version (an earlier attempt's upload that is accepted but
 // not yet recorded), the run waits for that version like any other.
 //
+// Each package publishes under its release's channel (scripts/release-channel.mjs):
+// the newest line's release takes `latest`, and a patch on an older line takes
+// `release-X.Y`, leaving `latest` on the newest line. npm 11 refuses to apply
+// `latest` implicitly to a version below it, so without the channel an older
+// line's release would stop at its first npm package.
+//
 // usage: node scripts/publish-npm-packages.mjs [--plan] [package ...]
 //
 // With no names it publishes every package the manifests publish. Named
@@ -36,6 +42,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { npmDistTag } from "./release-channel.mjs";
 import { publishedPackages } from "./release-notes.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -105,9 +112,11 @@ function duration(ms) {
  * Publishes `plan` at `version`, settling once npm resolves every package in it.
  *
  * `registry.resolves(name, version)` answers whether a consumer could install
- * that exact version now. `registry.publish(name)` uploads it and answers
- * `{ ok, alreadyPublished }`. `clock` supplies `now()` and `sleep(ms)`. The
- * tests drive all three with a registry that behaves the way npm did during
+ * that exact version now. `registry.latest(name)`, where the registry has it,
+ * answers the package's current `latest` ("" for a package npm does not hold
+ * yet). `registry.publish(name, { tag })` uploads it under that dist-tag and
+ * answers `{ ok, alreadyPublished }`. `clock` supplies `now()` and `sleep(ms)`.
+ * The tests drive them all with a registry that behaves the way npm did during
  * 0.12.0.
  */
 export async function publishPlan(
@@ -143,7 +152,9 @@ export async function publishPlan(
         resolved.add(entry.name);
         continue;
       }
-      const result = registry.publish(entry.name);
+      const tag = npmDistTag(version, registry.latest?.(entry.name) ?? "");
+      if (tag !== "latest") log(`${entry.name}@${version} publishes under ${tag}: npm's latest is a newer line`);
+      const result = registry.publish(entry.name, { tag });
       if (result.alreadyPublished) {
         log(`npm already holds ${entry.name}@${version} from an earlier attempt; waiting for it to resolve`);
       } else if (!result.ok) {
@@ -196,8 +207,14 @@ export const npmRegistry = {
     const result = npm(["view", `${name}@${version}`, "version"], { timeout: MINUTE });
     return result.status === 0 && result.stdout.trim() === version;
   },
-  publish(name) {
-    const args = ["publish", "--workspace", name, "--access", "public"];
+  // A failed lookup reads as a package npm does not hold yet. For an older line
+  // npm then refuses the implicit `latest`, and a rerun resumes here.
+  latest(name) {
+    const result = npm(["view", name, "dist-tags.latest"], { timeout: MINUTE });
+    return result.status === 0 ? result.stdout.trim() : "";
+  },
+  publish(name, { tag = "latest" } = {}) {
+    const args = ["publish", "--workspace", name, "--access", "public", "--tag", tag];
     const provenance = process.env.NPM_CONFIG_PROVENANCE || process.env.npm_config_provenance || "";
     if (provenance === "false" || provenance === "0") args.push("--provenance=false");
     const result = npm(args);
