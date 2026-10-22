@@ -913,10 +913,6 @@ fn write_to_pty(writer: &Mutex<Box<dyn Write + Send>>, bytes: &[u8]) -> Result<(
 }
 
 impl PtyProcess {
-    fn write(&self, bytes: &[u8]) -> Result<()> {
-        write_to_pty(&self.writer, bytes)
-    }
-
     fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         let master = self.master.lock().unwrap();
         // Released once the session ends; a late resize has nothing to apply.
@@ -1551,6 +1547,7 @@ impl Session {
 
     fn start_input_actor(session: &Arc<Self>, input_rx: mpsc::Receiver<InputOperation>) {
         let session_id = session.id();
+        let writer = session.process.writer.clone();
         let session = Arc::downgrade(session);
         std::thread::Builder::new()
             .name(format!("pty-input-{session_id}"))
@@ -1559,19 +1556,24 @@ impl Session {
                     if matches!(operation, InputOperation::Shutdown) {
                         break;
                     }
-                    let Some(session) = Weak::upgrade(&session) else {
-                        break;
+                    // The session is held only while the operation is encoded
+                    // and applied to the model. The write that follows can wait
+                    // on a peer that never reads, and must not keep it alive.
+                    // One actor thread and the writer mutex keep input in order
+                    // and each batch whole.
+                    let input = {
+                        let Some(alive) = Weak::upgrade(&session) else {
+                            break;
+                        };
+                        if alive.has_exited() {
+                            break;
+                        }
+                        alive.prepare_input(operation)
                     };
-                    if session.has_exited() {
-                        break;
+                    if let Err(error) = input.and_then(|bytes| write_to_pty(&writer, &bytes)) {
+                        eprintln!("[ghosttea] PTY input failed for {session_id}: {error:#}");
                     }
-                    if let Err(error) = session.execute_input(operation) {
-                        eprintln!(
-                            "[ghosttea] PTY input failed for {}: {error:#}",
-                            session.id()
-                        );
-                    }
-                    if session.has_exited() {
+                    if Weak::upgrade(&session).is_none_or(|alive| alive.has_exited()) {
                         break;
                     }
                 }
@@ -2518,49 +2520,42 @@ impl Session {
         )
     }
 
-    fn execute_input(&self, operation: InputOperation) -> Result<()> {
-        // The input actor serializes writes. A child may never read its PTY;
-        // holding model_operation across write_all would freeze output and exit.
-
+    /// Encodes an input operation and applies whatever it does to the model,
+    /// returning the bytes the PTY should receive. Nothing here writes: the
+    /// input actor lets the session go before the write, which can wait on a
+    /// peer that never reads. Holding model_operation across that write would
+    /// freeze output and exit as well.
+    fn prepare_input(&self, operation: InputOperation) -> Result<Vec<u8>> {
         match operation {
-            InputOperation::Shutdown => Ok(()),
-            InputOperation::Text(text) => self.process.write(text.as_bytes()),
-            InputOperation::Paste(text) => {
-                let bytes = self.model.lock().unwrap().encode_paste(&text)?;
-                self.process.write(&bytes)
-            }
-            InputOperation::Key(input) => self.execute_key(&input),
-            InputOperation::Mouse(input) => self.execute_mouse(&input),
-            InputOperation::Scroll(rows) => self.execute_scroll(rows),
-            InputOperation::ScrollTo(row) => self.execute_scroll_to(row),
-            InputOperation::Focus(focused) => {
-                let bytes = self.model.lock().unwrap().encode_focus(focused)?;
-                self.process.write(&bytes)
-            }
-            InputOperation::Interrupt => self.process.write(b"\x03"),
-            InputOperation::Automation(operation) => self.execute_automation_input(operation),
+            InputOperation::Shutdown => Ok(Vec::new()),
+            InputOperation::Text(text) => Ok(text.into_bytes()),
+            InputOperation::Paste(text) => self.model.lock().unwrap().encode_paste(&text),
+            InputOperation::Key(input) => self.encode_key_input(&input),
+            InputOperation::Mouse(input) => self.encode_mouse_input(&input),
+            InputOperation::Scroll(rows) => self.apply_scroll(rows),
+            InputOperation::ScrollTo(row) => self.apply_scroll_to(row),
+            InputOperation::Focus(focused) => self.model.lock().unwrap().encode_focus(focused),
+            InputOperation::Interrupt => Ok(b"\x03".to_vec()),
+            InputOperation::Automation(operation) => self.encode_automation_input(operation),
         }
     }
 
-    fn execute_automation_input(&self, operation: AutomationInputOperation) -> Result<()> {
+    fn encode_automation_input(&self, operation: AutomationInputOperation) -> Result<Vec<u8>> {
         match operation {
-            AutomationInputOperation::Text { text } => self.process.write(text.as_bytes()),
+            AutomationInputOperation::Text { text } => Ok(text.into_bytes()),
             AutomationInputOperation::Paste { text, submit } => {
-                let bytes = {
-                    let mut model = self.model.lock().unwrap();
-                    let mut bytes = model.encode_paste(&text)?;
-                    if submit {
-                        bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
-                    }
-                    bytes
-                };
-                self.process.write(&bytes)
+                let mut model = self.model.lock().unwrap();
+                let mut bytes = model.encode_paste(&text)?;
+                if submit {
+                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
+                }
+                Ok(bytes)
             }
-            AutomationInputOperation::Interrupt => self.process.write(b"\x03"),
+            AutomationInputOperation::Interrupt => Ok(b"\x03".to_vec()),
         }
     }
 
-    fn execute_key(&self, input: &KeyInput) -> Result<()> {
+    fn encode_key_input(&self, input: &KeyInput) -> Result<Vec<u8>> {
         let mut mods = 0_u16;
         if input.shift {
             mods |= 1 << 0;
@@ -2587,17 +2582,16 @@ impl Session {
         } else {
             ""
         };
-        let bytes = self.model.lock().unwrap().encode_key(
+        self.model.lock().unwrap().encode_key(
             &input.code,
             text,
             input.unshifted_codepoint,
             mods,
             action,
-        )?;
-        self.process.write(&bytes)
+        )
     }
 
-    fn execute_mouse(&self, input: &MouseInput) -> Result<()> {
+    fn encode_mouse_input(&self, input: &MouseInput) -> Result<Vec<u8>> {
         let action = match input.action {
             MouseAction::Press => 0,
             MouseAction::Release => 1,
@@ -2616,7 +2610,7 @@ impl Session {
         if input.meta {
             mods |= 1 << 3;
         }
-        let bytes = self.model.lock().unwrap().encode_mouse(
+        self.model.lock().unwrap().encode_mouse(
             action,
             input.button,
             mods,
@@ -2628,14 +2622,15 @@ impl Session {
             input.cell_height,
             input.padding_left,
             input.padding_top,
-        )?;
-        self.process.write(&bytes)
+        )
     }
 
-    fn execute_scroll(&self, rows: isize) -> Result<()> {
+    /// Scrolls the viewport, or, on an alternate screen that asked for it,
+    /// returns the arrow keys that scroll the program instead.
+    fn apply_scroll(&self, rows: isize) -> Result<Vec<u8>> {
         let operation = self.model_operation.lock().unwrap();
         if rows == 0 {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let (update, alternate_input) = {
             let mut model = self.model.lock().unwrap();
@@ -2655,13 +2650,10 @@ impl Session {
         } else {
             drop(operation);
         }
-        if !alternate_input.is_empty() {
-            self.process.write(&alternate_input)?;
-        }
-        Ok(())
+        Ok(alternate_input)
     }
 
-    fn execute_scroll_to(&self, row: usize) -> Result<()> {
+    fn apply_scroll_to(&self, row: usize) -> Result<Vec<u8>> {
         let _operation = self.model_operation.lock().unwrap();
         let update = self
             .model
@@ -2669,7 +2661,7 @@ impl Session {
             .unwrap()
             .scroll_to(row, RenderRequest::Damage)?;
         self.execute_update(update, _operation);
-        Ok(())
+        Ok(Vec::new())
     }
 
     fn apply_resize(
@@ -2957,6 +2949,10 @@ mod tests {
         }
         let model_available = session.model_operation.try_lock().is_ok();
         let still_blocked = session.process.writer.try_lock().is_err();
+        // The input actor let the session go before the write that does not
+        // return: only this test and the frame thread, which holds it until end
+        // of file, keep it now.
+        let holders_while_blocked = Arc::strong_count(&session);
         // Also exercise the former synchronous fallback with a full input queue.
         while session.input_tx.try_send(InputOperation::Interrupt).is_ok() {}
         session
@@ -2976,6 +2972,10 @@ mod tests {
         assert!(
             still_blocked,
             "the model must come free while the write is still blocked"
+        );
+        assert_eq!(
+            holders_while_blocked, 2,
+            "a paste's blocked write must not keep the session alive"
         );
         assert!(
             session.has_exited(),
