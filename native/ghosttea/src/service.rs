@@ -4689,6 +4689,75 @@ mod protocol_tests {
         assert_eq!(report.unresponsive, Vec::<String>::new());
     }
 
+    /// ConPTY starts every session by asking the terminal where its cursor is.
+    ///
+    /// portable-pty 0.9 creates the pseudoconsole with
+    /// `PSEUDOCONSOLE_INHERIT_CURSOR`, so conhost writes `ESC[6n` as it starts
+    /// and waits for the answer before it carries on, winding down included. A
+    /// session terminated at once must still conclude and be let go:
+    /// termination stops reply producers waiting, never the delivery, so the
+    /// answer still reaches conhost and the pseudoconsole can close. This
+    /// terminates on the very next request after the create, on purpose.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_session_terminated_as_conpty_starts_concludes_and_is_let_go() {
+        let service = start_test_service("conpty-start");
+        let access = tokio::time::timeout(Duration::from_secs(10), service.handle.sessions())
+            .await
+            .expect("session access did not become ready")
+            .unwrap();
+        let mut lifecycle = access.subscribe_lifecycle();
+        let mut client = connect_control(&service).await;
+        let created = request(&mut client, owned_long_running_session(1, "conpty-owner")).await;
+        let session_id = created["session"]["id"].as_str().unwrap().to_owned();
+        request(
+            &mut client,
+            json!({
+                "requestId": 2,
+                "type": "terminate",
+                "sessionId": session_id,
+                "source": "user",
+            }),
+        )
+        .await;
+
+        // Both events must arrive, in the path's own order: a natural exit
+        // reports `exited` then `removed`; this terminate path removes the
+        // entry at once and reports `exited` when the session concludes.
+        // Consumers end a session on `removed` and depend on neither order.
+        let mut saw_removed = false;
+        let mut saw_exited = false;
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !(saw_removed && saw_exited) && Instant::now() < deadline {
+            let Ok(event) =
+                tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), lifecycle.recv())
+                    .await
+            else {
+                break;
+            };
+            match event.unwrap() {
+                SessionLifecycleEvent::Removed { session_id: id } if id == session_id => {
+                    saw_removed = true;
+                }
+                SessionLifecycleEvent::Exited { session_id: id, .. } if id == session_id => {
+                    saw_exited = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            saw_removed && saw_exited,
+            "a session terminated as ConPTY started did not conclude: removed={saw_removed}, exited={saw_exited}"
+        );
+        let let_go = tokio::time::timeout(Duration::from_secs(10), async {
+            while service.handle.retained_sessions() != 0 {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await;
+        assert!(let_go.is_ok(), "a concluded session was still held alive");
+    }
+
     /// Closing tabs must not accumulate terminals.
     ///
     /// Tracking a dying session is what lets a drain find it, but tracking it

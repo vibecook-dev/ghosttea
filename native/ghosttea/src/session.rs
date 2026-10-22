@@ -16,7 +16,7 @@ use std::{
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 
 mod replies;
-use replies::ReplyQueue;
+use replies::{ReplyQueue, Sent};
 
 #[cfg(unix)]
 mod unix_process_tree;
@@ -848,7 +848,10 @@ struct PtyProcess {
     /// Released when the session ends. On Windows that release is what lets the
     /// reader observe end of file; see `Session::start_exit_watcher`.
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// Shared with the reply writer, which writes through it without holding
+    /// the session: a write the PTY's peer never reads must not keep the
+    /// session alive.
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     /// Addresses the process group when signalling. Windows has no equivalent
     /// and consumes the identifier at spawn to build `tree` instead, so it
@@ -897,15 +900,21 @@ const TERMINATE_GRACE: Duration = Duration::from_secs(2);
 #[cfg(unix)]
 const FORCE_EOF_GRACE: Duration = Duration::from_secs(1);
 
+/// Writes one batch whole: the writer mutex keeps it intact relative to every
+/// other write to the PTY.
+fn write_to_pty(writer: &Mutex<Box<dyn Write + Send>>, bytes: &[u8]) -> Result<()> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    let mut writer = writer.lock().unwrap();
+    writer.write_all(bytes)?;
+    writer.flush()?;
+    Ok(())
+}
+
 impl PtyProcess {
     fn write(&self, bytes: &[u8]) -> Result<()> {
-        if bytes.is_empty() {
-            return Ok(());
-        }
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(bytes)?;
-        writer.flush()?;
-        Ok(())
+        write_to_pty(&self.writer, bytes)
     }
 
     fn resize(&self, cols: u16, rows: u16) -> Result<()> {
@@ -1475,7 +1484,7 @@ impl Session {
             created_at_ms,
             process: PtyProcess {
                 master: Mutex::new(Some(pair.master)),
-                writer: Mutex::new(writer),
+                writer: Arc::new(Mutex::new(writer)),
                 child: Mutex::new(child),
                 #[cfg(unix)]
                 pid,
@@ -1517,21 +1526,20 @@ impl Session {
 
     fn start_reply_writer(session: &Arc<Self>) {
         let queue = session.replies.clone();
+        let writer = session.process.writer.clone();
         let id = session.id();
-        let session = Arc::downgrade(session);
         thread::Builder::new()
             .name(format!("pty-replies-{id}"))
             .spawn(move || {
+                // The thread holds the queue and the writer, never the session:
+                // a reply the PTY's peer never reads must not keep the session
+                // alive. It delivers every batch it receives, including one
+                // queued before the session concluded, and stops once the queue
+                // is closed and empty or a write fails.
                 while let Some(bytes) = queue.recv() {
-                    let Some(session) = session.upgrade() else {
-                        break;
-                    };
-                    if session.has_exited() {
-                        break;
-                    }
                     // The writer mutex keeps a reply batch intact relative to
                     // user input. Neither path holds a model lock during I/O.
-                    if let Err(error) = session.process.write(&bytes) {
+                    if let Err(error) = write_to_pty(&writer, &bytes) {
                         eprintln!("[ghosttea] terminal reply write failed for {id}: {error:#}");
                         break;
                     }
@@ -1631,7 +1639,12 @@ impl Session {
                     let Some(alive) = Weak::upgrade(&session) else {
                         return;
                     };
-                    alive.process.master.lock().unwrap().take();
+                    let master = alive.process.master.lock().unwrap().take();
+                    // Closing the pseudoconsole can wait on conhost, so the
+                    // session is let go first: nothing holds it alive while it
+                    // waits on the PTY's peer.
+                    drop(alive);
+                    drop(master);
                     return;
                 }
             })
@@ -1795,7 +1808,18 @@ impl Session {
         let reply = (!replies.is_empty()).then(|| self.replies.prepare(replies));
         drop(operation);
         if let Some(reply) = reply {
-            self.replies.send(reply);
+            // One line per overflow: every later reply is dropped with it until
+            // the writer takes the batch.
+            if let Sent::Dropped {
+                bytes,
+                overflow_began: true,
+            } = self.replies.send(reply)
+            {
+                eprintln!(
+                    "[ghosttea] dropping terminal replies for {} from a {bytes}-byte reply on: it is terminating and its PTY stopped reading",
+                    self.id()
+                );
+            }
         }
     }
 
@@ -2758,7 +2782,11 @@ impl Session {
             // A full input queue must not delay the independent signal ladder.
             // In particular, never fall back to a synchronous PTY write here.
         }
-        self.replies.close();
+        // Reply producers stop waiting for capacity, but their replies are
+        // still delivered: the terminal may be waiting on one itself (ConPTY
+        // asks for the cursor position as it starts and waits for the answer).
+        // The queue closes when the session concludes.
+        self.replies.stop_waiting();
         let session = Arc::clone(self);
         if let Err(error) = thread::Builder::new()
             .name(format!("pty-terminate-{}", session.id()))
@@ -4108,13 +4136,22 @@ mod reply_delivery_tests {
         let (started_tx, started_rx) = mpsc::channel();
         let (gate_tx, gate_rx) = mpsc::channel();
         let (done_tx, _done_rx) = mpsc::channel();
+        let written = Arc::new(Mutex::new(Vec::new()));
         *session.process.writer.lock().unwrap() = Box::new(ProbeWriter {
-            bytes: Arc::new(Mutex::new(Vec::new())),
+            bytes: written.clone(),
             started: started_tx,
             gate: gate_rx,
             done: done_tx,
             first: true,
         });
+        let replies_written = || {
+            written
+                .lock()
+                .unwrap()
+                .windows(b"reply".len())
+                .filter(|window| *window == b"reply")
+                .count()
+        };
         let reply =
             || std::iter::once(TerminalEffect::WriteToTransport(b"reply".to_vec())).collect();
         session.execute_update(reply(), session.model_operation.lock().unwrap());
@@ -4144,11 +4181,22 @@ mod reply_delivery_tests {
                 Instant::now() + Duration::from_millis(100),
             )
             .unwrap();
+        // Termination stops the parked producer waiting; it does not drop its
+        // reply.
         complete_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        gate_tx.send(()).unwrap();
-        producer.join().unwrap();
+        // The writer is still inside its first write, and the session must
+        // conclude anyway.
         let deadline = Instant::now() + Duration::from_secs(5);
         while !session.has_exited() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let concluded_while_writing = session.has_exited();
+        gate_tx.send(()).unwrap();
+        producer.join().unwrap();
+        // Once the write returns, the released producer's reply follows the two
+        // before it.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while replies_written() < 3 && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
         }
         assert!(
@@ -4157,8 +4205,13 @@ mod reply_delivery_tests {
         );
         assert!(model_available, "reply backpressure must release the model");
         assert!(
-            session.has_exited(),
-            "termination must cancel blocked reply producers"
+            concluded_while_writing,
+            "termination must release blocked reply producers and conclude while a reply write never returns"
+        );
+        assert_eq!(
+            replies_written(),
+            3,
+            "termination must stop reply producers waiting, never their delivery"
         );
     }
 }
