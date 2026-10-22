@@ -277,6 +277,12 @@ try {
   const embeddingConsumer = join(fixture, "rust-embedding-consumer");
   mkdirSync(join(embeddingConsumer, "src"), { recursive: true });
   const cratePath = (name) => join(rustCrates, `${name}-${version}`).replaceAll("\\", "/");
+  // A host shares Ghosttea's `Node` type only when both resolve the same
+  // `truffle-core`, so the consumer pins it exactly as the workspace does. It is
+  // read from the workspace's one declaration: a copy kept here stayed at 0.7.12
+  // when the workspace moved to 0.7.19.
+  const truffleCore = /^truffle-core = ("=[^"]+")$/m.exec(readFileSync(join(root, "Cargo.toml"), "utf8"))?.[1];
+  if (!truffleCore) throw new Error('Cargo.toml declares no exact `truffle-core = "=X.Y.Z"` requirement');
   writeFileSync(
     join(embeddingConsumer, "Cargo.toml"),
     [
@@ -291,7 +297,7 @@ try {
       `ghosttea = { path = ${JSON.stringify(cratePath("ghosttea"))} }`,
       `ghosttea-truffle = { path = ${JSON.stringify(cratePath("ghosttea-truffle"))} }`,
       'tokio = { version = "1.45", features = ["full"] }',
-      'truffle-core = "=0.7.12"',
+      `truffle-core = ${truffleCore}`,
       "",
       "[patch.crates-io]",
       `ghosttea-vt-sys = { path = ${JSON.stringify(cratePath("ghosttea-vt-sys"))} }`,

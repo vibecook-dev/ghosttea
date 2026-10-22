@@ -92,7 +92,7 @@ daemon, and loads the addon — the registry serves objects the gate never
 executed, and this keeps "published" and "verified" the same claim.
 
 Development and published Rust builds pin the registry release of
-`truffle-core` 0.7.12. Every crate sharing an application-owned Truffle node
+`truffle-core` 0.7.19. Every crate sharing an application-owned Truffle node
 must resolve the same version and source so its `Node` type is identical.
 
 ## Release gate
