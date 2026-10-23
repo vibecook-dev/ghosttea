@@ -10,9 +10,14 @@ const maximumRssGrowthMiB = positiveNumber("GHOSTTEA_SOAK_MAX_RSS_GROWTH_MIB", 3
 const maximumThreadGrowth = positiveInteger("GHOSTTEA_SOAK_MAX_THREAD_GROWTH", 4);
 /**
  * Windows only, and a rate rather than a total because the scheduled run churns
- * four times as many sessions as a pull request.
+ * four times as many sessions as a pull request. Every round is measured
+ * against the one baseline taken before the first, so the rate divides that
+ * growth by every session churned since the baseline. Dividing by one round's
+ * sessions instead reads the scheduled run's second round as 2.00 at the same
+ * rate.
  *
- * A Windows session retains one handle after it ends. That is not this
+ * A Windows session retains one handle after it ends, so 1.00 is the expected
+ * rate on Windows: the floor, not a regression. That is not this
  * service's job object: disabling adoption entirely leaves the growth
  * unchanged at exactly one per session, and 256 sessions retain 256 handles
  * whether or not a job is ever created. It is the ConPTY session path itself,
@@ -189,10 +194,12 @@ try {
     const liveSessions = (await harness.request("list-sessions")).sessions?.length ?? null;
     const rssGrowthKiB = current.rssKiB - baseline.rssKiB;
     const threadGrowth = current.threads - baseline.threads;
+    const measuredSessions = (round + 1) * sessionsPerRound;
     console.log(
       JSON.stringify({
         round: round + 1,
         sessions: sessionsPerRound,
+        measuredSessions,
         baseline,
         current,
         liveSessions,
@@ -201,7 +208,7 @@ try {
         handlesPerSession:
           current.handles === undefined
             ? null
-            : Number(((current.handles - baseline.handles) / sessionsPerRound).toFixed(2)),
+            : Number(((current.handles - baseline.handles) / measuredSessions).toFixed(2)),
       }),
     );
     if (threadGrowth > maximumThreadGrowth) {
@@ -215,7 +222,7 @@ try {
       );
     }
     if (current.handles !== undefined) {
-      const handlesPerSession = (current.handles - baseline.handles) / sessionsPerRound;
+      const handlesPerSession = (current.handles - baseline.handles) / measuredSessions;
       if (handlesPerSession > maximumHandlesPerSession) {
         // Whether the registry still holds the sessions separates a retained
         // session object, which would keep every handle it owns, from an
@@ -223,7 +230,7 @@ try {
         const live = await harness.request("list-sessions");
         throw new Error(
           `ghosttead retained ${handlesPerSession.toFixed(2)} handles per session across ` +
-            `${sessionsPerRound} sessions; allowed is ${maximumHandlesPerSession}. ` +
+            `${measuredSessions} sessions; allowed is ${maximumHandlesPerSession}. ` +
             `${live.sessions?.length ?? "?"} session(s) remain in the registry.`,
         );
       }
