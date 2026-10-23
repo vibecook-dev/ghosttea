@@ -10,7 +10,7 @@
       "pkg:cargo/ghosttea-font-fixture-ffi@0.13.1"
     ]
   },
-  "cargoLockSha256": "d5173e2b3c1e5203c2538d4926269f3e70be8f85020585d1c4005289b7361cbe",
+  "cargoLockSha256": "aec50b538196c8d80510bb2f7692ab0497b1762f48cb67e75138181bd3eb139d",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
