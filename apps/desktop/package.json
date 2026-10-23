@@ -1,6 +1,6 @@
 {
   "name": "ghosttea-demo",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "The Ghosttea desktop example application.",
   "author": "James Yong",
   "license": "MIT",
@@ -23,11 +23,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vibecook/ghosttea": "0.13.0",
-    "@vibecook/ghosttea-electron": "0.13.0",
-    "@vibecook/ghosttea-frame": "0.13.0",
-    "@vibecook/ghosttea-protocol": "0.13.0",
-    "@vibecook/ghosttea-react": "0.13.0",
+    "@vibecook/ghosttea": "0.13.1",
+    "@vibecook/ghosttea-electron": "0.13.1",
+    "@vibecook/ghosttea-frame": "0.13.1",
+    "@vibecook/ghosttea-protocol": "0.13.1",
+    "@vibecook/ghosttea-react": "0.13.1",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
