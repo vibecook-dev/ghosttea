@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 dotenvy.workspace = true
-ghosttea = { version = "0.13.1", path = "../ghosttea" }
-ghosttea-truffle = { version = "0.13.1", path = "../ghosttea/crates/ghosttea-truffle" }
+ghosttea = { version = "0.13.2", path = "../ghosttea" }
+ghosttea-truffle = { version = "0.13.2", path = "../ghosttea/crates/ghosttea-truffle" }
 tokio.workspace = true
 truffle-core.workspace = true

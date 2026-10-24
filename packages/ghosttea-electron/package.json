@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea-electron",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "Electron lifecycle and direct renderer transport for Ghosttea.",
   "license": "MIT",
   "author": "James Yong",
@@ -64,8 +64,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@vibecook/ghosttea-client": "0.13.1",
-    "@vibecook/ghosttea-protocol": "0.13.1"
+    "@vibecook/ghosttea-client": "0.13.2",
+    "@vibecook/ghosttea-protocol": "0.13.2"
   },
   "peerDependencies": {
     "electron": ">=35"
