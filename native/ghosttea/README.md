@@ -140,6 +140,30 @@ At roughly one handle per terminal pane opened over a process lifetime this is
 slow rather than dangerous, but it is unbounded and worth tracing to the
 specific handle.
 
+### Open, recorded 2026-10-23: trace the handle
+
+These are the facts the lane that closes this starts from.
+
+- The rate is one handle per ended session, steady across rounds. On GitHub's
+  `windows-2022` runners the service's handle count read 175 → 431 over 256
+  sessions: the pull-request soak on 2026-10-22, runs 39707780624
+  and 39869516049. It read 175 → 1198 → 2222 over two rounds of 1024: the
+  weekly schedule, identical on every run from 2026-08-03 to 2026-10-19, for
+  example 36459699631 and 39285710430. At every reading the registry was empty
+  and the service had three threads fewer than at the baseline.
+- Until 2026-10-23 the soak divided the growth over all rounds by one round's
+  sessions. So the schedule read its second round as 2.00 and failed against
+  the 1.25 allowance every week. The rate is now per session churned since the
+  baseline. That makes 1.00 the expected floor on Windows, and 1.25 still
+  catches a regression past it.
+- Ruled out: the job object (disabling adoption leaves the rate unchanged), and
+  a held session object (the registry is empty).
+
+To close it, find which handle type grows across a churn by counting the
+service's handles by type before and after. Trace that handle to its owner on
+the ConPTY session path and release it there. Then lower
+`GHOSTTEA_SOAK_MAX_HANDLES_PER_SESSION` on Windows so the soak holds the fix.
+
 The bearer token authenticates both local endpoints. Keep the runtime directory
 private to the host user and do not place the token in a child environment.
 The built-in Ghosttea, legacy terminald, external-connection, and Truffle
