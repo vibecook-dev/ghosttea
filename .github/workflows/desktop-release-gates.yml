@@ -94,5 +94,20 @@ jobs:
 
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
-      - run: cargo install cargo-audit --version 0.22.2 --locked
+
+      # RustSec's own release build, pinned by checksum. Compiling it with
+      # `cargo install` took two to three minutes of every audit.
+      - name: Install cargo-audit 0.22.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CARGO_AUDIT_ARCHIVE: cargo-audit-x86_64-unknown-linux-musl-v0.22.2
+          CARGO_AUDIT_SHA256: 7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428
+        run: |
+          set -euo pipefail
+          gh release download cargo-audit/v0.22.2 --repo rustsec/rustsec \
+            --pattern "$CARGO_AUDIT_ARCHIVE.tgz" --dir "$RUNNER_TEMP"
+          echo "$CARGO_AUDIT_SHA256  $RUNNER_TEMP/$CARGO_AUDIT_ARCHIVE.tgz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$CARGO_AUDIT_ARCHIVE.tgz" -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/$CARGO_AUDIT_ARCHIVE/cargo-audit" "$HOME/.cargo/bin/cargo-audit"
+
       - run: cargo audit
