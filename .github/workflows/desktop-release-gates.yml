@@ -36,6 +36,17 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Restores compiled dependencies saved by an earlier run on this branch or
+      # on main. The key is the job, OS, rustc and the lockfile, and a moved
+      # lockfile falls back to the newest cache for the same job and rustc.
+      # Workspace crates always rebuild. Pull requests only read the cache, so
+      # their entries never evict main's. ~/.cargo/bin stays out of it, so the
+      # toolchain installed above is the one that runs.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
+
       - run: npm ci --ignore-scripts
       - run: npm run bootstrap:ghostty-vt:apple
       - run: npm run ci:desktop
@@ -64,6 +75,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # The same dependency cache as verify.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
+
       - run: npm ci --ignore-scripts
       - run: npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
       - run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
@@ -76,6 +93,12 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@1.88.0
+
+      # The same dependency cache as verify, separate because rustc differs.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
 
       - run: cargo check --workspace --all-targets --all-features --locked
 
