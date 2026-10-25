@@ -209,9 +209,13 @@ On a `release/*` branch the workflow's `pin` job writes this commit. It:
 1. runs `scripts/pin-ghosttea-apple-native.mjs` on the candidate it just
    published, which refuses a candidate not built from the branch's tree;
 2. audits the result with the two commands below;
-3. pushes `release: pin X.Y.Z Apple native artifact`;
-4. dispatches `desktop-release-gates.yml` and `ios-release-hardening.yml` for
-   the new head, because a push made with `GITHUB_TOKEN` starts no workflows.
+3. pushes `release: pin X.Y.Z Apple native artifact`.
+
+It starts no gates. Open the release PR after the pin commit lands, and the PR's
+checks, `audit-published` included, run on it. GitHub holds a pull request's
+workflow runs for a commit that github-actions pushed until a maintainer
+approves them. A PR opened before the pin therefore needs "Approve and run
+workflows" on it, and the job's summary and a warning say so.
 
 If the branch moved while the run built, it leaves the pin to the run for the
 newer push. The script edits values in place, so its commit changes the same

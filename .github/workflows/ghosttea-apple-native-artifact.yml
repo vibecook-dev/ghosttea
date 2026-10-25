@@ -301,10 +301,16 @@ jobs:
 
   # Writes the commit a release branch used to get by hand: the lock and
   # Package.swift moved to what publish-candidate just published. It audits the
-  # pin the way a pull request's audit-published would, pushes it, and then
-  # starts the pull request's gates itself, because a push made with
-  # GITHUB_TOKEN starts no workflows. A branch that moved on in the meantime is
-  # left to the run for that newer push.
+  # pin the way a pull request's audit-published would and pushes it. A branch
+  # that moved on in the meantime is left to the run for that newer push.
+  #
+  # The release PR is opened after this commit lands, and its checks then run on
+  # the commit like on any other. GitHub holds a pull request's workflow runs
+  # for a commit that github-actions pushed until a maintainer approves them,
+  # as it did for 0.13.3's PR, opened before its pin. Gates dispatched from here
+  # did not count for that PR, and repeat the checks of a PR opened later, so
+  # this job starts none. If a PR is already open, the summary says to approve
+  # its held runs.
   pin:
     needs:
       - build-candidate
@@ -319,8 +325,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     permissions:
-      actions: write
       contents: write
+      pull-requests: read
     steps:
       # The whole history, so the supersedes note can name the native inputs that
       # moved since the previous pin's source commit.
@@ -376,7 +382,7 @@ jobs:
         if: steps.branch.outputs.current == 'true'
         run: npm run test:swiftpm:consumer
 
-      - name: Commit the pin and start its pull request gates
+      - name: Commit the pin
         if: steps.branch.outputs.current == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -391,11 +397,18 @@ jobs:
             --message "release: pin $version Apple native artifact" \
             --message "Pins $tag, built from $GITHUB_SHA and published by $RUN_URL."
           git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
-          gh workflow run desktop-release-gates.yml --ref "$GITHUB_REF_NAME"
-          gh workflow run ios-release-hardening.yml --ref "$GITHUB_REF_NAME"
+          pr="$(gh pr list --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')"
           {
             echo "### Pinned $tag on $GITHUB_REF_NAME"
             echo
             echo "- Pin commit: \`$(git rev-parse HEAD)\`"
-            echo "- Started desktop-release-gates.yml and ios-release-hardening.yml for it."
+            if [ -n "$pr" ]; then
+              echo "- PR #$pr was open before the pin, so GitHub holds its workflow runs for this commit."
+              echo "  Approve them on the PR (Approve and run workflows) to start its checks."
+            else
+              echo "- Open the release PR for $GITHUB_REF_NAME now; its checks run on this commit."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$pr" ]; then
+            echo "::warning title=Approve PR #$pr's held runs::GitHub holds its workflow runs for the pin commit until a maintainer approves them."
+          fi
