@@ -3,8 +3,10 @@ name: Ghosttea Apple native artifact
 # The authoritative Apple binary is built by GitHub Actions from a reviewed
 # commit. A manual dispatch may stop after producing a candidate, or—behind the
 # protected release environment—publish that exact candidate under its
-# content-addressed tag. The scheduled job continuously verifies the artifact
-# currently pinned by Package.swift.
+# content-addressed tag. A push to a release branch whose native sources no
+# longer match the pinned artifact does both, then commits the pin. The
+# scheduled job continuously verifies the artifact currently pinned by
+# Package.swift.
 
 on:
   workflow_dispatch:
@@ -40,6 +42,12 @@ on:
       - "scripts/verify-ghosttea-apple-native-package.mjs"
   schedule:
     - cron: "17 9 * * 1"
+  # Every push to a release branch, with no path filter: release-needs compares
+  # the tree's native source digest with the pin, so there is no second path
+  # list to keep in sync with nativeSourceInputs.
+  push:
+    branches:
+      - "release/*"
 
 permissions:
   contents: read
@@ -69,8 +77,33 @@ jobs:
       - name: Link every public product against the published artifact
         run: npm run test:swiftpm:consumer
 
+  # A release branch needs a new artifact only when its native sources no longer
+  # match the pinned one. The version bump does; the pin commit, a CHANGELOG
+  # edit, or a branch that already carries its pin does not.
+  release-needs:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      needed: ${{ steps.digest.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - id: digest
+        run: node scripts/pin-ghosttea-apple-native.mjs --needed
+
   build-candidate:
-    if: github.event_name == 'workflow_dispatch'
+    needs: release-needs
+    # A dispatch skips release-needs, hence `!cancelled()` rather than the
+    # default, which would skip this job along with it.
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && needs.release-needs.outputs.needed == 'true'))
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -84,7 +117,7 @@ jobs:
       attestation_url: ${{ steps.attest.outputs.attestation-url }}
     steps:
       - name: Require the protected release branch for publication
-        if: inputs.publish
+        if: inputs.publish || github.event_name == 'push'
         env:
           DISPATCH_REF: ${{ github.ref }}
         run: |
@@ -172,7 +205,12 @@ jobs:
 
   publish-candidate:
     needs: build-candidate
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    # Explicit about build-candidate for the same reason as its own condition:
+    # a skipped release-needs upstream would otherwise skip this job too.
+    if: >-
+      !cancelled() &&
+      needs.build-candidate.result == 'success' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish) || github.event_name == 'push')
     environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -259,4 +297,105 @@ jobs:
             echo "- SHA-256: \`${{ steps.candidate.outputs.checksum }}\`"
             echo "- Source digest: \`${{ steps.candidate.outputs.source_digest }}\`"
             echo "- Attestation: ${{ needs.build-candidate.outputs.attestation_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Writes the commit a release branch used to get by hand: the lock and
+  # Package.swift moved to what publish-candidate just published. It audits the
+  # pin the way a pull request's audit-published would, pushes it, and then
+  # starts the pull request's gates itself, because a push made with
+  # GITHUB_TOKEN starts no workflows. A branch that moved on in the meantime is
+  # left to the run for that newer push.
+  pin:
+    needs:
+      - build-candidate
+      - publish-candidate
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' &&
+      needs.publish-candidate.result == 'success'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      # The whole history, so the supersedes note can name the native inputs that
+      # moved since the previous pin's source commit.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require the branch to still point at the built commit
+        id: branch
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$GITHUB_REF"
+          head="$(git rev-parse FETCH_HEAD)"
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$GITHUB_REF_NAME moved to $head; the run for that push pins its own artifact."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.branch.outputs.current == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - if: steps.branch.outputs.current == 'true'
+        run: npm ci --ignore-scripts
+
+      - if: steps.branch.outputs.current == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: ghosttea-apple-native-candidate-${{ github.sha }}
+          path: .
+
+      - name: Pin the published artifact
+        if: steps.branch.outputs.current == 'true'
+        env:
+          ATTESTATION_URL: ${{ needs.build-candidate.outputs.attestation_url }}
+        run: >-
+          node scripts/pin-ghosttea-apple-native.mjs
+          artifacts/apple-native/GhostteaAppleNative.xcframework.zip.json
+          --run-url "$RUN_URL"
+          --attestation-url "$ATTESTATION_URL"
+          --source-commit "$GITHUB_SHA"
+          --branch "$GITHUB_REF_NAME"
+
+      - name: Audit the pin against the served artifact
+        if: steps.branch.outputs.current == 'true'
+        run: npm run check:apple-native-artifact:release
+
+      - name: Link every public product against the pinned artifact
+        if: steps.branch.outputs.current == 'true'
+        run: npm run test:swiftpm:consumer
+
+      - name: Commit the pin and start its pull request gates
+        if: steps.branch.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="$(node -p "require('./apple/GhostteaKit/Compatibility/apple-native-artifact.lock.json').tag")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift apple/GhostteaKit/Compatibility/apple-native-artifact.lock.json
+          git commit --quiet \
+            --message "release: pin $version Apple native artifact" \
+            --message "Pins $tag, built from $GITHUB_SHA and published by $RUN_URL."
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          gh workflow run desktop-release-gates.yml --ref "$GITHUB_REF_NAME"
+          gh workflow run ios-release-hardening.yml --ref "$GITHUB_REF_NAME"
+          {
+            echo "### Pinned $tag on $GITHUB_REF_NAME"
+            echo
+            echo "- Pin commit: \`$(git rev-parse HEAD)\`"
+            echo "- Started desktop-release-gates.yml and ios-release-hardening.yml for it."
           } >> "$GITHUB_STEP_SUMMARY"

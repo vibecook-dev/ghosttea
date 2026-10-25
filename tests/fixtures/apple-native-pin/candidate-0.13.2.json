@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "binaryTarget": "GhostteaAppleNative",
+  "bundleName": "GhostteaAppleNative.xcframework",
+  "tag": "ghosttea-apple-native-21a593e3611b",
+  "filename": "GhostteaAppleNative.xcframework.zip",
+  "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghosttea-apple-native-21a593e3611b/GhostteaAppleNative.xcframework.zip",
+  "checksum": "41e7a5ec7a690cf3e936c6b8372cb04f5f164bb44f31a0ea48322e06852ad701",
+  "size": 45310278,
+  "contentDigest": "21a593e3611bef6693e66e2ad15068a00079b5ec56f011f99dbec72668e90e0a",
+  "sourceDigest": "0c9f828ea6774f3420ee812a210f51e31d148326da6a102dc781dd55a92db353",
+  "entries": 137,
+  "slices": {
+    "ios-arm64-simulator/libghosttea-apple-native.a": "7ce5c8fb87882df9ef5133f90f1b2cacfedfb8d2266a6e9dac172ff9ded9d626",
+    "ios-arm64/libghosttea-apple-native.a": "e1718e47034be539cf298440728ed5698ac30b68d1e5bbadd09f7e4cad2824cd",
+    "macos-arm64/libghosttea-apple-native.a": "e565fba516353f335110f6a3a173e1af20486b9ed63d3fca7ed187268e3e2786"
+  }
+}
