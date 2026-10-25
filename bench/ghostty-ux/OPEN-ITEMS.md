@@ -106,7 +106,7 @@ These are smaller or host-only; still incomplete:
 | Router: workspace / terminal / platform / unhandled                         | done                                             |
 | **Performable** pass-through for unhandled                                  | Escape, search, undo, …                          |
 | Terminal consume only if applied when performable                           | copy, adjust_selection, …                        |
-| Workspace always consume after match                                        | no fail-open PTY leak                            |
+| Workspace consume after match, except unconsumed or unperformed performable | missing hook still consumes; no fail-open leak   |
 | Tabs / splits / zoom / equalize / close pane                                | done                                             |
 | Scroll family + adjust_selection + scroll-into-view                         | done                                             |
 | Natural text editing + paste                                                | done                                             |

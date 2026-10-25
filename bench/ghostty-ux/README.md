@@ -140,7 +140,7 @@ Keybinds are only one plane. Parity work should track all of these:
 | ------------------------ | --------------------------------------- | ------------------------------------------------------------- |
 | Match + flags            | `packages/ghosttea-react/src/bindings/` | macOS + Linux tables, performable overlay                     |
 | Route                    | `bindings/action-route.ts`              | workspace / terminal / platform / unhandled                   |
-| Workspace execute        | `workspace/Workspace.tsx`               | tabs/splits/zoom + platform hooks; always consume after match |
+| Workspace execute        | `workspace/Workspace.tsx`               | tabs/splits/zoom + platform hooks; consume as Ghostty decides |
 | Terminal execute         | `TerminalSurface.tsx`                   | paste/text/copy/select/clear/scroll/adjust_selection          |
 | Shared config            | `ghosttea-config` + protocol/Swift FFI  | versioned schema, exact source/include rules, honest support  |
 | Product extension        | `extensions.json`                       | **⌘⇧O** remote sessions — **keep**                            |
@@ -193,7 +193,8 @@ suite can skip or soft-fail intentionally.
 - [x] Platform `close_window` (⌘⇧W)
 - [x] Electron main edit claims documented against Ghostty action names
 - [x] `performable` flags: Escape/search/undo pass through until implementable
-- [x] Workspace always consumes after match (no fail-open PTY leak)
+- [x] Workspace consumes after match unless `unconsumed:`, or `performable:` and not performed (the key reaches
+      the surface); a missing hook still consumes a non-performable bind (no fail-open PTY leak)
 - [x] Platform `new_window` / `quit` / `close_window` / fullscreen
 - [x] `goto_tab` clamps high indexes to last tab (Ghostty semantics)
 - [x] Linux default binding table + platform-aware match (`darwin` vs `linux`/`win32`)

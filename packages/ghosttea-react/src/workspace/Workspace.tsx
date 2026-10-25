@@ -44,12 +44,12 @@ import {
   type SplitAxis,
   type SplitSizing,
 } from "./pane-layout.js";
-import { resolveKeyEvent, routeConsumesInput } from "../bindings/action-route.js";
+import { resolveKeyEvent, routeConsumesInput, type PlatformEffect } from "../bindings/action-route.js";
 import { configuredBindingsForPlatform, type GhosttyBindingEntry } from "../bindings/ghostty-bindings.js";
-import type { WorkspaceEffect } from "./hotkeys.js";
+import { runWorkspaceBinding, type WorkspaceBindingState, type WorkspaceEffect } from "./hotkeys.js";
 import { PendingPromiseCache } from "./pending-cache.js";
 import { sessionsToClaim } from "./session-scope.js";
-import { createPaneFocusScheduler } from "./pane-focus.js";
+import { createPaneFocusScheduler, directionalPaneTarget, paneBoxes, relativePaneTarget } from "./pane-focus.js";
 import { decodeWorkspaceDocument } from "./workspace-model.js";
 
 const DEFAULT_STORAGE_KEY = "ghosttea:workspace:v1";
@@ -92,7 +92,12 @@ export interface GhostteaWorkspacePlatform {
   configEditor?: GhostteaConfigEditorBridge;
   backdropBlur?: GhostteaBackdropBlurBridge;
   newTab?: (cwd?: string) => void;
-  selectTab?: (target: "previous" | "next" | "last" | number) => void;
+  /**
+   * Ghostty `goto_tab` and its relatives. Return false when the selected tab
+   * would not change (one tab, or already selected): a `performable:` bind's
+   * key then reaches the terminal, as Ghostty's does.
+   */
+  selectTab?: (target: "previous" | "next" | "last" | number) => boolean | void;
   closeTab?: () => void;
   onMenuAction: (listener: (action: TerminalMenuAction) => void) => () => void;
 }
@@ -958,42 +963,17 @@ export function GhostteaWorkspace({
     }
   }, [activatePane, createSplitSession, platform.defaultShell, terminalRuntime]);
 
-  const focusRelative = useCallback(
-    (offset: number): void => {
-      if (zoomedPaneId) return;
-      const panes = leaves(layout);
-      const current = panes.findIndex((candidate) => candidate.id === activePaneId);
-      if (panes.length < 2 || current < 0) return;
-      activatePane(panes[(current + offset + panes.length) % panes.length]!.id);
+  // Ghostty's goto_split, which says whether focus moved. Ghostty's default
+  // (`split-preserve-zoom` without `navigation`, Config.zig:1102, :8671) ends
+  // a zoom to go to another pane (GTK split_tree.zig:367-385).
+  const goToPane = useCallback(
+    (target: string | null): boolean => {
+      if (target === null) return false;
+      setZoomedPaneId(null);
+      activatePane(target);
+      return true;
     },
-    [activatePane, activePaneId, layout, zoomedPaneId],
-  );
-
-  const focusDirection = useCallback(
-    (direction: "left" | "right" | "up" | "down"): void => {
-      if (zoomedPaneId) return;
-      const elements = Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>("[data-pane-id]") ?? []);
-      const current = elements.find((element) => element.dataset.paneId === activePaneId);
-      if (!current) return;
-      const source = current.getBoundingClientRect();
-      const sourceX = source.left + source.width / 2;
-      const sourceY = source.top + source.height / 2;
-      let best: { id: string; score: number } | undefined;
-      for (const element of elements) {
-        const id = element.dataset.paneId;
-        if (!id || id === activePaneId) continue;
-        const rect = element.getBoundingClientRect();
-        const dx = rect.left + rect.width / 2 - sourceX;
-        const dy = rect.top + rect.height / 2 - sourceY;
-        const forward = direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;
-        if (forward <= 0) continue;
-        const cross = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
-        const score = forward + cross * 2;
-        if (!best || score < best.score) best = { id, score };
-      }
-      if (best) activatePane(best.id);
-    },
-    [activatePane, activePaneId, zoomedPaneId],
+    [activatePane],
   );
 
   const closePane = useCallback(
@@ -1066,26 +1046,44 @@ export function GhostteaWorkspace({
     [addSession, terminalRuntime],
   );
 
+  // What decides whether a binding's command can be performed (hotkeys.ts).
+  const bindingState = useMemo<WorkspaceBindingState>(
+    () => ({
+      panes: leaves(layout).length,
+      activePane: activePane !== undefined,
+      remoteSessions: enableRemoteSessions,
+      hooks: {
+        newTab: platform.newTab !== undefined,
+        selectTab: platform.selectTab !== undefined,
+        closeTab: platform.closeTab !== undefined,
+        newWindow: platform.newWindow !== undefined,
+        openConfig: platform.openConfig !== undefined,
+      },
+    }),
+    [activePane, enableRemoteSessions, layout, platform],
+  );
+
+  // Runs a command runWorkspaceBinding found performable. It returns false
+  // only when the command changed nothing: `selectTab`'s own answer.
   const executeWorkspaceCommand = useCallback(
-    (command: WorkspaceEffect): void => {
+    (command: WorkspaceEffect): boolean | void => {
       if (command.type === "new-tab") {
         platform.newTab?.(activePane?.session.cwd ?? undefined);
       } else if (command.type === "select-tab") {
-        platform.selectTab?.(command.target);
+        return platform.selectTab?.(command.target);
       } else if (command.type === "close-tab") {
         platform.closeTab?.();
       } else if (command.type === "remote-sessions") {
-        if (enableRemoteSessions) {
-          setRemotePaletteDeviceId(undefined);
-          setRemotePaletteOpen(true);
-        }
+        setRemotePaletteDeviceId(undefined);
+        setRemotePaletteOpen(true);
       } else if (command.type === "split") {
         void newSplit(command.axis);
       } else if (command.type === "focus-relative") {
-        focusRelative(command.offset);
+        return goToPane(relativePaneTarget(layout, activePaneId, command.offset));
       } else if (command.type === "focus-direction") {
-        focusDirection(command.direction);
+        return goToPane(directionalPaneTarget(paneBoxes(layout), activePaneId, command.direction));
       } else if (command.type === "resize") {
+        // Only a split on the axis moves, but Ghostty counts the resize performed either way.
         if (activePaneId) {
           setLayout((current) =>
             current ? resizeForPane(current, activePaneId, command.axis, command.delta)[0] : current,
@@ -1099,18 +1097,9 @@ export function GhostteaWorkspace({
       } else if (command.type === "close-pane") {
         closeActivePane();
       }
+      return true;
     },
-    [
-      onTogglePaneZoom,
-      activePane?.session.cwd,
-      activePaneId,
-      closeActivePane,
-      enableRemoteSessions,
-      focusDirection,
-      focusRelative,
-      newSplit,
-      platform,
-    ],
+    [onTogglePaneZoom, activePane?.session.cwd, activePaneId, closeActivePane, goToPane, layout, newSplit, platform],
   );
 
   useEffect(() => {
@@ -1128,15 +1117,11 @@ export function GhostteaWorkspace({
         bindings,
         scopes: ["workspace", "platform", "unhandled"],
       });
-      if (!routed) return;
+      if (!routed || routed.kind === "terminal") return;
 
-      // After a successful match, always consume. Missing hooks no-op the effect
-      // but must not leak Ghostty app binds into the PTY (review P0).
       const consume = (): void => {
-        if (routeConsumesInput(routed)) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
+        event.preventDefault();
+        event.stopPropagation();
       };
 
       if (remotePaletteOpen) {
@@ -1144,41 +1129,35 @@ export function GhostteaWorkspace({
           setRemotePaletteOpen(false);
         }
         // Drop other app binds while the palette is open; still consume them.
-        consume();
+        if (routeConsumesInput(routed)) consume();
         return;
       }
 
-      if (routed.kind === "workspace") {
-        if (!(routed.command.type === "remote-sessions" && !enableRemoteSessions)) {
-          if (!(routed.command.type === "new-tab" && !platform.newTab)) {
-            if (!(routed.command.type === "select-tab" && !platform.selectTab)) {
-              if (!(routed.command.type === "close-tab" && !platform.closeTab)) {
-                executeWorkspaceCommand(routed.command);
-              }
-            }
-          }
-        }
-      } else if (routed.kind === "platform") {
-        if (routed.effect.type === "toggle_fullscreen") platform.toggleFullscreen();
-        else if (routed.effect.type === "close_window") platform.closeWindow();
-        else if (routed.effect.type === "close_all_windows") {
+      const executePlatformEffect = (effect: PlatformEffect): void => {
+        if (effect.type === "toggle_fullscreen") platform.toggleFullscreen();
+        else if (effect.type === "close_window") platform.closeWindow();
+        else if (effect.type === "close_all_windows") {
           (platform.closeAllWindows ?? platform.closeWindow)();
-        } else if (routed.effect.type === "new_window") {
+        } else if (effect.type === "new_window") {
           (platform.newWindow ?? platform.newTab)?.(activePane?.session.cwd ?? undefined);
-        } else if (routed.effect.type === "quit") {
+        } else if (effect.type === "quit") {
           (platform.quit ?? platform.closeWindow)();
-        } else if (routed.effect.type === "open_config") {
+        } else if (effect.type === "open_config") {
           platform.openConfig?.();
-        } else if (routed.effect.type === "reload_config") {
+        } else if (effect.type === "reload_config") {
           void terminalRuntime.reloadConfig().catch((cause: unknown) => {
             console.error("[terminal-runtime] configuration reload failed", cause);
             platform.reloadConfig?.();
           });
         }
-      }
-      // unhandled: consume only (prevent PTY leakage for non-performable app binds)
+      };
 
-      consume();
+      // A bind that is not performable consumes its key even when a missing
+      // hook no-ops it, so Ghostty app binds never leak into the PTY (review
+      // P0). A key the bind leaves (unconsumed, or performable and not
+      // performed) reaches the focused surface, which sends it.
+      const host = { state: bindingState, workspace: executeWorkspaceCommand, platform: executePlatformEffect };
+      if (runWorkspaceBinding(routed, host)) consume();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -1186,8 +1165,8 @@ export function GhostteaWorkspace({
     active,
     activePane?.session.cwd,
     appearanceSettingsOpen,
+    bindingState,
     bindings,
-    enableRemoteSessions,
     executeWorkspaceCommand,
     platform,
     remotePaletteOpen,

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  bindingKeyDisposition,
   resolveKeyEvent,
   routeBindingAction,
   routeConsumesInput,
-  terminalEffectShouldConsume,
   type RoutedAction,
 } from "./action-route";
 import {
+  configuredBindingsForPlatform,
   GHOSTTY_MACOS_DEFAULT_BINDINGS,
   keyboardDefaultBindings,
   matchGhostteaBinding,
@@ -95,11 +96,73 @@ describe("performable policy (Ghostty Binding.Flags.performable)", () => {
     expect(resolveKeyEvent(key("super+,"))?.kind).toBe("platform");
     expect(resolveKeyEvent(key("super+shift+,"))?.kind).toBe("platform");
   });
+});
 
-  it("terminalEffectShouldConsume respects performable + applied", () => {
-    expect(terminalEffectShouldConsume({ type: "copy" }, false, { performable: true })).toBe(false);
-    expect(terminalEffectShouldConsume({ type: "copy" }, true, { performable: true })).toBe(true);
-    expect(terminalEffectShouldConsume({ type: "scroll_to_top" }, false, { performable: false })).toBe(true);
+describe("bindingKeyDisposition (Ghostty Surface.maybeHandleBinding)", () => {
+  const key = (trigger: string) => synthesizeKeyEvent(parseGhosttyTrigger(trigger))!;
+
+  it("consumes a plain bind's key, performed or not", () => {
+    expect(bindingKeyDisposition({ performable: false }, true)).toBe("consume");
+    expect(bindingKeyDisposition({ performable: false }, false)).toBe("consume");
+  });
+
+  it("encodes an unconsumed bind's key after its action, performed or not", () => {
+    expect(bindingKeyDisposition({ performable: false, unconsumed: true }, true)).toBe("encode");
+    expect(bindingKeyDisposition({ performable: false, unconsumed: true }, false)).toBe("encode");
+  });
+
+  it("encodes a performable bind's key only when its action was not performed", () => {
+    expect(bindingKeyDisposition({ performable: true }, false)).toBe("encode");
+    expect(bindingKeyDisposition({ performable: true }, true)).toBe("consume");
+    expect(bindingKeyDisposition({ performable: true, unconsumed: true }, true)).toBe("encode");
+  });
+
+  it("always consumes all: and global: binds, which Ghostty counts performed", () => {
+    for (const flags of [{ all: true }, { global: true }]) {
+      expect(bindingKeyDisposition({ performable: false, unconsumed: true, ...flags }, true)).toBe("consume");
+      expect(bindingKeyDisposition({ performable: true, ...flags }, false)).toBe("consume");
+    }
+  });
+
+  it("does not treat a performable all: or global: bind on an unhandled action as absent", () => {
+    // Ghostty performs every all:/global: bind (Surface.zig:2986-2993), so it never falls through.
+    for (const prefix of ["performable:global:", "performable:all:"]) {
+      const bindings = configuredBindingsForPlatform(
+        { clearKeybindings: false, keybindings: [{ trigger: `${prefix}ctrl+x`, action: "increase_font_size:1" }] },
+        "darwin",
+      );
+      const routed = resolveKeyEvent(key("ctrl+x"), { bindings });
+      expect(routed?.kind, prefix).toBe("unhandled");
+      expect(routeConsumesInput(routed!), prefix).toBe(true);
+    }
+  });
+
+  it("drops an ignore bind's key whatever its flags, as Ghostty does before it looks at them", () => {
+    for (const prefix of ["", "unconsumed:", "performable:", "performable:unconsumed:"]) {
+      const bindings = configuredBindingsForPlatform(
+        { clearKeybindings: false, keybindings: [{ trigger: `${prefix}ctrl+x`, action: "ignore" }] },
+        "darwin",
+      );
+      const routed = resolveKeyEvent(key("ctrl+x"), { bindings });
+      expect(routed?.kind, prefix).toBe("unhandled");
+      expect(routeConsumesInput(routed!), prefix).toBe(true);
+      expect(routeConsumesInput(routed!, false), prefix).toBe(true);
+    }
+  });
+
+  it("lets a workspace route's key through when a performable action was not performed", () => {
+    // Linux defaults: alt+1=goto_tab:1 and ctrl+alt+arrow_left=goto_split:left are performable.
+    for (const trigger of ["alt+1", "ctrl+alt+arrow_left", "ctrl+page_up"]) {
+      const routed = resolveKeyEvent(key(trigger), { platform: "linux" })!;
+      expect(routed.kind, trigger).toBe("workspace");
+      expect(routeConsumesInput(routed, false), trigger).toBe(false);
+      expect(routeConsumesInput(routed, true), trigger).toBe(true);
+      expect(routeConsumesInput(routed), trigger).toBe(true);
+    }
+    // super+t=new_tab is not performable: a missing hook still consumes it.
+    expect(routeConsumesInput(resolveKeyEvent(key("super+t"))!, false)).toBe(true);
+    // An unhandled action is never performed, and a plain one still consumes.
+    expect(routeConsumesInput(resolveKeyEvent(key("super+="))!)).toBe(true);
   });
 });
 

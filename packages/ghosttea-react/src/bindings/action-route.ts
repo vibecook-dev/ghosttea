@@ -10,6 +10,8 @@
  *   (resolve returns null) — matching Ghostty Binding.Flags.performable.
  * - Non-performable unhandled binds still consume so app shortcuts do not leak to PTY.
  * - Unmatched keys return null (fall through to terminal key encoding).
+ * - Once an executor ran a matched bind, `bindingKeyDisposition` says whether
+ *   its key is consumed or goes on to the terminal (unconsumed, unperformed).
  */
 
 import type { AdjustSelection, GhostteaBindingAction, GhosttyAction } from "./ghostty-actions.js";
@@ -234,6 +236,10 @@ export type ResolveKeyEventOptions = MatchBindingOptions & {
  * - the event is not an application binding, or
  * - the bind is `performable` and currently unhandled (cannot perform → acts absent), or
  * - the route kind is filtered out by `scopes`.
+ *
+ * An unhandled action Ghostty always performs is not absent: `ignore`, and any
+ * `all:` or `global:` bind (Surface.zig counts those performed). Its key is
+ * consumed.
  */
 export function resolveKeyEvent(event: KeyEventLike, options: ResolveKeyEventOptions = {}): RoutedAction | null {
   const match = matchGhostteaBindingEntry(event, options);
@@ -242,7 +248,7 @@ export function resolveKeyEvent(event: KeyEventLike, options: ResolveKeyEventOpt
 
   // Ghostty: performable binds that cannot run do not exist.
   // Until Ghosttea can perform search/undo/etc., pass the key through.
-  if (routed.flags.performable && routed.kind === "unhandled") {
+  if (routed.flags.performable && routed.kind === "unhandled" && !alwaysPerformed(routed)) {
     return null;
   }
 
@@ -251,25 +257,47 @@ export function resolveKeyEvent(event: KeyEventLike, options: ResolveKeyEventOpt
 }
 
 /**
- * Whether this route should preventDefault / stopPropagation after a successful match.
- * Callers that no-op an effect (missing hooks) should still consume.
+ * What becomes of a key once its binding's action has run, as Ghostty's
+ * `Surface.maybeHandleBinding` decides it:
+ *
+ * - `consume`: the binding took the key. It is not encoded, nor is its release.
+ * - `encode`: the key goes on to the terminal and is encoded as if no binding
+ *   had matched. That is an `unconsumed:` bind, after its action ran, and a
+ *   `performable:` bind whose action could not be performed, which acts as if
+ *   it does not exist.
+ *
+ * `all:` and `global:` binds always consume: Ghostty counts them performed and
+ * never encodes them.
  */
-export function routeConsumesInput(route: RoutedAction): boolean {
-  if (route.flags.unconsumed) return false;
-  if (route.kind === "unhandled") return route.consume;
-  return true;
+export type BindingKeyDisposition = "consume" | "encode";
+
+export function bindingKeyDisposition(flags: GhosttyBindingFlags, performed: boolean): BindingKeyDisposition {
+  if (flags.all === true || flags.global === true) return "consume";
+  if (flags.performable && !performed) return "encode";
+  return flags.unconsumed === true ? "encode" : "consume";
 }
 
 /**
- * Terminal effects that are performable in Ghostty only consume when the
- * executor actually applied them (selection present, clipboard non-empty, …).
+ * An action Ghostty performs whatever Ghosttea implements: `ignore`, which
+ * Ghostty performs and then drops the key with, whatever the flags
+ * (Surface.zig:3022-3029), and an `all:` or `global:` bind, which Ghostty
+ * counts performed (Surface.zig:2986-2993).
  */
-export function terminalEffectShouldConsume(
-  effect: TerminalEffect,
-  applied: boolean,
-  flags: GhosttyBindingFlags,
-): boolean {
-  if (flags.unconsumed) return false;
-  if (flags.performable) return applied;
-  return true;
+function alwaysPerformed(route: RoutedAction): boolean {
+  if (route.flags.all === true || route.flags.global === true) return true;
+  return route.kind === "unhandled" && route.action.type === "ignore";
+}
+
+/**
+ * Whether this route should preventDefault / stopPropagation after a
+ * successful match, given whether its action was performed. An executor that
+ * no-ops an effect (a missing host hook) reports it unperformed: a bind that is
+ * not `performable` still consumes, so app shortcuts do not leak to the PTY,
+ * and a `performable` one acts as absent. Unhandled actions are never
+ * performed. `ignore` consumes its key whatever its flags, `unconsumed:`
+ * included, because Ghostty drops it before either flag is looked at.
+ */
+export function routeConsumesInput(route: RoutedAction, performed = route.kind !== "unhandled"): boolean {
+  if (route.kind === "unhandled" && route.action.type === "ignore") return true;
+  return bindingKeyDisposition(route.flags, performed) === "consume";
 }
