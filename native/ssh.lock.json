@@ -21,17 +21,180 @@
     "knownGap": "A successful public-key partial step is reported as LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED (-19); explicit second-method sequencing works but must be policy-safe"
   },
   "securityReview": {
-    "reviewedAt": "2026-07-18",
+    "reviewedAt": "2026-10-24",
     "minimumOpenSSLTag": "openssl-3.5.7",
     "affectedThrough": "libssh2-1.11.1",
-    "blockedReason": "The pinned libssh2 release is affected by newly disclosed pre-authentication vulnerabilities and no fixed upstream release has been tagged.",
+    "blockedReason": "The pinned libssh2 release is affected by disclosed vulnerabilities, several of them pre-authentication, and no fixed upstream release has been tagged.",
     "requiredFixCommits": [
       "256d04b60d80bf1190e96b0ad1e91b2174d744b1",
       "2dae3024897e1898d389835151f4e9606227721d",
       "17626857d20b3c9a1addfa45979dadcee1cd84a4",
       "97acf3dfda80c91c3a8c9f2372546301d4a1a7a8",
       "34497525929b9a47f03dfb81887ac896202b7e12",
-      "a9758da45a52bc8c630ec9493804d0c6ea30b24a"
+      "a9758da45a52bc8c630ec9493804d0c6ea30b24a",
+      "5e4776146552d898b9c0e1b313cd093fa8dc92d0",
+      "a13bb6c773f0d55ad1628cede57e99803cd898d9",
+      "42e33d81577ed4b95d4b4f6f845e5ee8efe5eeb4",
+      "a2ed82d40964bbc0d64cd717aa0a5a892117d2e6",
+      "e3fba528d4aacbcafe12701b93943c543309d6d1",
+      "fcf830788d0c8dcd6bed7dcd532506aabf196523",
+      "15257c08f842705211b5b78013c5fc46fb545ad1",
+      "0a17ea04dcc2b10b6817ae19d690e15f66c83624",
+      "4884fc6102b32b76f0b1606a76477abe0e68ee51",
+      "b4e6761de0e6ea8a6592ea5407d721282292432c",
+      "9438f90ae03f52d54297f15ef23b05ebb7c5f598",
+      "b5c37a910d774065155458abcd6d2d89cc21a661",
+      "5d27ee28ed8dbfa0846c5b9da65f2d35ea48f7d7"
+    ],
+    "advisories": [
+      {
+        "ids": [
+          "CVE-2026-7598",
+          "GHSA-jhp3-h4hp-2c3p"
+        ],
+        "publishedAt": "2026-05-02",
+        "fixCommit": "256d04b60d80bf1190e96b0ad1e91b2174d744b1"
+      },
+      {
+        "ids": [
+          "CVE-2025-15661",
+          "GHSA-3wqh-87fg-ffgg"
+        ],
+        "publishedAt": "2026-06-18",
+        "fixCommit": "2dae3024897e1898d389835151f4e9606227721d"
+      },
+      {
+        "ids": [
+          "CVE-2026-55199",
+          "GHSA-3cfq-4xx4-rmpg"
+        ],
+        "publishedAt": "2026-06-17",
+        "fixCommit": "17626857d20b3c9a1addfa45979dadcee1cd84a4"
+      },
+      {
+        "ids": [
+          "CVE-2026-55200",
+          "GHSA-r8mh-x5qv-7gg2"
+        ],
+        "publishedAt": "2026-06-17",
+        "fixCommit": "97acf3dfda80c91c3a8c9f2372546301d4a1a7a8"
+      },
+      {
+        "ids": [
+          "CVE-2026-58050",
+          "GHSA-mf77-5hj2-98w9"
+        ],
+        "publishedAt": "2026-06-28",
+        "fixCommit": "34497525929b9a47f03dfb81887ac896202b7e12"
+      },
+      {
+        "ids": [
+          "CVE-2026-58051",
+          "GHSA-c5f3-hwj2-xp5p"
+        ],
+        "publishedAt": "2026-06-28",
+        "fixCommit": "a9758da45a52bc8c630ec9493804d0c6ea30b24a"
+      },
+      {
+        "ids": [
+          "CVE-2026-66032",
+          "GHSA-83r8-6c29-8gwr",
+          "GHSA-px3w-7g75-hg7w"
+        ],
+        "publishedAt": "2026-07-24",
+        "fixCommit": "5e4776146552d898b9c0e1b313cd093fa8dc92d0"
+      },
+      {
+        "ids": [
+          "CVE-2026-66034",
+          "GHSA-6h6q-9mwg-r6x7",
+          "GHSA-w6g9-cpfp-22gc"
+        ],
+        "publishedAt": "2026-07-24",
+        "fixCommit": "a13bb6c773f0d55ad1628cede57e99803cd898d9"
+      },
+      {
+        "ids": [
+          "CVE-2026-66035",
+          "GHSA-v6rf-8q4r-r495",
+          "GHSA-6c79-444r-wx26"
+        ],
+        "publishedAt": "2026-07-24",
+        "fixCommit": "42e33d81577ed4b95d4b4f6f845e5ee8efe5eeb4"
+      },
+      {
+        "ids": [
+          "CVE-2026-66033",
+          "GHSA-2g8c-wcg8-r65c",
+          "GHSA-c4f7-cvfc-33j7"
+        ],
+        "publishedAt": "2026-07-24",
+        "fixCommit": "a2ed82d40964bbc0d64cd717aa0a5a892117d2e6"
+      },
+      {
+        "ids": [
+          "GHSA-w8q5-9hq2-h9pr"
+        ],
+        "publishedAt": null,
+        "fixCommit": "e3fba528d4aacbcafe12701b93943c543309d6d1"
+      },
+      {
+        "ids": [
+          "GHSA-m9rg-h9jv-9gvh"
+        ],
+        "publishedAt": null,
+        "fixCommit": "fcf830788d0c8dcd6bed7dcd532506aabf196523"
+      },
+      {
+        "ids": [
+          "GHSA-x4g5-mgfc-cxvv"
+        ],
+        "publishedAt": null,
+        "fixCommit": "15257c08f842705211b5b78013c5fc46fb545ad1"
+      },
+      {
+        "ids": [
+          "GHSA-53q9-wmqr-fh7c"
+        ],
+        "publishedAt": null,
+        "fixCommit": "0a17ea04dcc2b10b6817ae19d690e15f66c83624"
+      },
+      {
+        "ids": [
+          "GHSA-p2v4-ghw2-mvq3",
+          "GHSA-v6rf-jr7x-9hhp"
+        ],
+        "publishedAt": null,
+        "fixCommit": "4884fc6102b32b76f0b1606a76477abe0e68ee51"
+      },
+      {
+        "ids": [
+          "GHSA-qwvp-xm4w-32m7"
+        ],
+        "publishedAt": null,
+        "fixCommit": "b4e6761de0e6ea8a6592ea5407d721282292432c"
+      },
+      {
+        "ids": [
+          "GHSA-2q3j-q544-xxp7"
+        ],
+        "publishedAt": null,
+        "fixCommit": "9438f90ae03f52d54297f15ef23b05ebb7c5f598"
+      },
+      {
+        "ids": [
+          "GHSA-4q73-hh48-fmr8"
+        ],
+        "publishedAt": null,
+        "fixCommit": "b5c37a910d774065155458abcd6d2d89cc21a661"
+      },
+      {
+        "ids": [
+          "GHSA-vc97-vgww-qggv"
+        ],
+        "publishedAt": null,
+        "fixCommit": "5d27ee28ed8dbfa0846c5b9da65f2d35ea48f7d7"
+      }
     ],
     "incorporatedFixCommits": [],
     "requiredRevalidation": [
@@ -43,12 +206,12 @@
     ],
     "completedRevalidation": [],
     "lastUpstreamCheck": {
-      "checkedAt": "2026-07-18",
+      "checkedAt": "2026-10-24",
       "latestTaggedRelease": "libssh2-1.11.1",
-      "masterCommit": "95375dc0dd56e2457ae216249e6f6b8156d5f7a3",
-      "commitsSincePinnedRelease": 791,
+      "masterCommit": "6e7b2076a6ced2230968b27ee7c1abb77fe5a88d",
+      "commitsSincePinnedRelease": 1108,
       "allRequiredFixesAreAncestors": true,
-      "minimalBackportStatus": "blocked: 2dae3024897e1898d389835151f4e9606227721d conflicts in src/sftp.c when cherry-picked onto libssh2-1.11.1"
+      "minimalBackportStatus": "blocked: 2dae3024897e1898d389835151f4e9606227721d, the first required fix in master order, conflicts in src/sftp.c (sftp_symlink) when cherry-picked onto libssh2-1.11.1; applied alone, 6 of the 19 required fixes apply cleanly and 13 conflict"
     }
   }
 }
