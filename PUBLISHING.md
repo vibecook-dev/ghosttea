@@ -60,12 +60,12 @@ The three binary-carrying packages hold no binaries in the repository:
 runs `scripts/require-staged-binary.mjs`, so publishing an unstaged package
 fails closed instead of shipping a package that resolves to nothing.
 
-The release workflow stages them from the same jobs that gate the release:
-the macOS validate job builds the release daemon and the universal native
-tabs prebuild (`npm run build:ghosttea-native-tabs`), the Windows validate
-job builds `ghosttead.exe`, both upload artifacts, and the publish job runs
-`scripts/stage-published-binaries.mjs` to place them — restoring the
-executable bit that artifact transport drops — before the first
+The release workflow stages them from its validate jobs, which build them
+from the tag's tree: the macOS validate job builds the release daemon and the
+universal native tabs prebuild (`npm run build:ghosttea-native-tabs`), the
+Windows validate job builds `ghosttead.exe`, both upload artifacts, and the
+publish job runs `scripts/stage-published-binaries.mjs` to place them —
+restoring the executable bit that artifact transport drops — before the first
 `npm publish`.
 
 Staging also injects the daemon packages' `os`/`cpu` gates. The committed
@@ -112,6 +112,14 @@ The desktop gate builds and tests every workspace, validates npm and Rust
 package archives, builds external consumers exclusively from those archives,
 and runs the native lifecycle soak. GitHub separately checks the declared Rust
 1.88 minimum and extends the lifecycle soak on its weekly schedule.
+
+In CI, `publish-release.yml` does not repeat the desktop gate for a tag whose
+commit already passed it on main: its `main-gates` job waits for the push run
+of `desktop-release-gates.yml` for that exact commit, and the validate jobs
+build the binaries meanwhile. Anything else runs the gate in the release
+workflow itself, on macOS and Windows: a tag on an older line's branch, a run
+that failed or was cancelled, or no answer in time. The audits, the Apple
+artifact checks and the tagged SwiftPM consumer always run at tag time.
 
 `check:first-publishes` is the one gate step that is not in `ci:desktop`, and
 deliberately: it asks crates.io and npm what they already hold, so it needs the

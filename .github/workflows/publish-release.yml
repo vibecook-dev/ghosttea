@@ -60,6 +60,75 @@ jobs:
 
       - run: cargo audit
 
+  # A tag on a commit that reached main has already passed the desktop gate:
+  # desktop-release-gates.yml runs on every push to main, on macOS and Windows,
+  # against that exact tree. This waits for that run instead of repeating it,
+  # so the jobs that build what ships start at once.
+  #
+  # Anything short of a successful push run on main for this commit answers
+  # false, and the desktop-gate jobs below run the suite here as this workflow
+  # always did. That covers a tag on an older line's branch, a run that failed
+  # or was cancelled by a newer push, a timeout, and an API error.
+  main-gates:
+    needs: resolve
+    if: startsWith(needs.resolve.outputs.release_tag, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      passed: ${{ steps.lookup.outputs.passed }}
+    steps:
+      - name: Wait for main's desktop gate on the release commit
+        id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+        run: |
+          set -uo pipefail
+          answer() {
+            echo "passed=$1" >> "$GITHUB_OUTPUT"
+            echo "$2"
+            exit 0
+          }
+
+          if ! sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"; then
+            answer false "Could not resolve $RELEASE_TAG to a commit; the desktop gate runs here."
+          fi
+          runs="repos/$GITHUB_REPOSITORY/actions/workflows/desktop-release-gates.yml/runs"
+          query="event=push&branch=main&head_sha=$sha&per_page=1"
+          # A push run appears seconds after its push. A tag on an older line's
+          # branch never gets one.
+          appear_by=$((SECONDS + 180))
+          # Inside this job's 60 minutes, so a slow run on main still leaves an
+          # answer rather than a timeout.
+          give_up_at=$((SECONDS + 55 * 60))
+          while :; do
+            if latest="$(gh api "$runs?$query" --jq '.workflow_runs[0] // empty | "\(.id) \(.status) \(.conclusion // "none")"')"; then
+              if [ -z "$latest" ]; then
+                if [ "$SECONDS" -ge "$appear_by" ]; then
+                  answer false "No push run on main for $sha; the desktop gate runs here."
+                fi
+              else
+                read -r id status conclusion <<< "$latest"
+                if [ "$status" = completed ]; then
+                  if [ "$conclusion" = success ]; then
+                    answer true "Desktop release gates run $id passed on main for $sha."
+                  fi
+                  answer false "Desktop release gates run $id ended $conclusion for $sha; the desktop gate runs here."
+                fi
+                echo "Desktop release gates run $id is $status."
+              fi
+            else
+              echo "The GitHub API did not answer; asking again."
+            fi
+            if [ "$SECONDS" -ge "$give_up_at" ]; then
+              answer false "Main's desktop gate for $sha did not finish in time; the desktop gate runs here."
+            fi
+            sleep 30
+          done
+
   validate:
     needs: resolve
     if: startsWith(needs.resolve.outputs.release_tag, 'v')
@@ -88,10 +157,8 @@ jobs:
 
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
-      - run: npm run bootstrap:ghostty-vt:apple
-      - run: npm run ci:desktop
 
-      # `ci:desktop` covers the registry artifacts. It does not reach the
+      # The desktop gate covers the registry artifacts. It does not reach the
       # GhostteaKit native artifact, which ships to SwiftPM consumers through a
       # URL binary target rather than a registry — so before these two steps, a
       # release could publish a manifest whose artifact was missing, altered, or
@@ -113,9 +180,9 @@ jobs:
         run: node scripts/test-swiftpm-consumer.mjs --version "${RELEASE_TAG#v}"
 
       # The publish job runs on one platform, so every binary it publishes is
-      # handed over as an artifact from the job that could build and gate it.
-      # This job contributes the macOS daemon and the universal native tabs
-      # prebuild; `validate-windows` contributes the Windows daemon.
+      # handed over as an artifact from the job that built it from the tag's
+      # tree. This job contributes the macOS daemon and the universal native
+      # tabs prebuild; `validate-windows` contributes the Windows daemon.
       #
       # harfbuzz-sys probes pkg-config unless this is set, and a runner that
       # happens to carry the Homebrew formula then links the daemon against a
@@ -158,13 +225,99 @@ jobs:
           path: packages/ghosttea-native-tabs/prebuilds/ghosttea_native_tabs.node
           if-no-files-found: error
 
-  # The published crates and packages support Windows, so a release gate that
-  # only runs on macOS can ship a target it never built. This runs the same
-  # release gate there, building the Ghostty VT artifact from the pinned source
-  # as the desktop workflow does.
+  # The published crates and packages support Windows, so a release that only
+  # builds on macOS can ship a target it never built. This builds the Windows
+  # daemon from the tag's tree, with the Ghostty VT artifact built from the
+  # pinned source as the desktop workflow does. Its desktop gate is main's
+  # windows job for this commit, or desktop-gate-windows below.
   validate-windows:
     needs: resolve
     if: startsWith(needs.resolve.outputs.release_tag, 'v')
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.release_tag }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Require the package version to match the tag
+        run: test "v$(node -p "require('./package.json').version")" = "$RELEASE_TAG"
+
+      - run: npm ci --ignore-scripts
+      - run: npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
+      - run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
+
+      # Set for the same reason as the macOS build. Nothing on this runner
+      # answers a pkg-config probe today, so the vendored source is already
+      # what gets linked — this keeps that a decision rather than an accident.
+      - run: cargo build --release --locked --package ghosttead
+        env:
+          HARFBUZZ_SYS_NO_PKG_CONFIG: "1"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ghosttead-win32-x64
+          path: target/release/ghosttead.exe
+          if-no-files-found: error
+
+  # The desktop release gate, for a release commit main has not already passed.
+  # These are the steps the validate jobs used to run before building, on the
+  # same runners.
+  desktop-gate:
+    needs:
+      - resolve
+      - main-gates
+    if: >-
+      startsWith(needs.resolve.outputs.release_tag, 'v') &&
+      needs.main-gates.outputs.passed != 'true'
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      GHOSTTY_DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.release_tag }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Require the package version to match the tag
+        run: test "v$(node -p "require('./package.json').version")" = "$RELEASE_TAG"
+
+      - run: npm ci --ignore-scripts
+      - run: npm run bootstrap:ghostty-vt:apple
+      - run: npm run ci:desktop
+
+  desktop-gate-windows:
+    needs:
+      - resolve
+      - main-gates
+    if: >-
+      startsWith(needs.resolve.outputs.release_tag, 'v') &&
+      needs.main-gates.outputs.passed != 'true'
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -205,33 +358,34 @@ jobs:
           fi
           npm run ci:desktop
 
-      # Set for the same reason as the macOS build. Nothing on this runner
-      # answers a pkg-config probe today, so the vendored source is already
-      # what gets linked — this keeps that a decision rather than an accident.
-      - run: cargo build --release --locked --package ghosttead
-        env:
-          HARFBUZZ_SYS_NO_PKG_CONFIG: "1"
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ghosttead-win32-x64
-          path: target/release/ghosttead.exe
-          if-no-files-found: error
-
   publish:
     needs:
       - resolve
       - rust-audit
+      - main-gates
       - validate
       - validate-windows
+      - desktop-gate
+      - desktop-gate-windows
+    # The desktop gate passed either on main for this commit or in the two jobs
+    # above. `!cancelled()` lets this job run when those two were skipped
+    # because main had passed, so every other result is checked here: a failed
+    # job, or a gate skipped for any other reason, stops the release.
     if: >-
+      !cancelled() &&
       startsWith(needs.resolve.outputs.release_tag, 'v') &&
-      vars.OIDC_RELEASE_ENABLED == 'true'
+      vars.OIDC_RELEASE_ENABLED == 'true' &&
+      needs.rust-audit.result == 'success' &&
+      needs.validate.result == 'success' &&
+      needs.validate-windows.result == 'success' &&
+      (needs.main-gates.outputs.passed == 'true' ||
+      (needs.desktop-gate.result == 'success' && needs.desktop-gate-windows.result == 'success'))
     # npm provenance requires a GitHub-hosted runner.
     runs-on: macos-15
     # Most of this job is waiting for the registries to serve what it uploaded:
     # up to the budget below per crate and per layer of npm packages. A job
-    # that times out stops behind another approval, like any other failure.
+    # that times out fails like any other, and a re-run skips what the
+    # registries already hold.
     timeout-minutes: 120
     environment: release
     env:
@@ -338,11 +492,16 @@ jobs:
   # It deliberately does not request the `release` environment: `publish`
   # already cleared that gate, and asking again would stop a completed release
   # behind a second approval.
+  #
+  # `!cancelled()` and the explicit result keep it running when the desktop-gate
+  # jobs upstream were skipped because main had already passed this commit.
   github-release:
     needs:
       - resolve
       - publish
     if: >-
+      !cancelled() &&
+      needs.publish.result == 'success' &&
       startsWith(needs.resolve.outputs.release_tag, 'v') &&
       vars.OIDC_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-24.04
