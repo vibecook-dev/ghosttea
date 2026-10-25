@@ -83,7 +83,40 @@ jobs:
 
       - run: npm ci --ignore-scripts
       - run: npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
-      - run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
+
+      # The source build of the pinned Ghostty VT library took about three
+      # minutes of every run. It is reused while the lock, its patches, the build
+      # scripts and the runner image are unchanged. A new image can move MSVC or
+      # the Windows SDK, so it rebuilds from source, as does any change to what
+      # the build reads. Only the install tree ghosttea-vt-sys links is kept, not
+      # Zig's caches, and as with the Rust cache, pull requests only read it. The
+      # bootstrap above still runs because ci:desktop syncs fonts from the
+      # Ghostty checkout.
+      - name: Key the Ghostty VT build
+        id: vt-key
+        run: |
+          set -euo pipefail
+          inputs="$(sha256sum native/ghostty.lock.json native/patches/* scripts/bootstrap-ghostty-vt.mjs \
+            scripts/build-ghostty-vt.mjs scripts/ghostty-vt-target.mjs | sha256sum | cut -d' ' -f1)"
+          image="${ImageOS:-unknown}-${ImageVersion:-unknown}"
+          echo "key=ghostty-vt-x86_64-pc-windows-msvc-v1-$image-$inputs" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Ghostty VT build
+        id: vt
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ steps.vt-key.outputs.key }}
+          path: native/build/ghostty/x86_64-pc-windows-msvc/install
+
+      - if: steps.vt.outputs.cache-hit != 'true'
+        run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
+
+      - if: steps.vt.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ steps.vt-key.outputs.key }}
+          path: native/build/ghostty/x86_64-pc-windows-msvc/install
+
       - run: npm run ci:desktop
 
   minimum-rust:
