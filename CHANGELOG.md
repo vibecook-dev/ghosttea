@@ -3,6 +3,28 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.2 - 2026-10-23
+
+### Fixed
+
+- The prebuilt `ghosttead` daemons build against ctutils 0.4.5, which fixes
+  RUSTSEC-2026-0385 (non-constant-time mask generation and `u128`
+  comparisons) in the digest crates under the Truffle mesh transport, sha2 and
+  hmac.
+- They also build against tokio 1.53.3, which fixes RUSTSEC-2026-0386: tokio's
+  safe `AsyncFd` constructors accept a file descriptor the caller does not own.
+  Neither Ghosttea nor truffle-core calls them. Crates.io consumers resolve
+  their own versions.
+
+### Validation
+
+- The lifecycle soak's Windows handle bound divides the growth since its
+  baseline by every session churned since then, not by one round's sessions.
+  The weekly schedule read the documented one retained handle per session as
+  2.00 at its second round and failed against the 1.25 allowance every week.
+  It now reads 1.00 at every round, and a regression past the known handle
+  still fails. This changes the witness, not runtime behavior.
+
 ## 0.13.1 - 2026-10-22
 
 ### Added
