@@ -106,6 +106,15 @@ jobs:
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
 
+      # Restores the compiled dependencies of build:apple-native's three Apple
+      # targets, with the same policy as the desktop gates: pull requests only
+      # read the cache, workspace crates always rebuild, and ~/.cargo/bin stays
+      # out of it. The publication build never uses this cache.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
+
       - run: npm ci --ignore-scripts
       - run: npm run check:ios-release-toolchain
       - run: npm run check:swiftpm:manifests
