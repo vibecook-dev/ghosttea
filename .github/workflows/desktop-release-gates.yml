@@ -126,6 +126,23 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@1.88.0
+        id: toolchain
+
+      # rust-cache keys on every installed toolchain, and the runner image ships
+      # its own stable beside the pinned one. Removing it keeps the key to the
+      # toolchain this job builds with, so an image update does not empty the
+      # cache. The pinned toolchain is rustup's default, so nothing runs another.
+      - name: Keep only the pinned toolchain
+        env:
+          PINNED: ${{ steps.toolchain.outputs.name }}
+        run: |
+          test -n "$PINNED" || { echo "dtolnay/rust-toolchain reported no toolchain name" >&2; exit 1; }
+          for toolchain in $(rustup toolchain list --quiet); do
+            case "$toolchain" in
+              "$PINNED"-*) ;;
+              *) rustup toolchain uninstall "$toolchain" ;;
+            esac
+          done
 
       # The same dependency cache as verify, separate because rustc differs.
       - uses: Swatinem/rust-cache@v2
