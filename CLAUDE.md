@@ -148,13 +148,15 @@ Rules in the renderer:
 
 See `PUBLISHING.md`. In outline, on a `release/X.Y.Z` branch:
 
-1. Commit `release: X.Y.Z`. It is a pure version bump across the manifests, `Cargo.lock`, `package-lock.json` and the regenerated iOS inventory, plus a dated `CHANGELOG.md` section.
-2. Dispatch `ghosttea-apple-native-artifact.yml` with `publish: true` on that branch.
-3. Commit `release: pin X.Y.Z Apple native artifact`.
-4. Merge the PR, then push a signed `vX.Y.Z` tag on the merge commit. Auto-merge is enabled for the repository (`gh pr merge --auto --merge`), but it waits only for the required `verify` and `windows` checks, so confirm the iOS and Apple artifact runs before tagging.
+1. Commit `release: X.Y.Z` and push the branch. The commit is a pure version bump across the manifests, `Cargo.lock`, `package-lock.json` and the regenerated iOS inventory, plus a dated `CHANGELOG.md` section.
+2. Wait for the pin. The bump moves the native source digest, so the push's run of `ghosttea-apple-native-artifact.yml` builds, publishes and pins the iOS artifact. It commits `release: pin X.Y.Z Apple native artifact` as github-actions[bot] and starts the desktop and iOS gates for that commit itself; a push made with `GITHUB_TOKEN` triggers no workflows.
+3. Merge the PR. Auto-merge is enabled for the repository (`gh pr merge --auto --merge`), but it waits only for the required `verify` and `windows` checks. Also confirm the dispatched iOS hardening run and the artifact workflow's `pin` job.
+4. Push a signed `vX.Y.Z` tag on the merge commit.
 
-`publish-release.yml` then re-validates, publishes the crates and npm packages through OIDC trusted publishing, and creates the GitHub release. `smoke-published.yml` installs what shipped.
+`publish-release.yml` then waits for main's push run of `desktop-release-gates.yml` on that commit instead of repeating it, while the validate jobs build the binaries. It publishes the crates and npm packages through OIDC trusted publishing and creates the GitHub release. `smoke-published.yml` then installs what shipped. A tag on an older line's branch, or on a commit main did not pass, runs the desktop gate in the release workflow itself.
 
+- **If the pin job fails:** dispatch `ghosttea-apple-native-artifact.yml` with `publish: true` on the branch and pin by hand. `apple/GhostteaKit/Compatibility/apple-native-spm-publishing.md` has the steps, and `scripts/pin-ghosttea-apple-native.mjs` writes the commit.
+- **Signing:** release tags are SSH-signed with the key that signed v0.12.0 through v0.13.2 (`SHA256:yk7gi7NBSTHYt0XZfcs6EpTUGgiSJ8+vEUAQlYsF5QU`). In a clone whose git defaults to GPG, add `-c gpg.format=ssh -c user.signingkey="key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII8j3+I6eSVygp8ksPFLv7NRarYHQudxwUZ1aQyF3O25"` to `git tag -s`.
 - **Keep the environment:** the publish jobs must keep `environment: release`, because npm and crates.io trust that environment. Since 2026-10-24 it has no required reviewer, and only `v*` tags and `release/*` branches can deploy to it.
 - **Tag rule:** the "release tags" ruleset lets only admins create, move or delete `v*` tags, so an admin's tag push is the release gate. Automation that needs to push `v*` tags must be added as a bypass actor.
 - **Never overwrite:** registry versions are immutable and tags never move. To resume a partial release, push a `vX.Y.Z-retry.N` tag.
@@ -167,5 +169,6 @@ See `PUBLISHING.md`. In outline, on a `release/X.Y.Z` branch:
 - **Commit bodies:** bullet lists that cite commits, PRs, advisory IDs and what was verified.
 - **Branches and PRs:** branch prefixes are `feat/`, `fix/`, `chore/`, `ci/`, `deps/`, `test/` and `release/X.Y.Z`. PRs land as merge commits.
 - **CI runs:** don't dispatch `desktop-release-gates.yml` or `ios-release-hardening.yml` by hand on a branch that has a PR. The PR already runs them, and the duplicates compete for macOS runners. Open the PR, as a draft if needed, and cite its runs.
+- **CI caches:** CI caches the Rust dependency builds, the Windows Ghostty VT build and the iOS native inputs. Only runs on main, the schedule and dispatches save them; pull requests read main's. A first run after a lockfile, pin or runner-image change is partly cold, so expect it to be slower. Release builds never use these caches.
 - **Open issues:** there is no roadmap file. Open issues are recorded where they live, such as "Known Windows session cost" in `native/ghosttea/README.md`.
 - **Design docs:** `draft/` holds the July 2026 design documents. Use them for background, not as the spec; the code has diverged.
