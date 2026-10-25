@@ -3,6 +3,51 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.3 - 2026-10-25
+
+### Added
+
+- `@vibecook/ghosttea-react/workspace` exports `bindingKeyDisposition` and its
+  `BindingKeyDisposition` type. Given a terminal binding's flags and whether
+  its effect was performed, it says whether the binding consumes its key.
+
+### Fixed
+
+- Text the platform inserts without a keydown reaches the terminal. The macOS
+  Character Viewer, the Windows emoji panel, touch keyboards, voice typing, a
+  soft keyboard's text, Enter and Backspace, and IME commits outside a
+  composition used to be dropped.
+- A keydown the IME processes is left to the text system, so its letter no
+  longer reaches the PTY ahead of the commit.
+- A binding that does not consume its key sends it to the terminal, as Ghostty
+  does. Shift+Arrow and Ctrl+Shift+C with no selection, `unconsumed:` binds,
+  and tab and split shortcuts that could not be performed no longer drop the
+  key.
+- Pressing a modifier alone no longer ends the selection, and only the exact
+  Ctrl+C sends the interrupt.
+
+### Changed
+
+- `ghosttea-text` builds against fontdb 0.24.0, which no longer depends on
+  ttf-parser, so RUSTSEC-2026-0192 no longer applies and `cargo audit` ignores
+  nothing. Its public API is unchanged.
+  - On iOS, fontdb's system font scan now reads the macOS font directories.
+    The library's own font path does not use that scan.
+- The Apple native artifact is rebuilt for this release. Its source digest now
+  also covers `ghosttea-config`, which the artifact links.
+
+### Validation
+
+- `check-apple-native-artifact.mjs` derives the crates compiled into the Apple
+  native artifact from their path dependencies, and fails when the source
+  digest's inputs miss one. `ghosttea-config` was missing from them through
+  0.13.2.
+- A release tag reuses main's desktop gate run for its commit instead of
+  repeating it.
+- A push to a release branch builds, publishes and pins the Apple native
+  artifact.
+- Neither of the last two changes what ships.
+
 ## 0.13.2 - 2026-10-23
 
 ### Fixed
