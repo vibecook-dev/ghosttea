@@ -1,5 +1,72 @@
 import { describe, expect, it } from "vitest";
-import { createPaneFocusScheduler } from "./pane-focus";
+import type { SessionSummary } from "@vibecook/ghosttea-protocol";
+import { createPaneFocusScheduler, directionalPaneTarget, paneBoxes, relativePaneTarget } from "./pane-focus";
+import { pane, type PaneNode } from "./pane-layout";
+
+const leaf = (id: string) => pane(id, { id } as SessionSummary);
+let splits = 0;
+const split = (axis: "horizontal" | "vertical", first: PaneNode, second: PaneNode, ratio = 0.5): PaneNode => ({
+  kind: "split",
+  id: `split-${++splits}`,
+  axis,
+  ratio,
+  first,
+  second,
+});
+
+describe("where a goto_split moves focus, and whether it moves at all", () => {
+  it("wraps previous and next, and goes nowhere from a single pane or an unknown one", () => {
+    const layout = split("horizontal", leaf("a"), split("vertical", leaf("b"), leaf("c")));
+    expect(relativePaneTarget(layout, "a", 1)).toBe("b");
+    expect(relativePaneTarget(layout, "a", -1)).toBe("c");
+    expect(relativePaneTarget(layout, "c", 1)).toBe("a");
+    expect(relativePaneTarget(leaf("a"), "a", 1)).toBeNull();
+    expect(relativePaneTarget(layout, "gone", 1)).toBeNull();
+    expect(relativePaneTarget(undefined, undefined, 1)).toBeNull();
+  });
+
+  it("places each pane by the layout's ratios in a unit square", () => {
+    const layout = split("horizontal", leaf("left"), split("vertical", leaf("top"), leaf("bottom"), 0.25), 0.4);
+    expect(paneBoxes(layout)).toEqual([
+      { id: "left", left: 0, top: 0, width: 0.4, height: 1 },
+      { id: "top", left: 0.4, top: 0, width: 0.6, height: 0.25 },
+      { id: "bottom", left: 0.4, top: 0.25, width: 0.6, height: 0.75 },
+    ]);
+    expect(paneBoxes(leaf("a"))).toEqual([{ id: "a", left: 0, top: 0, width: 1, height: 1 }]);
+    expect(paneBoxes(undefined)).toEqual([]);
+  });
+
+  it("goes to the nearest pane that way, off-axis distance counting double", () => {
+    const boxes = paneBoxes(
+      split("horizontal", leaf("left"), split("vertical", leaf("top-right"), leaf("bottom-right"))),
+    );
+    expect(directionalPaneTarget(boxes, "left", "right")).toBe("top-right");
+    expect(directionalPaneTarget(boxes, "bottom-right", "left")).toBe("left");
+    expect(directionalPaneTarget(boxes, "top-right", "down")).toBe("bottom-right");
+    expect(directionalPaneTarget(boxes, "bottom-right", "up")).toBe("top-right");
+  });
+
+  it("wraps around the layout when no pane lies that way, as Ghostty's nearestWrapped does", () => {
+    const boxes = paneBoxes(
+      split("horizontal", leaf("left"), split("vertical", leaf("top-right"), leaf("bottom-right"))),
+    );
+    // Ghostty lands on the same panes: the source moves one whole layout the other way.
+    expect(directionalPaneTarget(boxes, "left", "left")).toBe("top-right");
+    expect(directionalPaneTarget(boxes, "top-right", "up")).toBe("bottom-right");
+    expect(directionalPaneTarget(boxes, "bottom-right", "right")).toBe("left");
+    const pair = paneBoxes(split("horizontal", leaf("a"), leaf("b")));
+    for (const direction of ["left", "right", "up", "down"] as const) {
+      expect(directionalPaneTarget(pair, "a", direction), direction).toBe("b");
+      expect(directionalPaneTarget(pair, "b", direction), direction).toBe("a");
+    }
+  });
+
+  it("goes nowhere from a single pane or an unknown one", () => {
+    expect(directionalPaneTarget(paneBoxes(leaf("a")), "a", "right")).toBeNull();
+    expect(directionalPaneTarget(paneBoxes(split("horizontal", leaf("a"), leaf("b"))), "gone", "right")).toBeNull();
+    expect(directionalPaneTarget([], undefined, "left")).toBeNull();
+  });
+});
 
 function animationFrames() {
   let nextId = 0;

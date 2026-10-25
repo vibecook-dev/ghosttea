@@ -4,10 +4,10 @@ import type { ClipboardEvent, CSSProperties, KeyboardEvent, PointerEvent, WheelE
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import { useGhostteaRuntime } from "./context.js";
 import { terminalKeyboardLayout, terminalKeyDown, terminalKeyUp } from "./keyboard-input.js";
-import { terminalEffectShouldConsume, type TerminalEffect } from "./bindings/action-route.js";
+import { bindingKeyDisposition, type TerminalEffect } from "./bindings/action-route.js";
 import { resolveTerminalBinding, type ResolvedTerminalBinding } from "./terminal-bindings.js";
 import type { GhosttyBindingEntry } from "./bindings/ghostty-bindings.js";
-import type { KeyEventLike } from "./bindings/ghostty-triggers.js";
+import { parseGhosttyTrigger, triggerMatchesEvent, type KeyEventLike } from "./bindings/ghostty-triggers.js";
 import {
   CELL_WIDTH,
   DEFAULT_EFFECTS,
@@ -115,6 +115,230 @@ export function routeSurfaceKeyDown(
   // Terminal-scoped Ghostty binds only (workspace/platform/unhandled owned by Workspace).
   const binding = resolveTerminalBinding(event, platform, bindings);
   return binding ? { type: "binding", binding } : { type: "terminal" };
+}
+
+/**
+ * What running a terminal binding's effect did: Ghostty's performed or not,
+ * or, for a paste on a host without `readClipboard`, left to the keydown's
+ * default action. That is the platform's own paste only when the keydown is
+ * one of its paste chords (`isPlatformPasteChord`), and only then is it left
+ * unprevented; any other chord counts it unperformed.
+ */
+export type TerminalEffectOutcome = "performed" | "unperformed" | "default-action";
+
+/** What the surface's effects depend on. */
+export interface TerminalEffectState {
+  readonly hasSelection: boolean;
+  readonly interactive: boolean;
+  /** The host gave the surface `readClipboard`. */
+  readonly readsClipboard: boolean;
+}
+
+/**
+ * Whether the surface can perform a terminal binding's effect now, as Ghostty
+ * decides it for the same actions: copying, adjusting or scrolling to a
+ * selection needs one (Surface.zig: "If we don't have a selection we do not
+ * perform this action, allowing the keybind to fall through to the terminal"),
+ * text and pastes need a surface that takes input, and a host without
+ * `readClipboard` leaves its paste to the keydown's default action, which
+ * `handleSurfaceKeyDown` honours only for the platform's paste chords.
+ */
+export function terminalEffectAvailability(effect: TerminalEffect, state: TerminalEffectState): TerminalEffectOutcome {
+  switch (effect.type) {
+    case "copy":
+    case "adjust_selection":
+    case "scroll_to_selection":
+      return state.hasSelection ? "performed" : "unperformed";
+    case "paste":
+      if (!state.interactive) return "unperformed";
+      return state.readsClipboard ? "performed" : "default-action";
+    case "text":
+      return state.interactive ? "performed" : "unperformed";
+    default:
+      return "performed";
+  }
+}
+
+/** Whether the platform's key bindings are macOS's, as the binding tables choose them: darwin, or unknown. */
+function macKeyboard(platform: string | undefined): boolean {
+  return platform !== "linux" && platform !== "win32";
+}
+
+const MAC_PASTE_CHORDS = ["super+v", "super+shift+v"].map(parseGhosttyTrigger);
+const PC_PASTE_CHORDS = ["ctrl+v", "ctrl+shift+v", "shift+insert"].map(parseGhosttyTrigger);
+
+/**
+ * Whether a text field's default action for this keydown is a paste: Cmd+V or
+ * Cmd+Shift+V on macOS; Ctrl+V, Ctrl+Shift+V or Shift+Insert elsewhere. Only
+ * these may be left to the platform when the host gives no `readClipboard`;
+ * another chord's default would type its text instead (Option+V types "√").
+ */
+export function isPlatformPasteChord(event: KeyEventLike, platform: string | undefined): boolean {
+  return (macKeyboard(platform) ? MAC_PASTE_CHORDS : PC_PASTE_CHORDS).some((chord) =>
+    triggerMatchesEvent(chord, event),
+  );
+}
+
+/**
+ * A macOS Cmd chord that would type its text on a session host that is not
+ * macOS. Ghostty on macOS encodes no legacy text for Cmd+key
+ * (key_encode.zig:543-545, `builtin.os.tag == .macos and all_mods.super`), but
+ * the session's daemon encodes the key, and a remote session's daemon on Linux
+ * or Windows types the letter. Ctrl takes Ghostty's CSI u path first, so a
+ * chord with Ctrl is not one. A stopgap until a key carries the client's
+ * platform to the host.
+ */
+export function isMacCommandText(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey">,
+  platform: string | undefined,
+): boolean {
+  if (!macKeyboard(platform) || !event.metaKey || event.ctrlKey) return false;
+  const chars = [...event.key];
+  return chars.length === 1 && !/\p{Cc}/u.test(event.key);
+}
+
+/** The keydown fields the surface reads: the text system's, a binding's and the terminal key's. */
+export type SurfaceKeyboardEventLike = TerminalTextKeyEventLike &
+  KeyEventLike &
+  Pick<KeyboardEvent, "code" | "location" | "repeat" | "timeStamp">;
+
+/** The event's dispatch controls. For a React handler, its synthetic event. */
+export interface SurfaceKeyDispatch {
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+/** What a keydown on the surface reaches. */
+export interface SurfaceKeyInput {
+  readonly textInput: TerminalTextInput;
+  readonly platform: string | undefined;
+  readonly bindings: readonly GhosttyBindingEntry[] | undefined;
+  /** Whether the surface takes input. A read-only surface sends no key. */
+  readonly interactive: boolean;
+  readonly runtime: Pick<GhostteaTerminalRuntime, "sendKey" | "interrupt">;
+  readonly surface: { readonly sessionId: string; readonly viewId: string };
+  /** The presses sent to the terminal, by `code`, so that each one's release follows it. */
+  readonly forwardedKeys: Map<string, TerminalKeyEvent>;
+  executeEffect(effect: TerminalEffect): TerminalEffectOutcome;
+  /** Ends the view's selection, as typing does. */
+  clearSelection(): void;
+}
+
+/**
+ * What became of a keydown: left to the text system, taken by a binding, left
+ * to its default action (a binding's paste), withheld (a macOS Cmd chord a
+ * performable binding could not act on), prevented on a read-only surface,
+ * sent as the interrupt, or sent as a key.
+ */
+export type SurfaceKeyDownOutcome =
+  "text-system" | "binding" | "default-action" | "withheld" | "read-only" | "interrupt" | "key";
+
+/** The physical modifier keys, which Ghostty's `Key.modifier` names. Firefox before 118 called Meta "OS". */
+const MODIFIER_CODES: ReadonlySet<string> = new Set([
+  "ShiftLeft",
+  "ShiftRight",
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "MetaLeft",
+  "MetaRight",
+  "OSLeft",
+  "OSRight",
+]);
+
+/** A modifier pressed alone: it is sent to the terminal but, as in Ghostty, it is not typing. */
+export function isModifierKey(event: Pick<KeyboardEvent, "code">): boolean {
+  return MODIFIER_CODES.has(event.code);
+}
+
+/**
+ * The keydown the surface sends as the session's interrupt (ETX): Ctrl+C, and
+ * only the chord Ghostty encodes as ETX. Alt only prefixes ESC there, but with
+ * Shift or Super added Ghostty no longer takes it for a control character and
+ * encodes it as a key (CSI u), so Ctrl+Shift+C reaches the encoder.
+ */
+export function isTerminalInterrupt(
+  event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+): boolean {
+  return event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && event.key.toLowerCase() === "c";
+}
+
+/**
+ * Handles a keydown on the surface as Ghostty's `Surface.keyCallback` does:
+ * the text system's keydowns are its own; a terminal binding's effect runs, and
+ * the key ends there unless the binding does not consume it. An `unconsumed:`
+ * bind's key, after its effect, and a `performable:` bind's whose effect could
+ * not be performed (no selection to copy or adjust) go on as the key, exactly
+ * as an unbound key does: nothing on a read-only surface, the selection ended
+ * unless it is a modifier alone, then the interrupt or the key, its release
+ * paired through `forwardedKeys`.
+ *
+ * One exception: a macOS Cmd chord with text that a performable bind could not
+ * act on (Cmd+C or Cmd+J with no selection) is withheld, because
+ * the session may live on a host whose encoder types its letter
+ * (`isMacCommandText`). A macOS host would encode nothing for it in legacy
+ * mode anyway.
+ */
+export function handleSurfaceKeyDown(
+  event: SurfaceKeyboardEventLike,
+  dispatch: SurfaceKeyDispatch,
+  input: SurfaceKeyInput,
+): SurfaceKeyDownOutcome {
+  const route = routeSurfaceKeyDown(event, input.textInput, input.platform, input.bindings);
+  if (route.type === "text-system") return "text-system";
+  let withhold = false;
+  if (route.type === "binding") {
+    const { effect, flags } = route.binding;
+    const outcome = input.executeEffect(effect);
+    if (outcome === "default-action" && isPlatformPasteChord(event, input.platform)) return "default-action";
+    const performed = outcome === "performed";
+    if (bindingKeyDisposition(flags, performed) === "consume") {
+      dispatch.preventDefault();
+      dispatch.stopPropagation();
+      return "binding";
+    }
+    withhold = flags.performable && !performed && flags.unconsumed !== true && isMacCommandText(event, input.platform);
+  }
+
+  if (!input.interactive) {
+    dispatch.preventDefault();
+    return "read-only";
+  }
+  if (withhold) {
+    dispatch.preventDefault();
+    dispatch.stopPropagation();
+    return "withheld";
+  }
+  if (!isModifierKey(event)) input.clearSelection();
+  const { sessionId, viewId } = input.surface;
+  if (isTerminalInterrupt(event)) {
+    input.runtime.interrupt(sessionId, viewId);
+    dispatch.preventDefault();
+    dispatch.stopPropagation();
+    return "interrupt";
+  }
+  const terminalEvent = terminalKeyDown(event);
+  input.runtime.sendKey(sessionId, viewId, terminalEvent);
+  input.forwardedKeys.set(event.code, terminalEvent);
+  dispatch.preventDefault();
+  dispatch.stopPropagation();
+  return "key";
+}
+
+/** Sends the release of a press the surface sent, once. A release of anything else is not the terminal's. */
+export function handleSurfaceKeyUp(
+  event: Parameters<typeof terminalKeyUp>[1],
+  dispatch: SurfaceKeyDispatch,
+  input: Pick<SurfaceKeyInput, "runtime" | "surface" | "forwardedKeys">,
+): boolean {
+  const pressed = input.forwardedKeys.get(event.code);
+  if (!pressed) return false;
+  input.forwardedKeys.delete(event.code);
+  input.runtime.sendKey(input.surface.sessionId, input.surface.viewId, terminalKeyUp(pressed, event));
+  dispatch.preventDefault();
+  dispatch.stopPropagation();
+  return true;
 }
 
 /**
@@ -328,17 +552,23 @@ function TerminalSurfaceSession({
   }, []);
 
   const executeTerminalEffect = useCallback(
-    (effect: TerminalEffect): boolean => {
+    (effect: TerminalEffect): TerminalEffectOutcome => {
       const { cols, rows } = gridRef.current;
       const total = Math.max(rows, scrollbarRef.current.total);
       const viewportLen = Math.max(1, scrollbarRef.current.length || rows);
+      const selection = selectionRef.current;
+      const availability = terminalEffectAvailability(effect, {
+        hasSelection: selection !== null,
+        interactive,
+        readsClipboard: readClipboard !== undefined,
+      });
+      if (availability !== "performed") return availability;
 
-      if (effect.type === "copy") {
-        if (!selectionRef.current) return false;
+      if (effect.type === "copy" && selection) {
         void terminalRuntime
-          .copySelection(session.id, viewId, selectionRef.current, selectionAllRef.current)
+          .copySelection(session.id, viewId, selection, selectionAllRef.current)
           .catch((error: unknown) => console.error("[terminal-runtime] clipboard copy failed", error));
-        return true;
+        return "performed";
       }
       if (effect.type === "select_all") {
         setLocalSelection({ anchor: { column: 0, row: 0 }, focus: { column: cols - 1, row: total - 1 } }, true);
@@ -347,11 +577,10 @@ function TerminalSurfaceSession({
           viewportSelection(selectionRef.current, scrollbarRef.current, cols, rows),
           viewId,
         );
-        return true;
+        return "performed";
       }
       if (effect.type === "paste") {
-        if (!interactive || !readClipboard) return false;
-        void Promise.resolve(readClipboard())
+        void Promise.resolve(readClipboard?.())
           .then((text) => {
             if (!text) return;
             selectionAnchorRef.current = null;
@@ -360,61 +589,56 @@ function TerminalSurfaceSession({
             terminalRuntime.paste(session.id, viewId, text);
           })
           .catch((error: unknown) => console.error("[terminal-runtime] clipboard paste failed", error));
-        return true;
+        return "performed";
       }
       if (effect.type === "text" || effect.type === "clear_screen") {
-        if (!interactive && effect.type === "text") return false;
         selectionAnchorRef.current = null;
         setLocalSelection(null);
         terminalRuntime.setSelection(session.handle, null, viewId);
         terminalRuntime.sendText(session.id, viewId, effect.type === "clear_screen" ? "\u000c" : effect.text);
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_to_top") {
         terminalRuntime.scrollTo(session.id, viewId, 0);
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_to_bottom") {
         terminalRuntime.scrollTo(session.id, viewId, Math.max(0, total - viewportLen));
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_to_row") {
         terminalRuntime.scrollTo(session.id, viewId, Math.max(0, effect.row));
-        return true;
+        return "performed";
       }
-      if (effect.type === "scroll_to_selection") {
-        const selection = selectionRef.current;
-        if (!selection) return false;
+      if (effect.type === "scroll_to_selection" && selection) {
         const row = Math.min(selection.anchor.row, selection.focus.row);
         terminalRuntime.scrollTo(session.id, viewId, Math.max(0, row));
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_page_up") {
         terminalRuntime.scroll(session.id, viewId, -rows);
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_page_down") {
         terminalRuntime.scroll(session.id, viewId, rows);
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_page_fractional") {
         const delta = Math.trunc(rows * effect.amount);
         if (delta !== 0) terminalRuntime.scroll(session.id, viewId, delta);
-        return true;
+        return "performed";
       }
       if (effect.type === "scroll_page_lines") {
         if (effect.lines !== 0) terminalRuntime.scroll(session.id, viewId, effect.lines);
-        return true;
+        return "performed";
       }
-      if (effect.type === "adjust_selection") {
-        const selection = selectionRef.current;
-        if (!selection) return false;
+      if (effect.type === "adjust_selection" && selection) {
         const nextFocus = adjustSelectionFocus(selection.focus, effect.direction, {
           cols,
           rows,
           totalRows: total,
         });
-        if (!nextFocus) return false;
+        if (!nextFocus) return "unperformed";
         setLocalSelection({ anchor: selection.anchor, focus: nextFocus });
         // Keep keyboard-adjusted focus visible (Ghostty scrolls selection into view).
         const offset = scrollbarRef.current.offset;
@@ -428,9 +652,9 @@ function TerminalSurfaceSession({
           viewportSelection(selectionRef.current, scrollbarRef.current, cols, rows),
           viewId,
         );
-        return true;
+        return "performed";
       }
-      return false;
+      return "unperformed";
     },
     [interactive, readClipboard, session.handle, session.id, setLocalSelection, terminalRuntime, viewId],
   );
@@ -618,47 +842,28 @@ function TerminalSurfaceSession({
     };
   }, [active, inputFocused, releaseForwardedKeys, session.handle, terminalRuntime, viewId]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    const route = routeSurfaceKeyDown(event.nativeEvent, textInput, platform, bindings);
-    if (route.type === "text-system") return;
-    if (route.type === "binding") {
-      const { effect, flags } = route.binding;
-      const applied = executeTerminalEffect(effect);
-      // Performable binds only consume when applied (Ghostty Binding.Flags.performable).
-      if (terminalEffectShouldConsume(effect, applied, flags)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      return;
-    }
+  const keyInput = (): SurfaceKeyInput => ({
+    textInput,
+    platform,
+    bindings,
+    interactive,
+    runtime: terminalRuntime,
+    surface: { sessionId: session.id, viewId },
+    forwardedKeys: forwardedKeysRef.current,
+    executeEffect: executeTerminalEffect,
+    clearSelection: () => {
+      selectionAnchorRef.current = null;
+      setLocalSelection(null);
+      terminalRuntime.setSelection(session.handle, null, viewId);
+    },
+  });
 
-    if (!interactive) {
-      event.preventDefault();
-      return;
-    }
-    selectionAnchorRef.current = null;
-    setLocalSelection(null);
-    terminalRuntime.setSelection(session.handle, null, viewId);
-    if (event.ctrlKey && !event.altKey && event.key.toLowerCase() === "c") {
-      terminalRuntime.interrupt(session.id, viewId);
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    const terminalEvent = terminalKeyDown(event.nativeEvent);
-    terminalRuntime.sendKey(session.id, viewId, terminalEvent);
-    forwardedKeysRef.current.set(event.code, terminalEvent);
-    event.preventDefault();
-    event.stopPropagation();
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    handleSurfaceKeyDown(event.nativeEvent, event, keyInput());
   };
 
   const onKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    const pressed = forwardedKeysRef.current.get(event.code);
-    if (!pressed) return;
-    forwardedKeysRef.current.delete(event.code);
-    terminalRuntime.sendKey(session.id, viewId, terminalKeyUp(pressed, event.nativeEvent));
-    event.preventDefault();
-    event.stopPropagation();
+    handleSurfaceKeyUp(event.nativeEvent, event, keyInput());
   };
 
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {

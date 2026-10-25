@@ -55,7 +55,7 @@ provide `platform.openExternal` and use a daemon that emits TRF1 link targets.
 | `minimum-contrast`                               | Applied live to text glyphs and decorations by WebGPU, preserving hue instead of snapping to black or white; box drawing, block elements, and color glyphs are exempt | Applied by the Metal renderer with the same rules                                                                                                                            |
 | `ghosttea-light-adaptation` (Ghosttea key)       | `auto` (default) restyles panes an application paints dark while a light theme is active; `off` renders application colors as sent                                    | Same remap in the Metal renderer; also carried in the remote presentation                                                                                                    |
 | `scrollback-limit`                               | Applied to new sessions; default is Ghostty's 10,000,000 bytes                                                                                                        | Available through `GhostteaTerminalConfiguration(config:)`; the core default is 10,000,000 bytes, while the iOS app may deliberately impose its device memory budget         |
-| `keybind`                                        | Mutations overlay the pinned 93-entry platform table; `clear`, blank reset, `unbind`, supported single-stroke actions, and `unconsumed:` are applied                  | Preserved in the shared API; the Swift workspace still has a smaller hand-written action router                                                                              |
+| `keybind`                                        | Mutations overlay the pinned 93-entry platform table; `clear`, blank reset, `unbind`, supported single-stroke actions, `unconsumed:` and `performable:` are applied   | Preserved in the shared API; the Swift workspace still has a smaller hand-written action router                                                                              |
 | `window-padding-x/y`                             | Parsed, not yet used by the fixed desktop cell geometry                                                                                                               | Applied by `GhostteaTerminalMetalView.applyConfiguration(_:)`                                                                                                                |
 | `font-family`, `font-size`                       | Parsed, but runtime font metrics are still selected at process startup                                                                                                | `font-size` scales shaping and grid metrics and atomically reshapes a live shared replica; arbitrary `font-family` values remain diagnosed because Apple uses bundled fonts  |
 | `custom-shader`, `custom-shader-animation`       | Namespaced built-ins compose in declaration order through ping-pong WebGPU passes. Canvas fallback and arbitrary Ghostty GLSL are unsupported                         | Namespaced built-ins compose in declaration order through Metal passes and remain device-owned in shared sessions; arbitrary Ghostty shader paths are diagnosed/preserved    |
@@ -129,11 +129,32 @@ when Appearance has pending edits. Workspace shortcuts pause while Settings is
 open. Electron also mirrors Advanced dirty state in main, so pane/window close
 and application quit cannot bypass the discard confirmation.
 
-Desktop key sequences, key tables, chained actions, and the full
-`all:`/`global:`/`performable:` semantics are preserved in the snapshot but are
-not applied yet. An unsupported action never replaces a working default
-binding. Ghosttea's product-owned `super+shift+o` remote-session shortcut
-currently takes precedence if an imported config uses the same trigger.
+Desktop key sequences, key tables and chained actions are preserved in the
+snapshot but are not applied yet. `unconsumed:` and `performable:` follow
+Ghostty's `Surface.maybeHandleBinding`: an unconsumed bind's key is still sent
+after its action, and a performable bind whose action cannot be performed (no
+selection to copy or adjust; a single pane, so no split to go to, resize or
+zoom; no host hook; or a tab switch the host's `selectTab` reports as a no-op)
+sends its key as if it were not bound. As in Ghostty's GTK app, going to a
+split wraps around the layout and ends a zoom, and a resize counts as
+performed whenever there is a split. The desktop host does not report tab
+no-ops yet, so its performable tab shortcuts still consume their key.
+
+One exception keeps such a key from the terminal: on macOS, a Cmd chord with
+text that a performable bind could not act on (Cmd+C or Cmd+J with no
+selection) is withheld. The session's daemon encodes keys, and a remote
+session's host on Linux or Windows would type the letter, where Ghostty on
+macOS types nothing. On a host that gives the surface no `readClipboard`, a
+paste bind leaves the keydown to the platform only for its own paste chords
+(Cmd+V; Ctrl+V or Shift+Insert elsewhere); a paste bound to any other chord
+counts as not performed.
+
+`ignore` never sends its key, whatever its flags. `all:` and `global:` binds
+always consume their key, as Ghostty's do, but run as a plain bind does:
+neither multi-surface nor OS-global execution is implemented. An unsupported
+action never replaces a working default binding. Ghosttea's product-owned
+`super+shift+o` remote-session shortcut currently takes precedence if an
+imported config uses the same trigger.
 
 ## APIs
 
