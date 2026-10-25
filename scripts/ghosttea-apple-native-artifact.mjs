@@ -6,7 +6,9 @@
 // from the other.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, posix, resolve } from "node:path";
+
+import { pathDependencies, workspacePathDependencies } from "./cargo-path-dependencies.mjs";
 
 export const root = resolve(import.meta.dirname, "..");
 
@@ -153,6 +155,12 @@ export function stableJson(value) {
  * pins fixing the vendored Ghostty and libssh2 inputs, and the scripts that
  * compile and compose them.
  *
+ * The crates are listed by hand, so the list is checked against what links:
+ * `uncoveredAppleNativeCrates()` walks the path dependencies from
+ * ghosttea-apple-ffi, and check-apple-native-artifact.mjs fails on any crate the
+ * list misses. ghosttea-config, which ghosttea-ffi links, was missing through
+ * 0.13.2, so a change to it alone would have shipped a stale artifact unnoticed.
+ *
  * It deliberately omits the packaging and identity scripts, even though they
  * decide how the artifact is archived and digested. A change there is already
  * caught, and caught better: the checks re-derive the content digest and the
@@ -177,6 +185,7 @@ export const nativeSourceInputs = [
   "native/ghosttea/crates/ghosttea-vt-sys",
   "native/ghosttea/crates/ghosttea-vt",
   "native/ghosttea/crates/ghosttea-core",
+  "native/ghosttea/crates/ghosttea-config",
   "native/ghosttea/crates/ghosttea-text",
   "native/ghosttea/crates/ghosttea-font-fixture-ffi",
   "native/ghostty.lock.json",
@@ -229,4 +238,34 @@ export function nativeSourceDigest(inputs = nativeSourceInputs) {
     .map(([path, digest]) => `${path}\0${digest}\n`)
     .join("");
   return sha256(Buffer.from(inventory));
+}
+
+/** The crate the artifact is built from: the workspace's only Apple staticlib. */
+export const appleNativeRootCrate = "native/ghosttea/crates/ghosttea-apple-ffi";
+
+/**
+ * Every workspace crate compiled into the artifact, as repository-relative
+ * directories: ghosttea-apple-ffi and each crate its path dependencies reach,
+ * build and target-specific ones included.
+ */
+export function appleNativeCrates() {
+  const workspace = workspacePathDependencies(readFileSync(join(root, "Cargo.toml"), "utf8"));
+  const crates = new Set();
+  const pending = [appleNativeRootCrate];
+  while (pending.length > 0) {
+    const crate = pending.pop();
+    if (crates.has(crate)) continue;
+    crates.add(crate);
+    const manifest = readFileSync(join(root, crate, "Cargo.toml"), "utf8");
+    for (const { path, fromWorkspace } of pathDependencies(manifest, workspace)) {
+      pending.push(fromWorkspace ? posix.normalize(path) : posix.join(crate, path));
+    }
+  }
+  return [...crates].toSorted(compareText);
+}
+
+/** The compiled crates that `inputs` does not cover, which the source digest would miss. */
+export function uncoveredAppleNativeCrates(inputs = nativeSourceInputs) {
+  const covered = (crate) => inputs.some((input) => crate === input || crate.startsWith(`${input}/`));
+  return appleNativeCrates().filter((crate) => !covered(crate));
 }
