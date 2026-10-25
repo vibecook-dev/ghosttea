@@ -98,7 +98,7 @@ from the authoritative repository pins:
 - the root package version and license; and
 - the tracked MIT, OFL-1.1, and font-notice files.
 
-The BOM records the shared Rust FFI runtime and all 83 non-development crates
+The BOM records the shared Rust FFI runtime and all 89 non-development crates
 selected from it for `aarch64-apple-ios`, pinned Ghostty source, OpenSSL,
 libssh2, the exact sibling Truffle Swift revision, the exact TailscaleKit source
 revision, reviewed source-patch path/hash/purpose, binary/license hashes, and
@@ -169,8 +169,8 @@ must be followed by the complete release validation matrix.
 
 The production application resource phase embeds two reviewed files:
 
-- `THIRD-PARTY-NOTICES.txt`, a human-readable index for all 94 BOM components
-  followed by 93 deduplicated exact license and notice documents; and
+- `THIRD-PARTY-NOTICES.txt`, a human-readable index for all 105 BOM components
+  followed by 94 deduplicated exact license and notice documents; and
 - `Ghosttea-iOS.cdx.json`, a byte-identical copy of the checked-in CycloneDX
   release BOM.
 

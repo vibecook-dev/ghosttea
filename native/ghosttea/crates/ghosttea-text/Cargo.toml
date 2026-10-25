@@ -14,7 +14,7 @@ fixture = ["dep:serde", "dep:serde_json", "dep:sha2"]
 
 [dependencies]
 anyhow.workspace = true
-fontdb = "0.23.0"
+fontdb = "0.24.0"
 harfbuzz_rs = "2.0.1"
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

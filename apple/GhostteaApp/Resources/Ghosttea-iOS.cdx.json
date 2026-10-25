@@ -129,7 +129,7 @@
       },
       {
         "name": "ghosttea:cargo-lock:sha256",
-        "value": "76965870d7bd9d3b3ba3bbbc982aa68d0d26dd2db1e20ec5c4583a40e112d022"
+        "value": "5318da8a3d57592d1464146126e5e2a68ac7ce3218d3126028ca061778d2f6dc"
       },
       {
         "name": "ghosttea:rust-target",
@@ -754,36 +754,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/core_maths@0.1.1",
-      "name": "core_maths",
-      "version": "0.1.1",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "purl": "pkg:cargo/core_maths@0.1.1",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "77745e017f5edba1a9c1d854f6f3a52dac8a12dd5af5d2f54aecf61e43d80d30"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/core-foundation-sys@0.8.7",
       "name": "core-foundation-sys",
       "version": "0.8.7",
@@ -1178,9 +1148,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/fontdb@0.23.0",
+      "bom-ref": "pkg:cargo/fontdb@0.24.0",
       "name": "fontdb",
-      "version": "0.23.0",
+      "version": "0.24.0",
       "licenses": [
         {
           "license": {
@@ -1188,11 +1158,11 @@
           }
         }
       ],
-      "purl": "pkg:cargo/fontdb@0.23.0",
+      "purl": "pkg:cargo/fontdb@0.24.0",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "457e789b3d1202543297a350643cf459f836cade38934e7a4cf6a39e7cde2905"
+          "content": "2660c5e9157bf76d2db1294e4a9feba604ef610819a3b591088d0d8392a3290f"
         }
       ],
       "properties": [
@@ -1675,36 +1645,6 @@
         {
           "alg": "SHA-256",
           "content": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/libm@0.2.16",
-      "name": "libm",
-      "version": "0.2.16",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "purl": "pkg:cargo/libm@0.2.16",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
         }
       ],
       "properties": [
@@ -2594,34 +2534,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ttf-parser@0.25.1",
-      "name": "ttf-parser",
-      "version": "0.25.1",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/ttf-parser@0.25.1",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/typenum@1.20.1",
       "name": "typenum",
       "version": "1.20.1",
@@ -3439,12 +3351,6 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:cargo/core_maths@0.1.1",
-      "dependsOn": [
-        "pkg:cargo/libm@0.2.16"
-      ]
-    },
-    {
       "ref": "pkg:cargo/core-foundation-sys@0.8.7",
       "dependsOn": []
     },
@@ -3536,14 +3442,13 @@
       ]
     },
     {
-      "ref": "pkg:cargo/fontdb@0.23.0",
+      "ref": "pkg:cargo/fontdb@0.24.0",
       "dependsOn": [
         "pkg:cargo/fontconfig-parser@0.5.8",
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/memmap2@0.9.11",
         "pkg:cargo/slotmap@1.1.1",
-        "pkg:cargo/tinyvec@1.12.0",
-        "pkg:cargo/ttf-parser@0.25.1"
+        "pkg:cargo/tinyvec@1.12.0"
       ]
     },
     {
@@ -3617,7 +3522,7 @@
       "ref": "pkg:cargo/ghosttea-text@0.13.2",
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/fontdb@0.23.0",
+        "pkg:cargo/fontdb@0.24.0",
         "pkg:cargo/harfbuzz_rs@2.0.1",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/serde_json@1.0.150",
@@ -3678,10 +3583,6 @@
     },
     {
       "ref": "pkg:cargo/libc@0.2.186",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:cargo/libm@0.2.16",
       "dependsOn": []
     },
     {
@@ -3879,12 +3780,6 @@
       "ref": "pkg:cargo/tinyvec@1.12.0",
       "dependsOn": [
         "pkg:cargo/tinyvec_macros@0.1.1"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/ttf-parser@0.25.1",
-      "dependsOn": [
-        "pkg:cargo/core_maths@0.1.1"
       ]
     },
     {
