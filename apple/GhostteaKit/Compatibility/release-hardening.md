@@ -256,11 +256,21 @@ Changing the bit alone is not approval. The SSH lock must first move to a fixed
 source revision, incorporate the required fixes, and record successful Apple
 artifact, package, fixture, Swift, and physical-device revalidation.
 
-The 2026-07-18 upstream recheck found no fixed tag. Upstream master contains all
-recorded fixes but is 791 commits beyond 1.11.1, and the first attempted minimal
-backport conflicts against the release source. The lock records that observation
+The 2026-10-24 security review found no fixed tag. The lock's
+`requiredFixCommits` grew from six to 19:
+
+- the ten published CVEs against libssh2 through 1.11.1, four of them
+  published on 2026-07-24; and
+- nine fixes that upstream ties to repository advisories that are not yet
+  public.
+
+`advisories` maps each commit to its IDs, and
+[`ssh-candidate-decision.md`](ssh-candidate-decision.md) records the evidence.
+Upstream master contains all 19 fixes but is 1108 commits beyond 1.11.1. The
+first fix in master order still conflicts against the release source, and 13 of
+the 19 conflict when cherry-picked alone. The lock records that observation
 without changing its pin or approval bit. Waiting for the prepared upstream
-release—or conducting a separately reviewed backport—is intentional risk
+release, or conducting a separately reviewed backport, is intentional risk
 control, not an implementation gap to bypass.
 
 ## Remaining release work

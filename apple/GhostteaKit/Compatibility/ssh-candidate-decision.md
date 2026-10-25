@@ -37,6 +37,95 @@ therefore remains until upstream tags the prepared fixed release or a separately
 reviewed backport stack is authored and passes every recorded revalidation
 gate.
 
+The review was repeated on 2026-10-24 (`securityReview` in the lock). 1.11.1
+is still the latest tag and release; master reads `1.11.2_DEV`, and the
+upstream release request (libssh2 issue #1925) remains open. The lock now
+requires 19 fixes rather than six:
+
+- the six above, which still map to the six advisories published between
+  2026-05-02 and 2026-06-28;
+- four more published on 2026-07-24, all "libssh2 through 1.11.1" in NVD and
+  the GitHub advisory database, two of them pre-authentication; and
+- nine that upstream's commits or master `RELEASE-NOTES` tie to repository
+  advisories that are not yet public. Each of those GHSA IDs returns 404 from
+  both the global and the repository advisory APIs. Each code path was read in
+  the 1.11.1 tree and carries the defect.
+
+Querying OSV by the pinned commit returns the same ten CVEs, plus five
+OSS-Fuzz crash records that have no advisory. OSV records four as fixed on
+master: OSV-2022-24 and OSV-2024-847 at `b89858b8`, OSV-2025-90 and
+OSV-2025-92 at `631e2f82`. The fifth, OSV-2025-433, has no recorded fix. It is
+a null-pointer read in `_libssh2_packet_add`, reached from
+`_libssh2_transport_read` on server-sent packets, and was introduced by the
+strict key exchange commit `d34d9258`, which 1.11.1 contains. OSV lists no
+fixed commit for it, and no upstream commit since 1.11.1 cites its OSS-Fuzz
+issue (422217191). None of the five is required, because none has an advisory,
+and OSV-2025-433 has no fix commit to require. Treat it as unfixed upstream;
+the next review should check it again.
+
+| Advisory                                                 | Published  | Fix commit | Defect                                                      |
+| -------------------------------------------------------- | ---------- | ---------- | ----------------------------------------------------------- |
+| CVE-2026-7598, GHSA-jhp3-h4hp-2c3p                       | 2026-05-02 | `256d04b6` | `userauth_password` length integer overflow                 |
+| CVE-2025-15661, GHSA-3wqh-87fg-ffgg                      | 2026-06-18 | `2dae3024` | `sftp_symlink` heap out-of-bounds read                      |
+| CVE-2026-55199, GHSA-3cfq-4xx4-rmpg                      | 2026-06-17 | `17626857` | pre-authentication `EXT_INFO` CPU loop                      |
+| CVE-2026-55200, GHSA-r8mh-x5qv-7gg2                      | 2026-06-17 | `97acf3df` | `packet_length` heap out-of-bounds write (critical)         |
+| CVE-2026-58050, GHSA-mf77-5hj2-98w9                      | 2026-06-28 | `34497525` | 32-bit publickey attribute count overflow                   |
+| CVE-2026-58051, GHSA-c5f3-hwj2-xp5p                      | 2026-06-28 | `a9758da4` | publickey list free of an uninitialized entry               |
+| CVE-2026-66032, GHSA-83r8-6c29-8gwr, GHSA-px3w-7g75-hg7w | 2026-07-24 | `5e477614` | `sftp_open` double free                                     |
+| CVE-2026-66034, GHSA-6h6q-9mwg-r6x7, GHSA-w6g9-cpfp-22gc | 2026-07-24 | `a13bb6c7` | publickey v1 `comment_len` out-of-bounds read               |
+| CVE-2026-66035, GHSA-v6rf-8q4r-r495, GHSA-6c79-444r-wx26 | 2026-07-24 | `42e33d81` | pre-authentication ETM decrypt heap overflow                |
+| CVE-2026-66033, GHSA-2g8c-wcg8-r65c, GHSA-c4f7-cvfc-33j7 | 2026-07-24 | `a2ed82d4` | pre-authentication AES-GCM underflow in `ssh2_cipher_crypt` |
+| GHSA-w8q5-9hq2-h9pr                                      | not public | `e3fba528` | publickey init status out-of-bounds read                    |
+| GHSA-m9rg-h9jv-9gvh                                      | not public | `fcf83078` | Diffie-Hellman public value not validated (OpenSSL backend) |
+| GHSA-x4g5-mgfc-cxvv                                      | not public | `15257c08` | short chacha20-poly1305 packet length underflow             |
+| GHSA-53q9-wmqr-fh7c                                      | not public | `0a17ea04` | leak on repeated `exit-signal`                              |
+| GHSA-p2v4-ghw2-mvq3, GHSA-v6rf-jr7x-9hhp                 | not public | `4884fc61` | unchecked `snprintf` in `scp_send`                          |
+| GHSA-qwvp-xm4w-32m7                                      | not public | `b4e6761d` | publickey list state lost across `EAGAIN`                   |
+| GHSA-2q3j-q544-xxp7                                      | not public | `9438f90a` | `sftp_packet_read` loop on unexpected EOF                   |
+| GHSA-4q73-hh48-fmr8                                      | not public | `b5c37a91` | zero channel `packet_size` from the server busy-loops       |
+| GHSA-vc97-vgww-qggv                                      | not public | `5d27ee28` | uncapped OpenSSH private-key KDF rounds                     |
+
+The lock records each full SHA and every advisory ID under `advisories`.
+CVE-2026-55200's advisory text names `7acf3df`; its references and the commit
+itself identify `97acf3dfda80c91c3a8c9f2372546301d4a1a7a8`. CVE-2026-58050 and
+-58051 name no commit, and neither fix commit cites a CVE. The mapping matches
+descriptions and dates: `34497525` caps `num_attrs` at 1024 before the
+multiplication, `a9758da4` fixes the free of an uninitialized list entry, and
+both landed within a day of the advisories' 2026-06-28 publication.
+
+Several fixes are on paths this adapter can negotiate or call: transport
+framing, AES-GCM, ETM and chacha20-poly1305 decryption, Diffie-Hellman key
+exchange, exit signals, and in-memory OpenSSH private keys.
+
+Three upstream changes were read and are deliberately not required:
+
+- `d0ca946d` and `7f28c290` carry GHSA-m9rg-h9jv-9gvh to the os400qc3 and
+  WinCNG backends, which this build (`-DCRYPTO_BACKEND=OpenSSL`) does not
+  compile.
+- GHSA-p6p8-66vc-3f24 (`59329f34`, which reverts `ce631aaf`) corrects
+  documentation only: libssh2 frees keyboard-interactive response text with
+  the session's allocator. The shim creates sessions with
+  `libssh2_session_init_ex(NULL, NULL, NULL, …)`, the default allocator, so its
+  `strdup` responses are correct under both readings.
+- `2fedc0b3` extends `256d04b6`'s username and password caps for 32-bit builds
+  only. Every slice here is arm64, but a reviewed backport should carry it.
+
+Every required fix is an ancestor of master
+`6e7b2076a6ced2230968b27ee7c1abb77fe5a88d`, which is 1108 commits beyond 1.11.1
+(GitHub's compare API and a local clone agree). The minimal backport was
+retried in a disposable clone. All 19 commits were cherry-picked onto
+`libssh2-1.11.1` in master order. The first,
+`2dae3024897e1898d389835151f4e9606227721d`, still conflicts in `src/sftp.c`, in
+`sftp_symlink`'s local declarations. Applied alone, six apply cleanly
+(`256d04b6`, `17626857`, `34497525`, `a9758da4`, `a13bb6c7`, `a2ed82d4`) and 13
+conflict. A backport would therefore be a hand-ported stack of at least 13
+fixes, not a cherry-pick. No fix is incorporated and no pin changed.
+
+The fixed release will also change negotiated defaults. Master `RELEASE-NOTES`
+says 1.11.2 disables SHA-1 `ssh-rsa` host keys and signatures, SHA-1 key
+exchange and MACs, DSA, MD5, 3DES, RIPEMD-160, Blowfish, RC4 and CAST by
+default. None of the fixture profiles below negotiates any of these.
+
 Separately, against the pinned OpenSSH
 `publickey,keyboard-interactive` endpoint, the correct public key returns
 `LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED` (`-19`) with the session still
@@ -294,6 +383,15 @@ separately test the host-neutral demand and queue semantics.
   <https://github.com/libssh2/libssh2/releases>
 - upstream security fixes recorded by the 2026-06 disclosure:
   <https://www.openwall.com/lists/oss-security/2026/06/23/10>
+- the 2026-07-24 advisories, for example CVE-2026-66035:
+  <https://github.com/advisories/GHSA-v6rf-8q4r-r495> and
+  <https://nvd.nist.gov/vuln/detail/CVE-2026-66035>
+- OSV's record of the pinned commit: `POST https://api.osv.dev/v1/query` with
+  `{"commit":"a312b43325e3383c865a87bb1d26cb52e3292641"}`
+- upstream master's release notes, which name each repository advisory:
+  <https://github.com/libssh2/libssh2/blob/master/RELEASE-NOTES>
+- the upstream release request:
+  <https://github.com/libssh2/libssh2/issues/1925>
 - Debian DSA-6365-1 impact summary:
   <https://lists.debian.org/debian-security-announce/2026/msg00276.html>
 - OpenSSL 3.5 vulnerability floor:

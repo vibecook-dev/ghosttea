@@ -153,7 +153,7 @@
       },
       {
         "name": "ghosttea:ssh-security-reviewed-at",
-        "value": "2026-07-18"
+        "value": "2026-10-24"
       }
     ]
   },
@@ -238,11 +238,11 @@
         },
         {
           "name": "ghosttea:release-blocker",
-          "value": "The pinned libssh2 release is affected by newly disclosed pre-authentication vulnerabilities and no fixed upstream release has been tagged."
+          "value": "The pinned libssh2 release is affected by disclosed vulnerabilities, several of them pre-authentication, and no fixed upstream release has been tagged."
         },
         {
           "name": "ghosttea:release-blocker",
-          "value": "SSH security fixes not incorporated: 256d04b60d80bf1190e96b0ad1e91b2174d744b1, 2dae3024897e1898d389835151f4e9606227721d, 17626857d20b3c9a1addfa45979dadcee1cd84a4, 97acf3dfda80c91c3a8c9f2372546301d4a1a7a8, 34497525929b9a47f03dfb81887ac896202b7e12, a9758da45a52bc8c630ec9493804d0c6ea30b24a"
+          "value": "SSH security fixes not incorporated: 256d04b60d80bf1190e96b0ad1e91b2174d744b1, 2dae3024897e1898d389835151f4e9606227721d, 17626857d20b3c9a1addfa45979dadcee1cd84a4, 97acf3dfda80c91c3a8c9f2372546301d4a1a7a8, 34497525929b9a47f03dfb81887ac896202b7e12, a9758da45a52bc8c630ec9493804d0c6ea30b24a, 5e4776146552d898b9c0e1b313cd093fa8dc92d0, a13bb6c773f0d55ad1628cede57e99803cd898d9, 42e33d81577ed4b95d4b4f6f845e5ee8efe5eeb4, a2ed82d40964bbc0d64cd717aa0a5a892117d2e6, e3fba528d4aacbcafe12701b93943c543309d6d1, fcf830788d0c8dcd6bed7dcd532506aabf196523, 15257c08f842705211b5b78013c5fc46fb545ad1, 0a17ea04dcc2b10b6817ae19d690e15f66c83624, 4884fc6102b32b76f0b1606a76477abe0e68ee51, b4e6761de0e6ea8a6592ea5407d721282292432c, 9438f90ae03f52d54297f15ef23b05ebb7c5f598, b5c37a910d774065155458abcd6d2d89cc21a661, 5d27ee28ed8dbfa0846c5b9da65f2d35ea48f7d7"
         },
         {
           "name": "ghosttea:release-blocker",
@@ -271,6 +271,58 @@
         {
           "name": "ghosttea:required-fix-commit",
           "value": "a9758da45a52bc8c630ec9493804d0c6ea30b24a"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "5e4776146552d898b9c0e1b313cd093fa8dc92d0"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "a13bb6c773f0d55ad1628cede57e99803cd898d9"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "42e33d81577ed4b95d4b4f6f845e5ee8efe5eeb4"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "a2ed82d40964bbc0d64cd717aa0a5a892117d2e6"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "e3fba528d4aacbcafe12701b93943c543309d6d1"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "fcf830788d0c8dcd6bed7dcd532506aabf196523"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "15257c08f842705211b5b78013c5fc46fb545ad1"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "0a17ea04dcc2b10b6817ae19d690e15f66c83624"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "4884fc6102b32b76f0b1606a76477abe0e68ee51"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "b4e6761de0e6ea8a6592ea5407d721282292432c"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "9438f90ae03f52d54297f15ef23b05ebb7c5f598"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "b5c37a910d774065155458abcd6d2d89cc21a661"
+        },
+        {
+          "name": "ghosttea:required-fix-commit",
+          "value": "5d27ee28ed8dbfa0846c5b9da65f2d35ea48f7d7"
         }
       ]
     },
