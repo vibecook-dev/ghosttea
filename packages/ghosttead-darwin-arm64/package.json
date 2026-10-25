@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttead-darwin-arm64",
-  "version": "0.13.2",
+  "version": "0.13.3",
   "description": "Ghosttea terminal daemon binary for macOS on Apple silicon.",
   "license": "MIT",
   "author": "James Yong",
