@@ -1,12 +1,13 @@
 import { useTerminalLinks } from "./use-terminal-links.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import { useGhostteaRuntime } from "./context.js";
 import { terminalKeyboardLayout, terminalKeyDown, terminalKeyUp } from "./keyboard-input.js";
 import { terminalEffectShouldConsume, type TerminalEffect } from "./bindings/action-route.js";
-import { resolveTerminalBinding } from "./terminal-bindings.js";
+import { resolveTerminalBinding, type ResolvedTerminalBinding } from "./terminal-bindings.js";
 import type { GhosttyBindingEntry } from "./bindings/ghostty-bindings.js";
+import type { KeyEventLike } from "./bindings/ghostty-triggers.js";
 import {
   CELL_WIDTH,
   DEFAULT_EFFECTS,
@@ -19,6 +20,14 @@ import {
 } from "./renderers/types.js";
 import { accumulateWheelRows, wheelDeltaPixels } from "./scroll-input.js";
 import { adjustSelectionFocus, usesLocalSelection } from "./selection-input.js";
+import {
+  attachTerminalTextInput,
+  TerminalTextInput,
+  terminalEditKeyEvents,
+  type TerminalTextInputAction,
+  type TerminalTextInputSink,
+  type TerminalTextKeyEventLike,
+} from "./text-input.js";
 import type { GhostteaTerminalRuntime } from "./runtime.js";
 
 export type TerminalMenuAction = "copy" | "paste" | "select-all" | "clear-screen";
@@ -82,6 +91,55 @@ export function syncSurfaceFocus(
   runtime.setFocused(surface.sessionHandle, surface.viewId, focused, surface.cols, surface.rows);
   if (focusTakesGeometry(focused, wasFocused, policy)) {
     runtime.takeResizeControl(surface.sessionHandle, surface.viewId, surface.cols, surface.rows);
+  }
+}
+
+/**
+ * Who takes a keydown on the surface, in order: the text system when an IME or
+ * another text service processed it (its result arrives as composition or
+ * input events, so the terminal neither encodes nor prevents it), a terminal
+ * binding, or else the terminal, as a key.
+ */
+export type SurfaceKeyDownRoute =
+  | { readonly type: "text-system" }
+  | { readonly type: "binding"; readonly binding: ResolvedTerminalBinding }
+  | { readonly type: "terminal" };
+
+export function routeSurfaceKeyDown(
+  event: TerminalTextKeyEventLike & KeyEventLike,
+  textInput: TerminalTextInput,
+  platform: string | undefined,
+  bindings: readonly GhosttyBindingEntry[] | undefined,
+): SurfaceKeyDownRoute {
+  if (textInput.keyDown(event)) return { type: "text-system" };
+  // Terminal-scoped Ghostty binds only (workspace/platform/unhandled owned by Workspace).
+  const binding = resolveTerminalBinding(event, platform, bindings);
+  return binding ? { type: "binding", binding } : { type: "terminal" };
+}
+
+/**
+ * Sends the text system's input to the terminal as typing: it clears the
+ * view's selection, as a forwarded key does, then sends each action in order
+ * through typing's verbs. Committed text is text, a paste or drop is a paste,
+ * and an edit key is the press and release the physical key sends.
+ */
+export function commitTerminalTextInput(
+  runtime: Pick<GhostteaTerminalRuntime, "setSelection" | "sendText" | "paste" | "sendKey">,
+  surface: { sessionId: string; sessionHandle: string; viewId: string },
+  actions: readonly TerminalTextInputAction[],
+  timestamp: number,
+): void {
+  runtime.setSelection(surface.sessionHandle, null, surface.viewId);
+  for (const action of actions) {
+    if (action.type === "text") {
+      runtime.sendText(surface.sessionId, surface.viewId, action.text);
+    } else if (action.type === "paste") {
+      runtime.paste(surface.sessionId, surface.viewId, action.text);
+    } else {
+      for (const event of terminalEditKeyEvents(action.key, timestamp)) {
+        runtime.sendKey(surface.sessionId, surface.viewId, event);
+      }
+    }
   }
 }
 
@@ -208,6 +266,9 @@ function TerminalSurfaceSession({
     travel: number;
   } | null>(null);
   const forwardedKeysRef = useRef(new Map<string, TerminalKeyEvent>());
+  // What the platform's text system puts in the textarea: IME commits, the
+  // emoji pickers, voice typing, soft keyboards, drops.
+  const [textInput] = useState(() => new TerminalTextInput());
   const restoreInputFocusRef = useRef(false);
   const [scrollbar, setScrollbar] = useState<TerminalScrollbarState>(
     () =>
@@ -374,6 +435,31 @@ function TerminalSurfaceSession({
     [interactive, readClipboard, session.handle, session.id, setLocalSelection, terminalRuntime, viewId],
   );
 
+  // Text input is typing: it ends the local selection, as a forwarded key does.
+  const commitTextInput = useCallback(
+    (actions: readonly TerminalTextInputAction[]): void => {
+      selectionAnchorRef.current = null;
+      setLocalSelection(null);
+      commitTerminalTextInput(
+        terminalRuntime,
+        { sessionId: session.id, sessionHandle: session.handle, viewId },
+        actions,
+        performance.now(),
+      );
+    },
+    [session.handle, session.id, setLocalSelection, terminalRuntime, viewId],
+  );
+  const textInputSink = useMemo<TerminalTextInputSink>(
+    () => ({ interactive, commit: commitTextInput }),
+    [commitTextInput, interactive],
+  );
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    return attachTerminalTextInput(input, textInput, textInputSink);
+  }, [textInput, textInputSink]);
+
   useEffect(() => {
     if (!onMenuAction) return;
     return onMenuAction((action) => {
@@ -533,14 +619,13 @@ function TerminalSurfaceSession({
   }, [active, inputFocused, releaseForwardedKeys, session.handle, terminalRuntime, viewId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.nativeEvent.isComposing) return;
-
-    // Terminal-scoped Ghostty binds only (workspace/platform/unhandled owned by Workspace).
-    const terminalMatch = resolveTerminalBinding(event.nativeEvent, platform, bindings);
-    if (terminalMatch) {
-      const applied = executeTerminalEffect(terminalMatch.effect);
+    const route = routeSurfaceKeyDown(event.nativeEvent, textInput, platform, bindings);
+    if (route.type === "text-system") return;
+    if (route.type === "binding") {
+      const { effect, flags } = route.binding;
+      const applied = executeTerminalEffect(effect);
       // Performable binds only consume when applied (Ghostty Binding.Flags.performable).
-      if (terminalEffectShouldConsume(terminalMatch.effect, applied, terminalMatch.flags)) {
+      if (terminalEffectShouldConsume(effect, applied, flags)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -893,13 +978,6 @@ function TerminalSurfaceSession({
         onContextMenu={(event) => {
           event.preventDefault();
           onContextMenu?.(selectionRef.current !== null);
-        }}
-        onCompositionEnd={(event) => {
-          terminalRuntime.sendText(session.id, viewId, event.currentTarget.value);
-          event.currentTarget.value = "";
-        }}
-        onInput={(event) => {
-          if (!event.nativeEvent.isComposing) event.currentTarget.value = "";
         }}
       />
       {links.hoveredLink ? (
