@@ -10718,14 +10718,22 @@ mod tests {
             ..MeshReconnectConfig::default()
         })
         .await?;
+        let mut lifecycles = fixture.runtime.subscribe_lifecycle();
         fixture.kill_host();
-        fixture
-            .wait_for_state(RemoteLifecycleState::Reconnecting)
-            .await?;
-        let scheduled = fixture.lifecycle().await.next_retry_ms;
+        // Teardown commits Reconnecting with no retry scheduled and hands off to
+        // the engine, whose task announces the delay a moment later. Wait for
+        // that announcement rather than reading the state the moment it flips.
+        let scheduled = loop {
+            let event = tokio::time::timeout(Duration::from_secs(5), lifecycles.recv()).await??;
+            if event.state == RemoteLifecycleState::Reconnecting
+                && let Some(delay) = event.next_retry_ms
+            {
+                break delay;
+            }
+        };
         assert!(
-            scheduled.is_some_and(|delay| delay >= 30_000),
-            "expected a long scheduled retry, got {scheduled:?}"
+            scheduled >= 30_000,
+            "expected a long scheduled retry, got {scheduled} ms"
         );
 
         fixture.arm_host("host-1").await?;
