@@ -103,8 +103,32 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@1.97.1
+        id: toolchain
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      # As in the desktop gates' minimum-rust job: rust-cache keys on every
+      # installed toolchain, so the image's own stable goes before it does.
+      - name: Keep only the pinned toolchain
+        env:
+          PINNED: ${{ steps.toolchain.outputs.name }}
+        run: |
+          test -n "$PINNED" || { echo "dtolnay/rust-toolchain reported no toolchain name" >&2; exit 1; }
+          for toolchain in $(rustup toolchain list --quiet); do
+            case "$toolchain" in
+              "$PINNED"-*) ;;
+              *) rustup toolchain uninstall "$toolchain" ;;
+            esac
+          done
+
+      # Restores the compiled dependencies of build:apple-native's three Apple
+      # targets, with the same policy as the desktop gates: pull requests only
+      # read the cache, workspace crates always rebuild, and ~/.cargo/bin stays
+      # out of it. The publication build never uses this cache.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
 
       - run: npm ci --ignore-scripts
       - run: npm run check:ios-release-toolchain

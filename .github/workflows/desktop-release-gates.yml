@@ -36,6 +36,17 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # Restores compiled dependencies saved by an earlier run on this branch or
+      # on main. The key is the job, OS, rustc and the lockfile, and a moved
+      # lockfile falls back to the newest cache for the same job and rustc.
+      # Workspace crates always rebuild. Pull requests only read the cache, so
+      # their entries never evict main's. ~/.cargo/bin stays out of it, so the
+      # toolchain installed above is the one that runs.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
+
       - run: npm ci --ignore-scripts
       - run: npm run bootstrap:ghostty-vt:apple
       - run: npm run ci:desktop
@@ -64,9 +75,48 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # The same dependency cache as verify.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
+
       - run: npm ci --ignore-scripts
       - run: npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
-      - run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
+
+      # The source build of the pinned Ghostty VT library took about three
+      # minutes of every run. It is reused while the lock, its patches, the build
+      # scripts and the runner image are unchanged. A new image can move MSVC or
+      # the Windows SDK, so it rebuilds from source, as does any change to what
+      # the build reads. Only the install tree ghosttea-vt-sys links is kept, not
+      # Zig's caches, and as with the Rust cache, pull requests only read it. The
+      # bootstrap above still runs because ci:desktop syncs fonts from the
+      # Ghostty checkout.
+      - name: Key the Ghostty VT build
+        id: vt-key
+        run: |
+          set -euo pipefail
+          inputs="$(sha256sum native/ghostty.lock.json native/patches/* scripts/bootstrap-ghostty-vt.mjs \
+            scripts/build-ghostty-vt.mjs scripts/ghostty-vt-target.mjs | sha256sum | cut -d' ' -f1)"
+          image="${ImageOS:-unknown}-${ImageVersion:-unknown}"
+          echo "key=ghostty-vt-x86_64-pc-windows-msvc-v1-$image-$inputs" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the Ghostty VT build
+        id: vt
+        uses: actions/cache/restore@v6
+        with:
+          key: ${{ steps.vt-key.outputs.key }}
+          path: native/build/ghostty/x86_64-pc-windows-msvc/install
+
+      - if: steps.vt.outputs.cache-hit != 'true'
+        run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
+
+      - if: steps.vt.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          key: ${{ steps.vt-key.outputs.key }}
+          path: native/build/ghostty/x86_64-pc-windows-msvc/install
+
       - run: npm run ci:desktop
 
   minimum-rust:
@@ -76,6 +126,29 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@1.88.0
+        id: toolchain
+
+      # rust-cache keys on every installed toolchain, and the runner image ships
+      # its own stable beside the pinned one. Removing it keeps the key to the
+      # toolchain this job builds with, so an image update does not empty the
+      # cache. The pinned toolchain is rustup's default, so nothing runs another.
+      - name: Keep only the pinned toolchain
+        env:
+          PINNED: ${{ steps.toolchain.outputs.name }}
+        run: |
+          test -n "$PINNED" || { echo "dtolnay/rust-toolchain reported no toolchain name" >&2; exit 1; }
+          for toolchain in $(rustup toolchain list --quiet); do
+            case "$toolchain" in
+              "$PINNED"-*) ;;
+              *) rustup toolchain uninstall "$toolchain" ;;
+            esac
+          done
+
+      # The same dependency cache as verify, separate because rustc differs.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'pull_request' }}
+          cache-bin: false
 
       - run: cargo check --workspace --all-targets --all-features --locked
 
