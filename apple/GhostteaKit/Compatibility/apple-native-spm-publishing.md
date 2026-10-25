@@ -164,9 +164,10 @@ commit, and build environment.
 9. It creates an append-only content-addressed release without `--clobber`,
    downloads the served assets again, and re-verifies them.
 
-The `release` environment must allow the protected ref used for artifact
-promotion and require an independent reviewer. Do not weaken that environment
-or publish from a mutable developer workstation.
+The `release` environment allows only `v*` tags and `release/*` branches. It
+has required no reviewer since 2026-10-24. The human release gate is the signed
+`v*` tag, which the "release tags" ruleset limits to admins. Do not widen the
+environment's refs or publish from a mutable developer workstation.
 
 GitHub only enables `workflow_dispatch` after the workflow file exists on the
 default branch. The first rollout of this pipeline is therefore intentionally
@@ -184,6 +185,13 @@ let the pull-request artifact audit verify the served bytes before merge. The
 environment must explicitly allow that protected branch pattern; GitHub matches
 environment rules against the dispatch ref.
 
+On a `release/*` branch none of that is manual. Every push to one runs the
+workflow, and its `release-needs` job compares the tree's native source digest
+with the pin. When they differ, as after the release's version bump, the same
+run builds, publishes and pins the artifact (see "Updating the SwiftPM pin").
+The pin commit, a CHANGELOG edit, or a branch that already carries its pin
+needs nothing and stops there.
+
 The artifact audit's pull-request paths cover every `nativeSourceInputs` entry,
 including the workspace `Cargo.toml` and `Cargo.lock`. A release-only Cargo
 version bump therefore moves `sourceDigest` and intentionally leaves the audit
@@ -195,6 +203,25 @@ GitHub artifact attestations are the provenance record:
 <https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations>.
 
 ## Updating the SwiftPM pin
+
+On a `release/*` branch the workflow's `pin` job writes this commit. It:
+
+1. runs `scripts/pin-ghosttea-apple-native.mjs` on the candidate it just
+   published, which refuses a candidate not built from the branch's tree;
+2. audits the result with the two commands below;
+3. pushes `release: pin X.Y.Z Apple native artifact`;
+4. dispatches `desktop-release-gates.yml` and `ios-release-hardening.yml` for
+   the new head, because a push made with `GITHUB_TOKEN` starts no workflows.
+
+If the branch moved while the run built, it leaves the pin to the run for the
+newer push. The script edits values in place, so its commit changes the same
+lines a hand-written pin does: `tests/apple-native-pin.test.mjs` replays the
+0.13.1 to 0.13.2 pin byte for byte.
+
+To pin by hand, after a dispatch from another branch or a failed `pin` job, run
+the same script with the downloaded `GhostteaAppleNative.xcframework.zip.json`,
+`--run-url`, `--attestation-url`, `--source-commit` and `--branch`, or do what
+it does:
 
 After CI publishes the artifact, copy the following fields from the workflow's
 `GhostteaAppleNative.xcframework.zip.json` into
