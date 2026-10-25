@@ -110,13 +110,64 @@ jobs:
       - run: npm run check:ios-release-toolchain
       - run: npm run check:swiftpm:manifests
 
+      # The pinned libghostty-vt and libssh2/OpenSSL builds take about seven
+      # minutes and depend only on their locks, their build scripts and the two
+      # Xcode toolchains, so this key covers exactly those. A change to any of
+      # them, including a runner image that moves an Xcode or SDK version,
+      # misses the cache and rebuilds from source, which is where the Ghostty
+      # build checks the toolchain against ghostty.lock.json. The publication
+      # build in ghosttea-apple-native-artifact.yml never uses this cache.
+      - name: Key the pinned Apple native inputs
+        id: apple-inputs-key
+        run: |
+          set -euo pipefail
+          {
+            uname -m
+            shasum -a 256 \
+              native/ghostty.lock.json \
+              native/patches/* \
+              native/ssh.lock.json \
+              apple/GhostteaKit/Compatibility/ios-toolchain.lock.json \
+              scripts/ghostty-vt-target.mjs \
+              scripts/bootstrap-ghostty-vt-apple.mjs \
+              scripts/build-ghostty-vt-apple.mjs \
+              scripts/validate-ghostty-vt-xcframework.mjs \
+              scripts/bootstrap-ssh-candidate-apple.mjs \
+              scripts/build-ssh-candidate-apple.mjs \
+              scripts/validate-ssh-candidate-xcframework.mjs
+            for developer_dir in "$GHOSTTY_DEVELOPER_DIR" "$DEVELOPER_DIR"; do
+              DEVELOPER_DIR="$developer_dir" xcodebuild -version
+              for sdk in macosx iphoneos iphonesimulator; do
+                DEVELOPER_DIR="$developer_dir" xcrun --sdk "$sdk" --show-sdk-version
+              done
+            done
+          } | tee "$RUNNER_TEMP/apple-native-inputs.txt"
+          digest="$(shasum -a 256 "$RUNNER_TEMP/apple-native-inputs.txt" | cut -d' ' -f1)"
+          echo "key=apple-native-inputs-v1-$digest" >> "$GITHUB_OUTPUT"
+
+      # Only the outputs build:apple-native reads and the upload below keeps;
+      # the Zig and OpenSSL build trees stay out of the cache.
+      - name: Restore the pinned Apple native inputs
+        id: apple-inputs
+        uses: actions/cache@v6
+        with:
+          key: ${{ steps.apple-inputs-key.outputs.key }}
+          path: |
+            apple/GhostteaKit/Artifacts/ghostty-vt.xcframework
+            apple/GhostteaKit/Artifacts/ghosttea-libssh2-candidate.xcframework
+            native/build/ghostty-apple/build-metadata.json
+            native/build/ssh-apple/build-metadata.json
+
       # Build every native input from its reviewed lock, then produce one Rust
       # staticlib for the entire Swift package. This catches native/source drift
-      # before a remote artifact exists for the reviewed source.
+      # before a remote artifact exists for the reviewed source. The bootstraps
+      # always run: build:apple-native syncs fonts from the Ghostty checkout.
       - run: npm run bootstrap:ghostty-vt:apple
-      - run: npm run build:ghostty-vt:apple
+      - if: steps.apple-inputs.outputs.cache-hit != 'true'
+        run: npm run build:ghostty-vt:apple
       - run: npm run bootstrap:ssh:apple
-      - run: npm run build:ssh:apple
+      - if: steps.apple-inputs.outputs.cache-hit != 'true'
+        run: npm run build:ssh:apple
       - run: npm run build:apple-native
 
       - name: Run the complete local-artifact SwiftPM suite
