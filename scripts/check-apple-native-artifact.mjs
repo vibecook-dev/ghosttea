@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appleNativeRootCrate,
   collectEntries,
   contentDigest,
   lockPath,
@@ -33,6 +34,7 @@ import {
   sha256,
   sliceDigests,
   sourceArtifact,
+  uncoveredAppleNativeCrates,
 } from "./ghosttea-apple-native-artifact.mjs";
 
 const arguments_ = process.argv.slice(2);
@@ -101,6 +103,18 @@ for (const path of requiredAuditPaths) {
         "a source change could reach a product release without auditing the published SwiftPM bytes.",
     );
   }
+}
+
+// The source digest is only as complete as nativeSourceInputs, which lists the
+// compiled crates by hand: ghosttea-config sat outside it through 0.13.2 while
+// ghosttea-ffi linked it. So the crates that actually compile in are derived from
+// the manifests' path dependencies, here in the manifests-only gate too, and each
+// must be covered.
+for (const crate of uncoveredAppleNativeCrates()) {
+  problems.push(
+    `nativeSourceInputs does not cover ${crate}, which ${appleNativeRootCrate} compiles in; ` +
+      "a change to it alone would ship a stale Apple native artifact without failing this check.",
+  );
 }
 
 // ── 1. The root manifest pins what the lock records ──────────────────────────
