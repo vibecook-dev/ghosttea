@@ -49,8 +49,10 @@ arm64, iOS arm64, and iOS arm64-simulator slices. It requires each core and font
 fixture C export exactly once and refuses duplicate archive members.
 
 ghosttea-text shapes with harfrust, HarfBuzz's own Rust port, so no HarfBuzz C or
-C++ code enters any Rust slice. Release bytes must not depend on libraries that
-happen to be installed on a CI runner or developer machine.
+C++ code enters any Rust slice. The build fails if `Cargo.lock` names a harfbuzz
+crate or if any slice defines a HarfBuzz (`_hb_`) symbol, so the C shaper cannot
+come back through a dependency unnoticed. Release bytes must not depend on
+libraries that happen to be installed on a CI runner or developer machine.
 
 ## Two manifests, one intended difference
 

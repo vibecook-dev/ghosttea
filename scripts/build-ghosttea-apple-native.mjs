@@ -131,12 +131,40 @@ function requireUniqueMembers(library) {
   }
 }
 
+// ghosttea-text shapes with harfrust, so HarfBuzz's C++ must not come back through a dependency:
+// a harfbuzz crate in the lock, or a HarfBuzz definition in a Rust slice, fails the build.
+function requireNoLockedHarfBuzz() {
+  const rows = readFileSync(join(root, "Cargo.lock"), "utf8")
+    .split("\n")
+    .filter((line) => /harfbuzz/i.test(line));
+  if (rows.length > 0) {
+    throw new Error(
+      `Cargo.lock names HarfBuzz (${rows[0].trim()}). ghosttea-text shapes with harfrust, ` +
+        "and no crate may bring HarfBuzz's C++ back into the Apple native artifact.",
+    );
+  }
+}
+
+function requireNoHarfBuzzDefinitions(library) {
+  const definitions = execute("nm", ["-gjU", library], { capture: true, allowedStatuses: [1] })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((symbol) => symbol.startsWith("_hb_"));
+  if (definitions.length > 0) {
+    throw new Error(
+      `${library} defines ${definitions.length} HarfBuzz symbol(s), such as ${definitions.slice(0, 3).join(", ")}. ` +
+        "ghosttea-text shapes with harfrust; a dependency brought HarfBuzz's C++ back.",
+    );
+  }
+}
+
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("Building GhostteaAppleNative requires Apple Silicon macOS.");
 }
 if (!existsSync(join(developerDir, "usr/bin/xcodebuild"))) {
   throw new Error(`Full Xcode is required at ${developerDir}.`);
 }
+requireNoLockedHarfBuzz();
 for (const artifact of [ghosttyArtifact, sshArtifact]) {
   if (!existsSync(join(artifact, "Info.plist"))) {
     throw new Error(`Missing ${artifact}. Bootstrap the pinned Apple native inputs first.`);
@@ -254,6 +282,7 @@ for (const platform of platforms) {
   if (!existsSync(rustLibrary)) throw new Error(`Missing unified Rust static library ${rustLibrary}.`);
   requireExactCAbi(rustLibrary);
   requireUniqueMembers(rustLibrary);
+  requireNoHarfBuzzDefinitions(rustLibrary);
 
   const library = join(directory, "libghosttea-apple-native.a");
   execute("xcrun", ["libtool", "-static", "-o", library, rustLibrary, libraryPath(sshArtifact, sshSlice)]);
