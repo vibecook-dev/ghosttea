@@ -44,8 +44,8 @@
 import PackageDescription
 
 let appleNativeURL =
-    "https://github.com/vibecook-dev/ghosttea/releases/download/ghosttea-apple-native-3ee0f5d6ccad/GhostteaAppleNative.xcframework.zip"
-let appleNativeChecksum = "492b7940288cdb887a7d03e04552e5cd86a36fdd9b647381b09bbf8979624b87"
+    "https://github.com/vibecook-dev/ghosttea/releases/download/ghosttea-apple-native-d68c21713d81/GhostteaAppleNative.xcframework.zip"
+let appleNativeChecksum = "7f7a60a5b4390a8e298baf1e67490d347a9ad1bcaaa1cabf31674df5643e003c"
 
 // Truffle is consumed from its published repository, pinned to an exact version
 // rather than a bare revision.
