@@ -3283,10 +3283,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   setFocused(sessionHandle: string, viewId: string, focused: boolean, cols: number, rows: number): void {
     const view = this.#views.get(viewId);
-    if (view) {
-      view.desiredCols = cols;
-      view.desiredRows = rows;
-    }
+    // A pane reports its blur as it unmounts, which can come after this runtime
+    // released the view: terminate and unregister release a session's views at
+    // once. The worker would rebuild the released surface from that report and
+    // keep it dirty with no canvas to draw it on, so a view no longer held has
+    // no focus to report.
+    if (!view) return;
+    view.desiredCols = cols;
+    view.desiredRows = rows;
     if (this.#focusByView.get(viewId) === focused) {
       return;
     }
