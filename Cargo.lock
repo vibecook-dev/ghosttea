@@ -694,6 +694,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghosttea-vt-crt-witness"
+version = "0.13.6"
+dependencies = [
+ "cc",
+ "ghosttea-vt",
+]
+
+[[package]]
 name = "ghosttea-vt-sys"
 version = "0.13.6"
 dependencies = [

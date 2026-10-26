@@ -125,7 +125,7 @@ fn main() {
 
     let manifest_dir =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest directory"));
-    let target = env::var("TARGET").expect("Cargo target triple");
+    let target = artifact_key(&env::var("TARGET").expect("Cargo target triple"));
     let layout = layout();
     if let Some(prefix) = env::var_os("GHOSTTY_VT_PREFIX") {
         let prefix = PathBuf::from(prefix);
@@ -181,6 +181,26 @@ fn main() {
         }
     }
     link(prefix.path(), &out, &layout);
+}
+
+/// The manifest key of the artifact this build links: the target triple, plus
+/// the C runtime on MSVC.
+///
+/// Every object in one MSVC link must be compiled for the same C runtime; the
+/// linker refuses a mix (LNK2038). A Rust target links the dynamic runtime
+/// (`/MD`) unless it enables `crt-static`, and `cc` builds a consumer's own C++
+/// for the same one, so the triple's key holds the library compiled for the
+/// dynamic runtime and `<triple>-crt-static` the one compiled for the static
+/// runtime (`/MT`).
+fn artifact_key(target: &str) -> String {
+    let msvc = env::var("CARGO_CFG_TARGET_ENV").is_ok_and(|abi| abi == "msvc");
+    let crt_static = env::var("CARGO_CFG_TARGET_FEATURE")
+        .is_ok_and(|features| features.split(',').any(|feature| feature == "crt-static"));
+    if msvc && crt_static {
+        format!("{target}-crt-static")
+    } else {
+        target.to_owned()
+    }
 }
 
 fn resolve_prefix(

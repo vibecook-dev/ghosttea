@@ -15,6 +15,7 @@ import {
   root,
   targetConfig,
 } from "./ghostty-vt-target.mjs";
+import { msvcRuntimeProblems, RUNTIME_STAMPS } from "./ghostty-vt-msvc-runtime.mjs";
 
 const allowMismatch = process.argv.includes("--allow-mismatch");
 const target = resolveTarget();
@@ -109,6 +110,19 @@ const inputs = [
     sourcePath: patch.absolutePath,
   })),
 ].map((file) => ({ ...file, contents: readFileSync(file.sourcePath) }));
+
+// An MSVC library is built for one C runtime, and every object in a consumer's
+// link must agree with it. Refuse to package objects stamped for the other one,
+// whatever `--allow-mismatch` says: that flag tolerates a manifest that has not
+// caught up, never a library its consumers cannot link.
+if (config.zigTarget.endsWith("-msvc")) {
+  const archive = inputs.find((file) => file.bundlePath === library).contents;
+  const problems = msvcRuntimeProblems(archive, config.msvcRuntime);
+  if (problems.length > 0) {
+    throw new Error(`${target} is not built for the ${config.msvcRuntime} C runtime:\n- ${problems.join("\n- ")}`);
+  }
+  console.log(`${target}: every stamped object is ${RUNTIME_STAMPS[config.msvcRuntime]}`);
+}
 
 function digest(algorithm, contents) {
   return createHash(algorithm).update(contents).digest("hex");

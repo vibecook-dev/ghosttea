@@ -1,0 +1,16 @@
+[package]
+name = "ghosttea-vt-crt-witness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Test-only consumer that links a C++ object built for the Rust target's C runtime beside the Ghostty VT library"
+
+[dependencies]
+ghosttea-vt = { path = "../ghosttea-vt" }
+
+[build-dependencies]
+cc = "1.2"

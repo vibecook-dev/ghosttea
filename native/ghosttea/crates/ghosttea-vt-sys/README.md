@@ -24,13 +24,24 @@ build recipe. The commit alone is not a complete artifact identity.
 
 ## Release targets
 
-| Target | Built by | Static archive | Reproducible |
-| --- | --- | --- | --- |
-| `aarch64-apple-darwin` | Zig in the pinned Linux builder image | `lib/libghostty-vt.a` | no |
-| `x86_64-pc-windows-msvc` | Zig on a Windows host | `lib/ghostty-vt-static.lib` | no |
+| Target                              | Built by                                                 | Static archive              | Reproducible |
+| ----------------------------------- | -------------------------------------------------------- | --------------------------- | ------------ |
+| `aarch64-apple-darwin`              | Zig in the pinned Linux builder image                    | `lib/libghostty-vt.a`       | no           |
+| `x86_64-pc-windows-msvc`            | Zig on a Windows host, for the dynamic C runtime (`/MD`) | `lib/ghostty-vt-static.lib` | no           |
+| `x86_64-pc-windows-msvc-crt-static` | Zig on a Windows host, for the static C runtime (`/MT`)  | `lib/ghostty-vt-static.lib` | no           |
 
 Ghostty installs the Windows static archive under a distinct name because
 `lib/ghostty-vt.lib`, the DLL import library, sits beside it.
+
+The Windows library comes in one build per C runtime. Every object in an MSVC
+link must be compiled for the same runtime; the linker refuses a mix with
+LNK2038, and the C++ standard headers stamp each object with the runtime it
+was compiled for. A Rust target links the dynamic runtime unless it enables
+`crt-static`, and `cc` builds a consumer's own C++ for the same one, so this
+crate links the `x86_64-pc-windows-msvc` build by default and the
+`x86_64-pc-windows-msvc-crt-static` build under `-C target-feature=+crt-static`.
+Packaging reads each library's linker directives and refuses objects stamped
+for the other runtime.
 
 Windows cannot use the container cross-build: Microsoft's CRT headers and
 import libraries are not redistributable, so Zig must find an installed MSVC
