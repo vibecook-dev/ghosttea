@@ -61,7 +61,7 @@ npm run dev   # build:sdk, then the Electron demo (apps/desktop, workspace "ghos
 PTY
 → ghosttead session
 → libghostty-vt state
-→ damaged rows shaped natively (ghosttea-text: fontdb + harfbuzz + swash)
+→ damaged rows shaped natively (ghosttea-text: fontdb + harfrust + swash)
 → TRF1 frame
 → frame socket
 → Electron utility process (ghosttea-electron bridge)

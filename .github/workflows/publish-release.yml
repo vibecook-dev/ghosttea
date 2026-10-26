@@ -184,17 +184,14 @@ jobs:
       # tree. This job contributes the macOS daemon and the universal native
       # tabs prebuild; `validate-windows` contributes the Windows daemon.
       #
-      # harfbuzz-sys probes pkg-config unless this is set, and a runner that
-      # happens to carry the Homebrew formula then links the daemon against a
-      # prefix that exists only on the builder. Forcing the vendored source
-      # makes the published binary the same one a developer machine without
-      # that formula already produces.
+      # ghosttea-text shapes with harfrust, which is Rust: the build compiles no
+      # HarfBuzz and probes no pkg-config, so a runner that carries Homebrew's
+      # formula cannot link the daemon against it. Before harfrust, harfbuzz-sys
+      # probed first and this step had to set HARFBUZZ_SYS_NO_PKG_CONFIG (0.5.1).
       - run: cargo build --release --locked --package ghosttead
-        env:
-          HARFBUZZ_SYS_NO_PKG_CONFIG: "1"
 
-      # The variable above is a fix that regresses silently, so assert the
-      # property it buys: a released daemon depends on nothing a consumer has
+      # A self-contained daemon is a property that regresses silently, so assert
+      # it: a released daemon depends on nothing a consumer has
       # to install. This gates every -sys crate that could do the same thing,
       # not only harfbuzz, and it fails on the builder rather than on a user's
       # machine — which running the daemon here cannot, because the library it
@@ -261,12 +258,8 @@ jobs:
       - run: npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
       - run: npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
 
-      # Set for the same reason as the macOS build. Nothing on this runner
-      # answers a pkg-config probe today, so the vendored source is already
-      # what gets linked — this keeps that a decision rather than an accident.
+      # Nothing in this build probes pkg-config, as on macOS.
       - run: cargo build --release --locked --package ghosttead
-        env:
-          HARFBUZZ_SYS_NO_PKG_CONFIG: "1"
 
       - uses: actions/upload-artifact@v7
         with:
