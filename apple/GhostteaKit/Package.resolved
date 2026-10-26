@@ -1,13 +1,13 @@
 {
-  "originHash" : "f80af37f22f9568538de92d1747c78c041051f698b500c43c25379d1d1e1a116",
+  "originHash" : "2463745b152d73a8239487d146df19b52ba10801eb6b8e75fc4acd06d4ef5890",
   "pins" : [
     {
       "identity" : "truffle",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vibecook-dev/truffle.git",
       "state" : {
-        "revision" : "f7e3900df25a84fed1858b78dcb035759879ebd6",
-        "version" : "0.7.22"
+        "revision" : "0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+        "version" : "0.7.23"
       }
     }
   ],
