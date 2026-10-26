@@ -1,0 +1,62 @@
+diff --git a/apps/desktop-experiment/src/main/index.ts b/apps/desktop-experiment/src/main/index.ts
+index f873346..f861337 100644
+--- a/apps/desktop-experiment/src/main/index.ts
++++ b/apps/desktop-experiment/src/main/index.ts
+@@ -120,10 +120,16 @@ if (renderBenchmark) {
+     };
+   });
+ 
++  let captureCount = 0;
+   ipcMain.handle("render-benchmark-frame-hash", async (event): Promise<string> => {
+     const window = BrowserWindow.fromWebContents(event.sender);
+     if (!window) throw new Error("Rendering benchmark window is unavailable");
+     const image = await window.webContents.capturePage();
++    const captureDirectory = process.env.GHOSTTEA_CAPTURE_PNG_DIR;
++    if (captureDirectory) {
++      captureCount += 1;
++      writeFileSync(join(captureDirectory, `frame-${captureCount}.png`), image.toPNG());
++    }
+     return createHash("sha256").update(image.toBitmap()).digest("hex");
+   });
+ 
+@@ -457,9 +463,13 @@ async function createWindow(options: CreateWindowOptions = {}): Promise<BrowserW
+   const revealWindow = (): void => {
+     if (window.isDestroyed()) return;
+     if (window.isMinimized()) window.restore();
+-    if (process.platform === "darwin") app.focus({ steal: true });
+-    window.show();
+-    window.focus();
++    if (process.env.GHOSTTEA_CAPTURE_INACTIVE === "1") {
++      window.showInactive();
++    } else {
++      if (process.platform === "darwin") app.focus({ steal: true });
++      window.show();
++      window.focus();
++    }
+     if (renderBenchmarkWindowIdOutput && !wroteBenchmarkWindowId) {
+       writeFileSync(
+         renderBenchmarkWindowIdOutput,
+diff --git a/bench/render/run.mjs b/bench/render/run.mjs
+index d58b25c..3a7f7aa 100644
+--- a/bench/render/run.mjs
++++ b/bench/render/run.mjs
+@@ -173,6 +173,19 @@ function main() {
+       payloadFiles[name] = { path, bytes: payload.byteLength };
+     }
+     const catalog = {
++      ...(process.env.GHOSTTEA_CAPTURE_PAYLOAD
++        ? {
++            "stopfonts-1": {
++              name: "stopfonts-1",
++              panes: 1,
++              kind: "payload",
++              payloadPath: process.env.GHOSTTEA_CAPTURE_PAYLOAD,
++              payloadBytes: readFileSync(process.env.GHOSTTEA_CAPTURE_PAYLOAD).length,
++              chunkBytes: 4096,
++              intervalMs: 8,
++            },
++          }
++        : {}),
+       "idle-4": { name: "idle-4", panes: 4, kind: "idle", durationMs: 2_500 },
+       "repaint-1": {
+         name: "repaint-1",
