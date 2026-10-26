@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use fontdb::{Database, Family, ID, Query, Source as FontSource, Stretch, Style, Weight};
-use harfrust::{Buffer, ShapeOptions, ShaperFont, shape};
+use harfrust::{Buffer, ShapeOptions, ShapePlan, ShapePlanKey, ShaperFont, shape};
 use swash::{
     FontRef,
     scale::{Render, ScaleContext, Source, StrikeWith, image::Content},
@@ -245,6 +245,8 @@ pub struct TextEngine {
     fallback_order: Option<Vec<FallbackFace>>,
     fallback_faces: HashMap<(String, FontPresentation), Option<ID>>,
     loaded_faces: HashMap<ID, LoadedFace>,
+    /// Compiled shaping plans per loaded face, by [`LoadedFace::id`]; see [`shape_plan`].
+    shape_plans: HashMap<u32, Vec<ShapePlan>>,
     next_face_id: u32,
     glyph_ids: HashMap<GlyphKey, u32>,
     glyphs: HashMap<u32, GlyphDefinition>,
@@ -261,6 +263,8 @@ pub struct TextEngine {
 const MAX_CACHED_GLYPHS: usize = 65_536;
 const MAX_CACHED_SHAPED_ROWS: usize = 128;
 const MAX_SHAPED_ROW_CANDIDATES: usize = 1_024;
+/// One plan per script, direction and language a face has shaped; a terminal meets a handful.
+const MAX_SHAPE_PLANS_PER_FACE: usize = 64;
 
 impl TextEngine {
     pub fn discover() -> Result<Self> {
@@ -355,6 +359,7 @@ impl TextEngine {
             fallback_order: None,
             fallback_faces: HashMap::new(),
             loaded_faces: HashMap::new(),
+            shape_plans: HashMap::new(),
             next_face_id: 1,
             glyph_ids: HashMap::new(),
             glyphs: HashMap::new(),
@@ -460,6 +465,7 @@ impl TextEngine {
             fallback_order: Some(fallback_order),
             fallback_faces: HashMap::new(),
             loaded_faces: HashMap::new(),
+            shape_plans: HashMap::new(),
             next_face_id: 1,
             glyph_ids: HashMap::new(),
             glyphs: HashMap::new(),
@@ -703,6 +709,7 @@ impl TextEngine {
         let loaded = self.load_face(face_id)?;
         let shaped = shape_glyphs(
             loaded.shaping.as_ref(),
+            self.shape_plans.entry(loaded.id).or_default(),
             run_text,
             graphemes
                 .iter()
@@ -895,6 +902,7 @@ impl TextEngine {
 /// other run.
 fn shape_glyphs(
     font: Option<&harfrust::Font>,
+    plans: &mut Vec<ShapePlan>,
     text: &str,
     grapheme_starts: impl Iterator<Item = u32>,
     scale_26_6: i32,
@@ -914,7 +922,9 @@ fn shape_glyphs(
     let mut buffer = Buffer::new();
     buffer.push_str(text);
     buffer.guess_segment_properties();
-    shape(&shaper, &mut buffer, ShapeOptions::new()).context("shape a text run")?;
+    let plan = shape_plan(font, plans, &buffer);
+    shape(&shaper, &mut buffer, ShapeOptions::new().plan(Some(plan)))
+        .context("shape a text run")?;
     Ok(buffer
         .glyph_infos()
         .iter()
@@ -927,6 +937,35 @@ fn shape_glyphs(
             y_offset: position.y_offset,
         })
         .collect())
+}
+
+/// The plan for `buffer`'s segment properties on `font`, compiled on first use and reused after.
+///
+/// Without a plan, harfrust compiles one (its features and lookups) on every call, where HarfBuzz
+/// cached plans on the face; a terminal shapes the same few scripts on every frame. A cached plan
+/// is the plan harfrust would compile for the call, matched by its own [`ShapePlanKey`], so the
+/// shaping is the same.
+fn shape_plan<'a>(
+    font: &harfrust::Font,
+    plans: &'a mut Vec<ShapePlan>,
+    buffer: &Buffer,
+) -> &'a ShapePlan {
+    let key =
+        ShapePlanKey::new(font, buffer.script(), buffer.direction()).language(buffer.language());
+    if let Some(index) = plans.iter().position(|plan| key.matches(plan)) {
+        return &plans[index];
+    }
+    if plans.len() >= MAX_SHAPE_PLANS_PER_FACE {
+        plans.clear();
+    }
+    plans.push(ShapePlan::new(
+        font,
+        buffer.direction(),
+        buffer.script(),
+        buffer.language(),
+        &[],
+    ));
+    plans.last().expect("a plan was just added")
 }
 
 fn validate_configuration(metrics: TextMetrics, raster_scale: f32) -> Result<()> {
@@ -1235,7 +1274,14 @@ mod tests {
 
     #[test]
     fn an_unreadable_face_shapes_one_notdef_per_grapheme() {
-        let glyphs = shape_glyphs(None, "e\u{301} 界", [0, 3, 4].into_iter(), 832).unwrap();
+        let glyphs = shape_glyphs(
+            None,
+            &mut Vec::new(),
+            "e\u{301} 界",
+            [0, 3, 4].into_iter(),
+            832,
+        )
+        .unwrap();
         assert_eq!(
             glyphs
                 .iter()
@@ -1243,6 +1289,89 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(0, 0, 416), (0, 3, 416), (0, 4, 416)]
         );
+    }
+
+    /// A cached plan shapes exactly as a plan compiled for the call: the parity fixture's texts
+    /// through every bundled test face, each shaped twice through the cache (a compile, then a
+    /// reuse), against `shape` without a plan, as every call ran before the cache.
+    #[test]
+    fn a_cached_shape_plan_shapes_exactly_as_a_plan_compiled_for_the_call() {
+        let faces: [&[u8]; 5] = [
+            include_bytes!(
+                "../../../../../apple/GhostteaKit/Sources/GhostteaFontProof/Resources/Fonts/JetBrainsMonoNerdFont-Regular.ttf"
+            ),
+            include_bytes!(
+                "../../../../../apple/GhostteaKit/Sources/GhostteaFontProof/Resources/Fonts/NotoColorEmoji.ttf"
+            ),
+            include_bytes!("../../../../font-resources/STIXTwoMath-Regular.otf"),
+            include_bytes!("../../../../font-resources/NotoSansSymbols2-Regular.ttf"),
+            include_bytes!(
+                "../../../../../apple/GhostteaKit/Sources/GhostteaFontProof/Resources/Fonts/NotoEmoji-Regular.ttf"
+            ),
+        ];
+        // The texts of the parity fixture (fixture.rs, `phase2_fixture_cases`).
+        let texts = [
+            "Ghosttea => ffi != 0123456789",
+            "bold terminal",
+            "italic terminal",
+            "bold italic",
+            "e\u{301} 界",
+            "terminal 😀",
+            "⏸ ⏸\u{fe0e} ⏸\u{fe0f} 😀",
+            "⏸ ✻ ⚠ ← ·",
+        ];
+        let scale = (TextMetrics::default().font_size_px * 64.0).round() as i32;
+        for bytes in faces {
+            let data: Arc<dyn AsRef<[u8]> + Send + Sync> = Arc::new(bytes.to_vec());
+            let font =
+                harfrust::Font::new(data, 0).expect("harfrust reads every bundled test face");
+            let mut plans = Vec::new();
+            for text in texts {
+                let shaper = ShaperFont::new(&font).with_scale(scale);
+                let mut buffer = Buffer::new();
+                buffer.push_str(text);
+                buffer.guess_segment_properties();
+                shape(&shaper, &mut buffer, ShapeOptions::new()).unwrap();
+                let compiled_for_the_call = buffer
+                    .glyph_infos()
+                    .iter()
+                    .zip(buffer.glyph_positions())
+                    .map(|(info, position)| {
+                        (
+                            info.glyph_id,
+                            info.cluster,
+                            position.x_advance,
+                            position.x_offset,
+                            position.y_offset,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                for _ in 0..2 {
+                    let cached =
+                        shape_glyphs(Some(&font), &mut plans, text, std::iter::empty(), scale)
+                            .unwrap()
+                            .into_iter()
+                            .map(|glyph| {
+                                (
+                                    glyph.glyph_id,
+                                    glyph.cluster,
+                                    glyph.x_advance,
+                                    glyph.x_offset,
+                                    glyph.y_offset,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                    assert_eq!(cached, compiled_for_the_call, "{text:?}");
+                }
+            }
+            // Eight texts in a few scripts share a few plans: the cache was used, not refilled.
+            assert!(
+                (1..texts.len()).contains(&plans.len()),
+                "{} plans for {} texts",
+                plans.len(),
+                texts.len()
+            );
+        }
     }
 
     #[test]
