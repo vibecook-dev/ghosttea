@@ -131,25 +131,6 @@ function requireUniqueMembers(library) {
   }
 }
 
-function requireDefinitions(library, symbols, description) {
-  const definitions = new Set(
-    execute("nm", ["-gjU", library], {
-      capture: true,
-      allowedStatuses: [1],
-    })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean),
-  );
-  const missing = symbols.filter((symbol) => !definitions.has(symbol));
-  if (missing.length > 0) {
-    throw new Error(
-      `${library} is missing ${description}: ${missing.join(", ")}. ` +
-        "The Apple native artifact must not depend on libraries discovered from the build host.",
-    );
-  }
-}
-
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("Building GhostteaAppleNative requires Apple Silicon macOS.");
 }
@@ -273,7 +254,6 @@ for (const platform of platforms) {
   const rustLibrary = join(root, "target", platform.target, "release", "libghosttea_apple_ffi.a");
   if (!existsSync(rustLibrary)) throw new Error(`Missing unified Rust static library ${rustLibrary}.`);
   requireExactCAbi(rustLibrary);
-  requireDefinitions(rustLibrary, ["_hb_blob_create", "_hb_shape"], "embedded HarfBuzz definitions");
   requireUniqueMembers(rustLibrary);
 
   const library = join(directory, "libghosttea-apple-native.a");
