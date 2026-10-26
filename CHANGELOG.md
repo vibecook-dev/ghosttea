@@ -3,6 +3,45 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.5 - 2026-10-26
+
+### Fixed
+
+- Text is shaped by harfrust 0.15.0, the HarfBuzz project's own Rust port,
+  instead of HarfBuzz 2.6.8.
+  - ghosttea-text took HarfBuzz through `harfbuzz_rs` 2.0.1 and
+    `harfbuzz-sys` 0.5.0, whose embedded copy dates from 2020.
+  - That copy is inside CVE-2023-25193: time quadratic in a run of
+    consecutive combining marks, which any program can print into a
+    terminal.
+  - harfrust matches HarfBuzz 15.0.0 and contains no C or C++, so HarfBuzz's
+    C memory-safety bug class leaves with it.
+- A build on a Mac with Homebrew's harfbuzz no longer links
+  `/opt/homebrew/opt/harfbuzz`.
+  - `harfbuzz-sys` probed pkg-config before its embedded copy, so a consumer
+    that packaged ghosttea-text on such a Mac shipped that link.
+  - harfrust has no build script, and pkg-config has left the dependency
+    graph.
+  - `ghosttead` no longer links libc++, CoreText or CoreGraphics.
+- Every host shapes with the same code. CI and the published binaries used
+  the embedded 2.6.8, while a Homebrew Mac used its own HarfBuzz, so
+  `npm run check:font-parity` failed on such a Mac in three cases.
+
+### Changed
+
+- Glyph positions follow modern HarfBuzz, and harfrust renders
+  byte-identically to HarfBuzz 14.6.
+  - Glyph ids and glyph bitmaps are unchanged.
+  - Some advances move by sub-pixel amounts, at most 0.015 px in the locked
+    font fixture.
+  - Stacked combining marks sit where HarfBuzz 14.6 places them.
+  - The font-parity fixture and the Metal visual golden are re-blessed.
+- Builds that set `HARFBUZZ_SYS_NO_PKG_CONFIG` for Ghosttea can drop it,
+  because nothing reads it now. The release builds no longer set it.
+- The Apple native build fails if a harfbuzz crate reappears in
+  `Cargo.lock`, or if any Rust slice defines a HarfBuzz symbol.
+- The Apple native artifact is rebuilt for this release.
+
 ## 0.13.4 - 2026-10-25
 
 ### Added

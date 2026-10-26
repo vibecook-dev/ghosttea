@@ -1,6 +1,6 @@
 {
   "name": "ghosttea-desktop-pipeline-lab",
-  "version": "0.13.4",
+  "version": "0.13.5",
   "description": "Electron compositor lab: race terminal scene/view architectures.",
   "author": "James Yong",
   "license": "MIT",
