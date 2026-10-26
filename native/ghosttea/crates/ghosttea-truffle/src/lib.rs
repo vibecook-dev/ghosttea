@@ -3231,6 +3231,41 @@ impl MeshRuntime {
         self.control_states.lock().unwrap().get(session_id).cloned()
     }
 
+    /// Whether a claim on `session_id` must first wait for the session's opening control frame.
+    ///
+    /// A streamed view's setup always ends with the controller frame at a reconnect-capable minor,
+    /// controller or none (`control_state_message`), so "this client holds a streamed view and has
+    /// heard no announcement yet" means that frame is still in flight. Below that minor a session
+    /// with no controller announces nothing, and a session this client watches through no streamed
+    /// view announces nothing to it, so neither has anything to wait for.
+    async fn awaits_opening_control_frame(&self, session_id: &str) -> bool {
+        if self.last_control_state(session_id).is_some() {
+            return false;
+        }
+        let Some(device_id) = self
+            .replicas
+            .read()
+            .await
+            .get(session_id)
+            .map(|remote| remote.device_id.clone())
+        else {
+            return false;
+        };
+        let reconnect = self
+            .connections
+            .lock()
+            .await
+            .get(&device_id)
+            .is_some_and(|connection| connection.supports_reconnect());
+        reconnect
+            && self
+                .views
+                .lock()
+                .await
+                .iter()
+                .any(|((view_session, _), view)| view_session == session_id && view.feed)
+    }
+
     /// Claim control, compare-and-swapping against an observed revision when
     /// one is supplied. `None` is legacy last-write-wins.
     pub async fn claim_control_at(
@@ -3251,6 +3286,26 @@ impl MeshRuntime {
         // Session-scoped for the same reason as the claim above: a secondary
         // has no per-view control sender to await once it declines its stream.
         let mut states = self.subscribe_control_state();
+        // 2026-10-26: the claim settles on the first announcement after its
+        // request, and the request carries nothing the host echoes back. A
+        // session's opening control frame still in flight would be that first
+        // announcement, naming whoever held control before, and the claim would
+        // read it as its own refusal. So wait for it before asking, bounded; past
+        // the bound, claim as before. The window that remains is a concurrent
+        // foreign claim whose announcement races this one. The exact fix is for
+        // the host to echo the request's `client_sequence` in the announcement it
+        // causes: a control-protocol minor, worth building only once that window
+        // is measured.
+        if self.awaits_opening_control_frame(session_id).await {
+            let _ = tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+                while self.last_control_state(session_id).is_none() {
+                    if let Err(broadcast::error::RecvError::Closed) = states.recv().await {
+                        break;
+                    }
+                }
+            })
+            .await;
+        }
         let previous_epoch = self
             .last_control_state(session_id)
             .and_then(|state| state.controller)
@@ -9162,6 +9217,152 @@ mod tests {
             state.controller.map(|controller| controller.view_id),
             Some("pane-2".to_owned())
         );
+        Ok(())
+    }
+
+    /// Waits until the client has heard the session's opening control frame and returns it.
+    async fn opening_control_frame(fixture: &Fixture) -> Result<RemoteControlState> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(state) = fixture.runtime.last_control_state(&fixture.session_id) {
+                    return state;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .context("the session's opening control frame never arrived")
+    }
+
+    /// The race the claim used to lose (a Windows CI red on the 0.13.5 release
+    /// PR): a secondary claims before the primary's stream has delivered the
+    /// session's opening control frame. The claim settles on the first
+    /// announcement after its request, so that frame, landing late, read as a
+    /// refusal. Here the client is put exactly where a slow stream leaves it, and
+    /// the claim must not ask until the frame lands.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_claim_waits_for_the_opening_control_frame_before_asking() -> Result<()> {
+        let fixture = Fixture::attached().await?;
+        let attachment = fixture
+            .runtime
+            .attach_view(&fixture.session_id, "pane-2")
+            .await?;
+        let opening = opening_control_frame(&fixture).await?;
+        fixture
+            .runtime
+            .control_states
+            .lock()
+            .unwrap()
+            .remove(&fixture.session_id);
+        let host = fixture
+            .registry
+            .read()
+            .unwrap()
+            .get(&fixture.remote_session_id)
+            .cloned()
+            .context("the host session is registered")?;
+        let revision = host.control_snapshot().control_revision;
+
+        let claim = fixture.runtime.claim_control_at(
+            &fixture.session_id,
+            "pane-2",
+            attachment.attachment_epoch,
+            100,
+            30,
+            None,
+        );
+        tokio::pin!(claim);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), &mut claim)
+                .await
+                .is_err(),
+            "the claim settled before the session's opening control frame arrived"
+        );
+        assert_eq!(
+            host.control_snapshot().control_revision,
+            revision,
+            "the claim asked before the session's opening control frame arrived"
+        );
+
+        publish_control_state(
+            &fixture.runtime.control_states,
+            &fixture.runtime.control_state_tx,
+            opening,
+        );
+        let outcome = tokio::time::timeout(Duration::from_secs(5), claim)
+            .await
+            .context("the claim hung after the opening control frame arrived")??;
+        let RemoteControlOutcome::Claimed(state) = outcome else {
+            bail!("the late opening control frame was read as the claim's refusal");
+        };
+        assert_eq!(
+            state.controller.map(|controller| controller.view_id),
+            Some("pane-2".to_owned())
+        );
+        Ok(())
+    }
+
+    /// The wait applies only where an opening frame is actually owed: a streamed
+    /// view whose frame has not arrived. Once the frame is heard, or when this
+    /// client holds no streamed view of the session, a claim asks at once.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn only_a_pending_streamed_view_makes_a_claim_wait() -> Result<()> {
+        let fixture = Fixture::attached().await?;
+        let attachment = fixture
+            .runtime
+            .attach_view(&fixture.session_id, "pane-2")
+            .await?;
+        opening_control_frame(&fixture).await?;
+        assert!(
+            !fixture
+                .runtime
+                .awaits_opening_control_frame(&fixture.session_id)
+                .await,
+            "a claim waited for an opening frame the client had already heard"
+        );
+
+        fixture
+            .runtime
+            .control_states
+            .lock()
+            .unwrap()
+            .remove(&fixture.session_id);
+        assert!(
+            fixture
+                .runtime
+                .awaits_opening_control_frame(&fixture.session_id)
+                .await,
+            "a streamed view with no frame heard yet did not make the claim wait"
+        );
+
+        // With no streamed view of the session, there is no frame to wait for.
+        fixture
+            .runtime
+            .views
+            .lock()
+            .await
+            .retain(|(session, _), view| !(session == &fixture.session_id && view.feed));
+        assert!(
+            !fixture
+                .runtime
+                .awaits_opening_control_frame(&fixture.session_id)
+                .await,
+            "a claim waited although no streamed view owes an opening frame"
+        );
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(2),
+            fixture.runtime.claim_control_at(
+                &fixture.session_id,
+                "pane-2",
+                attachment.attachment_epoch,
+                100,
+                30,
+                None,
+            ),
+        )
+        .await
+        .context("a claim with no streamed view waited out the handshake")??;
+        assert!(matches!(outcome, RemoteControlOutcome::Claimed(_)));
         Ok(())
     }
 
