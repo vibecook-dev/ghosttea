@@ -3,6 +3,43 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.6 - 2026-10-26
+
+### Fixed
+
+- Closing a terminal pane no longer leaves the render worker drawing on every
+  animation frame. An application that terminated a session before React
+  removed its pane released the view first, and the pane's blur, reported as
+  it unmounted, then rebuilt the released surface in the worker. That surface
+  had no canvas, so it stayed dirty and asked for a frame on every frame for
+  the life of the worker.
+  - `setFocused` ignores a view the runtime no longer holds.
+  - A render benchmark's measured iteration after a warmup reaches idle
+    again; it used to time out.
+- The render worker treats a dirty surface as work only while a frame can
+  draw it. A surface with no canvas, or with a zero-size canvas the worker
+  still counts as visible, waits without asking for frames or holding a
+  performance measurement's idle. Mounting it, sizing it or showing it draws
+  it, as before.
+- A remote control claim no longer reads the session's opening control frame
+  as its own refusal. A claim made while that frame was still in flight could
+  be rejected, because the claim settles on the first announcement after it.
+  The claim now waits for that frame first, for at most the handshake
+  timeout, when the client holds a streamed view of the session.
+
+### Changed
+
+- The Apple native artifact is rebuilt for this release.
+
+### Validation
+
+- Dispatched with `render_evidence`, the iOS release hardening workflow draws
+  the font-parity rows, the visual golden's text, box drawing and a stack of
+  combining marks through `GhostteaMetalRenderer`, and uploads the PNG with
+  its pixel hash. A change that moves glyph pixels can carry iOS pixels as
+  routine evidence. Pull request and push runs are unchanged, and nothing
+  that ships changes.
+
 ## 0.13.5 - 2026-10-26
 
 ### Fixed

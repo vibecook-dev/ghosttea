@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea-native-tabs",
-  "version": "0.13.5",
+  "version": "0.13.6",
   "description": "Prebuilt macOS native window-tab ordering addon for Electron applications.",
   "license": "MIT",
   "author": "James Yong",
