@@ -1,0 +1,82 @@
+diff --git a/pkg/highway/build.zig b/pkg/highway/build.zig
+index a02447285dde036836f638267ab4c5f394521299..0373d531f3d792939d257a1972dea24b5aefcb0e 100644
+--- a/pkg/highway/build.zig
++++ b/pkg/highway/build.zig
+@@ -2,0 +3,2 @@ const std = @import("std");
++const MsvcRuntime = enum { static, dll };
++
+@@ -5,0 +8 @@ pub fn build(b: *std.Build) !void {
++    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
+@@ -104,0 +108,5 @@ pub fn build(b: *std.Build) !void {
++    // `static` is clang's default for msvc, so only `dll` adds a flag.
++    if (target.result.abi == .msvc and msvc_runtime == .dll) {
++        try flags.append(b.allocator, "-fms-runtime-lib=dll");
++    }
++
+diff --git a/pkg/simdutf/build.zig b/pkg/simdutf/build.zig
+index 0859edc26e779ca9601ff493588e94f742a36026..a086d2d7951df796ca34c0f797d90ee99bb2d53e 100644
+--- a/pkg/simdutf/build.zig
++++ b/pkg/simdutf/build.zig
+@@ -2,0 +3,2 @@ const std = @import("std");
++const MsvcRuntime = enum { static, dll };
++
+@@ -6,0 +9 @@ pub fn build(b: *std.Build) !void {
++    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
+@@ -70,0 +74,2 @@ pub fn build(b: *std.Build) !void {
++        // `static` is clang's default for msvc, so only `dll` adds a flag.
++        if (msvc_runtime == .dll) try flags.append(b.allocator, "-fms-runtime-lib=dll");
+diff --git a/src/build/Config.zig b/src/build/Config.zig
+index 0a99473174e27262f04169d0e765f2d2b85d53b7..daebee669875580a82e9c3f370e3ed6edebf694f 100644
+--- a/src/build/Config.zig
++++ b/src/build/Config.zig
+@@ -45,0 +46 @@ strip: bool = false,
++msvc_runtime: MsvcRuntime = .static,
+@@ -339,0 +341,6 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
++    config.msvc_runtime = b.option(
++        MsvcRuntime,
++        "msvc-runtime",
++        "The MSVC C runtime that C and C++ objects are compiled for: static (/MT) or dll (/MD). Only msvc targets read it.",
++    ) orelse .static;
++
+@@ -692,0 +700,19 @@ pub const ExeEntrypoint = enum {
++/// The MSVC C runtime that C and C++ objects are compiled for, named as
++/// `-fms-runtime-lib` names it. Every object in one link must agree, and the
++/// consumer of a static library decides: a Rust target links `dll` (/MD)
++/// unless it enables `crt-static`.
++pub const MsvcRuntime = enum {
++    static,
++    dll,
++
++    /// The compiler flags that select this runtime. `static` is clang's own
++    /// default for msvc targets, so it adds none and leaves objects as they were.
++    pub fn cFlags(self: MsvcRuntime, target: std.Target) []const []const u8 {
++        if (target.abi != .msvc) return &.{};
++        return switch (self) {
++            .static => &.{},
++            .dll => &.{"-fms-runtime-lib=dll"},
++        };
++    }
++};
++
+diff --git a/src/build/GhosttyZig.zig b/src/build/GhosttyZig.zig
+index 44c300e15c569b3d00394894e760621ae4ff5f11..63b8fc31e2aa5619fc99e8dee44cf9310231ae14 100644
+--- a/src/build/GhosttyZig.zig
++++ b/src/build/GhosttyZig.zig
+@@ -142 +142 @@ fn initVt(
+-        try SharedDeps.addSimd(b, vt, simd_libs);
++        try SharedDeps.addSimd(b, vt, simd_libs, cfg.msvc_runtime);
+diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
+index b68be92d0112d20ec4859a2a79b06ee10d8cf654..633ef20f2d9db6a9fc57c3a87699580197855ac4 100644
+--- a/src/build/SharedDeps.zig
++++ b/src/build/SharedDeps.zig
+@@ -383,0 +384 @@ pub fn add(
++        self.config.msvc_runtime,
+@@ -761,0 +763 @@ pub fn addSimd(
++    msvc_runtime: Config.MsvcRuntime,
+@@ -774,0 +777 @@ pub fn addSimd(
++            .@"msvc-runtime" = msvc_runtime,
+@@ -790,0 +794 @@ pub fn addSimd(
++            .@"msvc-runtime" = msvc_runtime,
+@@ -856,0 +861,2 @@ pub fn addSimd(
++        try flags.appendSlice(b.allocator, msvc_runtime.cFlags(target.result));
++

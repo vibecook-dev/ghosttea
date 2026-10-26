@@ -90,6 +90,13 @@ the disposable checkout, review it there, regenerate
 `native/patches/ghostty-vt-g15-g21.patch`, and prove that bootstrap recreates
 the same diff. Never build or release an unrecorded vendored change.
 
+The patch set applies in order. `native/patches/ghostty-vt-msvc-runtime.patch`
+follows it and adds the build's `-Dmsvc-runtime` option, which compiles the C
+and C++ objects for one MSVC C runtime (`dll` adds `-fms-runtime-lib=dll`;
+`static`, clang's default, adds nothing). Rebase it with the rest, and keep
+its option reaching every C and C++ compile in the VT library, including the
+vendored simdutf and highway packages.
+
 ## 3. Rebuild the downloadable and Apple artifacts
 
 Build the desktop/server artifact in the pinned container with the locked
@@ -121,14 +128,17 @@ npm run package:ghostty-vt
 
 The pins reduce variance but do not justify a reproducibility claim. With Zig
 0.15.2, a controlled cross-host check still produced a different instruction
-sequence in the root Zig object. The Windows archive is also host-built against
-MSVC and the Windows SDK. Both targets are therefore immutable CI candidates:
-dispatch `.github/workflows/ghostty-vt-artifact.yml` from the reviewed release
-branch and copy each complete result plus their shared `candidateRunId` into the
-manifest. Review the Windows toolchain record. The tag workflow must use
-`scripts/verify-ghostty-vt-candidate.mjs` to download and verify both exact
-workflow artifacts by run ID; it must not rebuild different bytes behind either
-locked checksum. The final release job waits for both promoted packages before
+sequence in the root Zig object. The Windows archives are also host-built
+against MSVC and the Windows SDK, one per C runtime (`x86_64-pc-windows-msvc`
+for `/MD`, `x86_64-pc-windows-msvc-crt-static` for `/MT`), and packaging
+refuses a Windows library whose objects are stamped for the other runtime.
+Every target is therefore an immutable CI candidate: dispatch
+`.github/workflows/ghostty-vt-artifact.yml` from the reviewed release branch and
+copy each complete result plus their shared `candidateRunId` into the manifest.
+Review the Windows toolchain record. The tag workflow must use
+`scripts/verify-ghostty-vt-candidate.mjs` to download and verify every exact
+workflow artifact by run ID; it must not rebuild different bytes behind any
+locked checksum. The final release job waits for every promoted package before
 creating the release.
 
 Build and validate every Apple slice, then recompose the local combined binary

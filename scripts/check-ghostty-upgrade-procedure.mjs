@@ -269,7 +269,12 @@ for (const path of ["scripts/build-ghostty-vt.mjs", "scripts/build-ghostty-vt-ap
   }
 }
 const desktopBuild = read("scripts/build-ghostty-vt.mjs");
-for (const text of ["-Dcpu=${config.zigCpu}", "-j${lock.builder.zigBuildJobs}", "lock.builder.zigBuildSeed"]) {
+for (const text of [
+  "-Dcpu=${config.zigCpu}",
+  "-j${lock.builder.zigBuildJobs}",
+  "lock.builder.zigBuildSeed",
+  "-Dmsvc-runtime=${config.msvcRuntime}",
+]) {
   if (!desktopBuild.includes(text)) {
     throw new Error(`scripts/build-ghostty-vt.mjs does not pin ${JSON.stringify(text)}.`);
   }
