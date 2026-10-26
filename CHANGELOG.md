@@ -3,6 +3,37 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.4 - 2026-10-25
+
+### Added
+
+- `session-metadata-changed`, a control event at protocol minor 17, carries a
+  session's working directory and title together, as absolute state, when
+  either changes. A shell's `cd` reaches a client when its OSC 7 arrives
+  instead of at the client's next `list-sessions`. A resize or a repeated
+  OSC 7 sends nothing, and remote replicas send the same event. Clients that
+  negotiated an older minor never receive it.
+  - `@vibecook/ghosttea-protocol` validates the event and exports
+    `METADATA_EVENT_PROTOCOL_MINOR`.
+  - The Rust crates add `SessionMetadata`, `Session::subscribe_metadata`,
+    `RemoteReplica::subscribe_metadata` and
+    `RemoteTerminalRuntime::subscribe_metadata`, whose default never fires.
+
+### Changed
+
+- **Rust consumers must move their `truffle-core` pin** to `=0.7.22`. Every
+  crate sharing an application-owned Truffle node must resolve the same
+  version. Swift consumers get Truffle 0.7.22 through Ghosttea's exact pin.
+  - Truffle 0.7.20 adds app capabilities, tags and the user id to WhoIs
+    identity (protocol 9), and reports key expiry, the control server and a
+    sidecar exit as status events (protocol 10).
+  - Truffle 0.7.21 builds its sidecar with Go 1.27.3 for CVE-2026-111943, and
+    takes ctutils and tokio for RUSTSEC-2026-0385 and -0386 in its own lock.
+    Ghosttea's lock has carried both fixes since 0.13.2.
+  - Truffle 0.7.22 rebuilds TailscaleKit, which GhostteaKit links on iOS, with
+    Go 1.27.3.
+- The Apple native artifact is rebuilt for this release.
+
 ## 0.13.3 - 2026-10-25
 
 ### Added

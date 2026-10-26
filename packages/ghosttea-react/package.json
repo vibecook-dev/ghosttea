@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea-react",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "description": "React terminal surface and worker renderer for Ghosttea.",
   "license": "MIT",
   "author": "James Yong",
@@ -58,9 +58,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@vibecook/ghosttea": "0.13.3",
-    "@vibecook/ghosttea-frame": "0.13.3",
-    "@vibecook/ghosttea-protocol": "0.13.3"
+    "@vibecook/ghosttea": "0.13.4",
+    "@vibecook/ghosttea-frame": "0.13.4",
+    "@vibecook/ghosttea-protocol": "0.13.4"
   },
   "peerDependencies": {
     "react": ">=19"
