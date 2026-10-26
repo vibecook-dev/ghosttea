@@ -41,6 +41,15 @@ pub struct RemoteActivityChanged {
     pub activity: SessionActivity,
 }
 
+/// A replica's working directory or title changed. Both are carried as
+/// absolute state, as the local `session-metadata-changed` event carries them.
+#[derive(Clone, Debug)]
+pub struct RemoteMetadataChanged {
+    pub session_id: String,
+    pub cwd: Option<String>,
+    pub title: Option<String>,
+}
+
 pub struct RemoteResize {
     pub attachment_epoch: u64,
     pub control_epoch: u64,
@@ -306,6 +315,15 @@ pub struct RemoteSessionOpen {
 pub trait RemoteTerminalRuntime: Send + Sync {
     fn subscribe_control(&self) -> broadcast::Receiver<RemoteControlChanged>;
     fn subscribe_activity(&self) -> broadcast::Receiver<RemoteActivityChanged>;
+    /// Working-directory and title changes of the replicas this runtime holds.
+    ///
+    /// Defaulted to a closed channel, so a runtime that holds no replicas, or
+    /// predates the event, need not implement it.
+    fn subscribe_metadata(&self) -> broadcast::Receiver<RemoteMetadataChanged> {
+        let (sender, receiver) = broadcast::channel(1);
+        drop(sender);
+        receiver
+    }
     async fn hosts(&self) -> Result<Vec<RemoteHostSummary>>;
     async fn list_sessions(&self, device_id: &str) -> Result<Vec<SharedSessionSummary>>;
     async fn open_session(&self, request: RemoteSessionOpen) -> Result<SessionSummary>;
