@@ -303,8 +303,8 @@ async function finishPerformanceMeasurement(requestId: number, quietMs: number, 
 
   while (true) {
     const now = performance.now();
-    const hasVisibleDirty = [...dirty].some((id) => !occluded.has(id));
-    if (!flushScheduled && !hasVisibleDirty && now - active.lastActivityAt >= quietMs) {
+    const hasDrawableDirty = [...dirty].some(drawable);
+    if (!flushScheduled && !hasDrawableDirty && now - active.lastActivityAt >= quietMs) {
       const beforeDrainActivity = active.lastActivityAt;
       if (renderer?.settle) {
         const drainStarted = performance.now();
@@ -643,12 +643,18 @@ function scheduleShaderAnimation(): void {
   else setTimeout(run, 16);
 }
 
+// A dirty surface is work only while a frame can draw it: mounted, sized and
+// not occluded. One that cannot stays dirty without asking for frames or
+// holding a measurement's idle; mount, a resize and becoming visible each
+// invalidate it again once it can be drawn.
+function drawable(id: string): boolean {
+  const size = mounts.get(id)?.size;
+  return !occluded.has(id) && size !== undefined && size.width > 0 && size.height > 0;
+}
+
 async function flush(): Promise<void> {
   const backend = await ensureRenderer();
-  const ids = [...dirty].filter((id) => {
-    const size = mounts.get(id)?.size;
-    return !occluded.has(id) && size !== undefined && size.width > 0 && size.height > 0;
-  });
+  const ids = [...dirty].filter(drawable);
   if (performanceMeasurement && ids.length > 0) {
     performanceMeasurement.scheduling.flushes += 1;
     appendPerformanceSample(performanceMeasurement.scheduling.panesPerFlush, ids.length);
@@ -709,7 +715,7 @@ async function flush(): Promise<void> {
       console.error(`[terminal-renderer] failed to render ${entries.length} view(s)`, error);
     }
   }
-  if ([...dirty].some((id) => !occluded.has(id))) scheduleFlush();
+  if ([...dirty].some(drawable)) scheduleFlush();
 }
 
 function markDirty(id: string): void {
