@@ -7,11 +7,12 @@ use ghosttea_core::{
     TextEnginePerformanceSnapshot,
 };
 use ghosttea_text::TextEngine;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::{
     FrameHub,
-    session::{SessionActivity, SessionSummary},
+    session::{SessionActivity, SessionMetadata, SessionSummary},
 };
 
 /// Desktop host wrapper for the platform-neutral logical replica model.
@@ -19,6 +20,7 @@ pub struct RemoteReplica {
     summary: Mutex<SessionSummary>,
     model: Mutex<LogicalReplicaModel>,
     frames: FrameHub,
+    metadata_tx: broadcast::Sender<SessionMetadata>,
 }
 
 impl RemoteReplica {
@@ -62,6 +64,7 @@ impl RemoteReplica {
             }),
             model: Mutex::new(LogicalReplicaModel::new(runtime, handle)),
             frames,
+            metadata_tx: broadcast::channel(16).0,
         })
     }
 
@@ -84,6 +87,19 @@ impl RemoteReplica {
 
     pub fn set_activity(&self, activity: SessionActivity) {
         self.summary.lock().unwrap().activity = activity;
+    }
+
+    /// The working directory and title a published snapshot changes, announced
+    /// the way a local session announces its own: once per change, never for a
+    /// snapshot that repeats them.
+    pub fn subscribe_metadata(&self) -> broadcast::Receiver<SessionMetadata> {
+        self.metadata_tx.subscribe()
+    }
+
+    /// The working directory and title as the summary holds them now: what a
+    /// subscriber that lagged re-reads.
+    pub fn metadata(&self) -> SessionMetadata {
+        SessionMetadata::of(&self.summary.lock().unwrap())
     }
 
     pub fn publish(&self, snapshot: LogicalTerminalSnapshot) -> Result<()> {
@@ -179,17 +195,27 @@ impl RemoteReplica {
         let Some(snapshot) = snapshot else {
             return;
         };
-        let mut summary = self.summary.lock().unwrap();
-        summary.cols = snapshot.cols;
-        summary.rows = snapshot.rows.len() as u16;
-        if let Some(title) = &snapshot.title {
-            if let Some(current) = &mut summary.title {
-                current.clone_from(title);
-            } else {
-                summary.title = Some(title.clone());
+        let changed = {
+            let mut summary = self.summary.lock().unwrap();
+            let previous = SessionMetadata::of(&summary);
+            summary.cols = snapshot.cols;
+            summary.rows = snapshot.rows.len() as u16;
+            if let Some(title) = &snapshot.title {
+                if let Some(current) = &mut summary.title {
+                    current.clone_from(title);
+                } else {
+                    summary.title = Some(title.clone());
+                }
             }
+            summary.cwd.clone_from(&snapshot.cwd);
+            let next = SessionMetadata::of(&summary);
+            (next != previous).then_some(next)
+        };
+        // Callers hold the model lock, so announcements keep the order of the
+        // snapshots that caused them.
+        if let Some(next) = changed {
+            let _ = self.metadata_tx.send(next);
         }
-        summary.cwd.clone_from(&snapshot.cwd);
     }
 
     fn execute_update(&self, update: TerminalUpdate) -> Result<()> {
@@ -269,6 +295,61 @@ mod tests {
         assert_eq!(u64::from_le_bytes(frame[24..32].try_into().unwrap()), 7);
         assert_eq!(replica.summary().title.as_deref(), Some("remote title"));
         assert_eq!(replica.summary().cwd.as_deref(), Some("/remote"));
+    }
+
+    /// A replica announces a published directory or title the way a local
+    /// session announces its own: once per change, nothing for a snapshot
+    /// that repeats them.
+    #[test]
+    fn replica_announces_metadata_only_when_a_snapshot_changes_it() {
+        let engine = Arc::new(Mutex::new(TextEngine::discover().unwrap()));
+        let replica =
+            RemoteReplica::new("remote".into(), None, 20, 1, None, FrameHub::new(2), engine);
+        let mut changes = replica.subscribe_metadata();
+        let snapshot = |revision: u64, text: &str, title: Option<&str>| LogicalTerminalSnapshot {
+            session_epoch: 1,
+            layout_epoch: 1,
+            terminal_revision: revision,
+            cols: 20,
+            rows: vec![LogicalRow {
+                text: text.into(),
+                cells: vec![],
+            }],
+            cursor: LogicalCursor::default(),
+            mouse_tracking: false,
+            scrollbar: LogicalScrollbar::default(),
+            title: title.map(Into::into),
+            cwd: Some("/remote".into()),
+        };
+
+        replica.publish(snapshot(1, "one", None)).unwrap();
+        assert_eq!(
+            changes.try_recv().unwrap(),
+            SessionMetadata {
+                cwd: Some("/remote".into()),
+                title: Some("remote".into()),
+            }
+        );
+        replica.publish(snapshot(2, "two", None)).unwrap();
+        assert!(matches!(
+            changes.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+        replica
+            .publish(snapshot(3, "three", Some("remote title")))
+            .unwrap();
+        assert_eq!(
+            changes.try_recv().unwrap(),
+            SessionMetadata {
+                cwd: Some("/remote".into()),
+                title: Some("remote title".into()),
+            }
+        );
+        assert_eq!(
+            replica.metadata().title.as_deref(),
+            Some("remote title"),
+            "a lagged relay re-reads the same state"
+        );
     }
 
     #[test]

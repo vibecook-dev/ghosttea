@@ -31,11 +31,11 @@ use ghosttea::{
     AttachRejectionCode, ControlClaim, ControlSnapshot, HostShutdownAnnouncer, MeshReconnectConfig,
     RemoteActivityChanged, RemoteAttachment, RemoteControlChanged, RemoteControlClaim,
     RemoteControlOutcome, RemoteControlState, RemoteController, RemoteEndedReason,
-    RemoteHostSummary, RemoteLifecycleChanged, RemoteLifecycleState, RemoteReplica, RemoteResize,
-    RemoteSelection, RemoteSessionLifecycle, RemoteSessionOpen, RemoteTerminalRuntime,
-    RemoteViewRecord, RemoteViewState, RemoteViewStateChanged, ResumeEvidence, Session,
-    SessionRegistry as Registry, SessionStatusSource, SessionSummary, StateStreamCancel, TakeOver,
-    TerminalMesh, TerminalPresentationConfig, ViewAccess,
+    RemoteHostSummary, RemoteLifecycleChanged, RemoteLifecycleState, RemoteMetadataChanged,
+    RemoteReplica, RemoteResize, RemoteSelection, RemoteSessionLifecycle, RemoteSessionOpen,
+    RemoteTerminalRuntime, RemoteViewRecord, RemoteViewState, RemoteViewStateChanged,
+    ResumeEvidence, Session, SessionRegistry as Registry, SessionStatusSource, SessionSummary,
+    StateStreamCancel, TakeOver, TerminalMesh, TerminalPresentationConfig, ViewAccess,
     tunnel_protocol::{
         AttachRejectCode, CompactChannel, ConnectionMessage, ControllerInfo, HeartbeatMessage,
         LogicalTerminalPatch, LogicalTerminalSnapshot, MAX_CONTROL_MESSAGE_BYTES,
@@ -112,6 +112,7 @@ pub struct MeshRuntime {
     connections: RemoteConnections,
     control_tx: broadcast::Sender<RemoteControlChanged>,
     activity_tx: broadcast::Sender<RemoteActivityChanged>,
+    metadata_tx: broadcast::Sender<RemoteMetadataChanged>,
     lifecycle_tx: broadcast::Sender<RemoteLifecycleChanged>,
     view_state_tx: broadcast::Sender<RemoteViewStateChanged>,
     control_state_tx: broadcast::Sender<RemoteControlState>,
@@ -139,6 +140,7 @@ impl Default for MeshRuntime {
             connections: Arc::default(),
             control_tx,
             activity_tx,
+            metadata_tx: broadcast::channel(64).0,
             lifecycle_tx,
             view_state_tx,
             control_state_tx: broadcast::channel(64).0,
@@ -460,6 +462,41 @@ struct RemoteSession {
     access_token: Option<String>,
     replica: Arc<RemoteReplica>,
     lifecycle: Arc<SessionLifecycle>,
+}
+
+/// Relay one replica's working-directory and title changes to the runtime,
+/// under the local session id clients know it by.
+///
+/// The task holds the replica weakly, so it ends with the replica: the
+/// replica's sender is the only one, and dropping it closes the channel.
+fn relay_replica_metadata(
+    replica: &Arc<RemoteReplica>,
+    session_id: String,
+    metadata_tx: broadcast::Sender<RemoteMetadataChanged>,
+) {
+    let mut changes = replica.subscribe_metadata();
+    let replica = Arc::downgrade(replica);
+    tokio::spawn(async move {
+        loop {
+            let metadata = match changes.recv().await {
+                Ok(metadata) => metadata,
+                // The event is absolute, so a lagged relay owes the current
+                // state rather than the changes it missed.
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    let Some(replica) = replica.upgrade() else {
+                        break;
+                    };
+                    replica.metadata()
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
+            let _ = metadata_tx.send(RemoteMetadataChanged {
+                session_id: session_id.clone(),
+                cwd: metadata.cwd,
+                title: metadata.title,
+            });
+        }
+    });
 }
 
 struct RemoteView {
@@ -2020,6 +2057,7 @@ impl MeshRuntime {
         );
         replica.set_activity(remote.activity.clone());
         let summary = replica.summary();
+        relay_replica_metadata(&replica, summary.id.clone(), self.metadata_tx.clone());
         // The device name is captured here because lifecycle events must name
         // the host even once it is unreachable and absent from the peer list.
         let device_name = transport
@@ -6706,6 +6744,10 @@ impl RemoteTerminalRuntime for MeshRuntime {
 
     fn subscribe_activity(&self) -> broadcast::Receiver<RemoteActivityChanged> {
         self.activity_tx.subscribe()
+    }
+
+    fn subscribe_metadata(&self) -> broadcast::Receiver<RemoteMetadataChanged> {
+        self.metadata_tx.subscribe()
     }
 
     async fn hosts(&self) -> Result<Vec<RemoteHostSummary>> {
