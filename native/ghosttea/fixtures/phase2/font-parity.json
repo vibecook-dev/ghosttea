@@ -83,12 +83,12 @@
     "emoji-fallback": {
       "glyphCount": 9,
       "definitionCount": 9,
-      "sha256": "501c1446f75b67451bb428e62739e724590b086629ea8bc767c8f47f991f66da"
+      "sha256": "00247df6157df4b8e1f2c09380f68b66f990108964d2c89280bcbd6b147d1f61"
     },
     "emoji-presentation": {
       "glyphCount": 4,
       "definitionCount": 3,
-      "sha256": "f787d22e961d70fd32e1551763a645f12d3791d0cdb702093951a2d89f9bf2c3"
+      "sha256": "9d1d5ba7323a77090d1ebbe26d71c5f712e4e21274f8a3a8217b50d10ede17ef"
     },
     "italic": {
       "glyphCount": 14,
@@ -98,7 +98,7 @@
     "symbol-fallback": {
       "glyphCount": 5,
       "definitionCount": 5,
-      "sha256": "0053ea40fdf54920180a067ffea2328a615d7c757406fc1e3e0533b87792e0c5"
+      "sha256": "6f5f73702797bae5335d5cc99e909055debb0f18c3e7dafdbf5654e9d55fdf80"
     }
   }
 }

@@ -129,7 +129,7 @@
       },
       {
         "name": "ghosttea:cargo-lock:sha256",
-        "value": "a1cb8389ef2fc6b30eb199a913709b6f47103bdbb438780f93786955895c9013"
+        "value": "9ebd0583b791719ba91498b80c63c558ecdde0b01e77ce88ebccdaba99ad3c5e"
       },
       {
         "name": "ghosttea:rust-target",
@@ -568,34 +568,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/bitflags@1.3.2",
-      "name": "bitflags",
-      "version": "1.3.2",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/bitflags@1.3.2",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/bitflags@2.13.1",
       "name": "bitflags",
       "version": "2.13.1",
@@ -779,146 +751,6 @@
         {
           "alg": "SHA-256",
           "content": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/core-foundation-sys@0.8.7",
-      "name": "core-foundation-sys",
-      "version": "0.8.7",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/core-foundation-sys@0.8.7",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/core-foundation@0.9.4",
-      "name": "core-foundation",
-      "version": "0.9.4",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/core-foundation@0.9.4",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/core-graphics-types@0.1.3",
-      "name": "core-graphics-types",
-      "version": "0.1.3",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/core-graphics-types@0.1.3",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/core-graphics@0.22.3",
-      "name": "core-graphics",
-      "version": "0.22.3",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/core-graphics@0.22.3",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "2581bbab3b8ffc6fcbd550bf46c355135d16e9ff2a6ea032ad6b9bf1d7efe4fb"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/core-text@19.2.0",
-      "name": "core-text",
-      "version": "19.2.0",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/core-text@19.2.0",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "99d74ada66e07c1cefa18f8abfba765b486f250de2e4a999e5727fc0dd4b4a25"
         }
       ],
       "properties": [
@@ -1218,62 +1050,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/foreign-types-shared@0.1.1",
-      "name": "foreign-types-shared",
-      "version": "0.1.1",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/foreign-types-shared@0.1.1",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/foreign-types@0.3.2",
-      "name": "foreign-types",
-      "version": "0.3.2",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "purl": "pkg:cargo/foreign-types@0.3.2",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/generic-array@0.14.7",
       "name": "generic-array",
       "version": "0.14.7",
@@ -1528,9 +1304,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/harfbuzz_rs@2.0.1",
+      "bom-ref": "pkg:cargo/harfbuzz_rs@3.0.1",
       "name": "harfbuzz_rs",
-      "version": "2.0.1",
+      "version": "3.0.1",
       "licenses": [
         {
           "license": {
@@ -1538,41 +1314,11 @@
           }
         }
       ],
-      "purl": "pkg:cargo/harfbuzz_rs@2.0.1",
+      "purl": "pkg:cargo/harfbuzz_rs@3.0.1",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "58c18cfc23920d010f7637b86240a5f8892dfdbcb4f0e60828f8a9dc6ff5521d"
-        }
-      ],
-      "properties": [
-        {
-          "name": "ghosttea:cargo-source",
-          "value": "registry+https://github.com/rust-lang/crates.io-index"
-        },
-        {
-          "name": "ghosttea:rust-target",
-          "value": "aarch64-apple-ios"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/harfbuzz-sys@0.5.0",
-      "name": "harfbuzz-sys",
-      "version": "0.5.0",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "purl": "pkg:cargo/harfbuzz-sys@0.5.0",
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "bf8c27ca13930dc4ffe474880040fe9e0f03c2121600dc9c95423624cab3e467"
+          "content": "53014927fbaf081c5b86332f84c7925b06e7e059d4827ba08a4e813148407ff0"
         }
       ],
       "properties": [
@@ -3376,10 +3122,6 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:cargo/bitflags@1.3.2",
-      "dependsOn": []
-    },
-    {
       "ref": "pkg:cargo/bitflags@2.13.1",
       "dependsOn": []
     },
@@ -3417,44 +3159,6 @@
     {
       "ref": "pkg:cargo/cfg-if@1.0.4",
       "dependsOn": []
-    },
-    {
-      "ref": "pkg:cargo/core-foundation-sys@0.8.7",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:cargo/core-foundation@0.9.4",
-      "dependsOn": [
-        "pkg:cargo/core-foundation-sys@0.8.7",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-graphics-types@0.1.3",
-      "dependsOn": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-graphics@0.22.3",
-      "dependsOn": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/core-graphics-types@0.1.3",
-        "pkg:cargo/foreign-types@0.3.2",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-text@19.2.0",
-      "dependsOn": [
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/core-graphics@0.22.3",
-        "pkg:cargo/foreign-types@0.3.2",
-        "pkg:cargo/libc@0.2.186"
-      ]
     },
     {
       "ref": "pkg:cargo/cpufeatures@0.2.17",
@@ -3520,16 +3224,6 @@
       ]
     },
     {
-      "ref": "pkg:cargo/foreign-types-shared@0.1.1",
-      "dependsOn": []
-    },
-    {
-      "ref": "pkg:cargo/foreign-types@0.3.2",
-      "dependsOn": [
-        "pkg:cargo/foreign-types-shared@0.1.1"
-      ]
-    },
-    {
       "ref": "pkg:cargo/generic-array@0.14.7",
       "dependsOn": [
         "pkg:cargo/typenum@1.20.1",
@@ -3592,7 +3286,7 @@
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.103",
         "pkg:cargo/fontdb@0.24.0",
-        "pkg:cargo/harfbuzz_rs@2.0.1",
+        "pkg:cargo/harfbuzz_rs@3.0.1",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/serde_json@1.0.150",
         "pkg:cargo/sha2@0.10.9",
@@ -3619,19 +3313,10 @@
       ]
     },
     {
-      "ref": "pkg:cargo/harfbuzz_rs@2.0.1",
+      "ref": "pkg:cargo/harfbuzz_rs@3.0.1",
       "dependsOn": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/harfbuzz-sys@0.5.0"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/harfbuzz-sys@0.5.0",
-      "dependsOn": [
+        "pkg:cargo/bitflags@2.13.1",
         "pkg:cargo/cc@1.2.67",
-        "pkg:cargo/core-graphics@0.22.3",
-        "pkg:cargo/core-text@19.2.0",
-        "pkg:cargo/foreign-types@0.3.2",
         "pkg:cargo/pkg-config@0.3.33"
       ]
     },
