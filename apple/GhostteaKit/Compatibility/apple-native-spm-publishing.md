@@ -48,10 +48,10 @@ than an archive tool, unifies their shared dependencies and runtime.
 arm64, iOS arm64, and iOS arm64-simulator slices. It requires each core and font
 fixture C export exactly once and refuses duplicate archive members.
 
-The build disables `pkg-config` discovery for HarfBuzz and verifies that its
-required C definitions are embedded in every Rust slice. Release bytes must not
-depend on libraries that happen to be installed on a CI runner or developer
-machine.
+HarfBuzz is compiled from the source `harfbuzz_rs` bundles, never discovered
+through `pkg-config`, and the build verifies that its required C definitions
+are embedded in every Rust slice. Release bytes must not depend on libraries
+that happen to be installed on a CI runner or developer machine.
 
 ## Two manifests, one intended difference
 
