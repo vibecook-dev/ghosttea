@@ -65,8 +65,8 @@ let appleNativeChecksum = "3e22462cdab8b7ea132749ce2a909492c6d1433743daff49f8190
 //
 // `exact:` rather than `from:` keeps the lockstep discipline the revision pin
 // had: exactly one Truffle across both planes, moved deliberately. Truffle's
-// remote carries a plain `v0.7.19` tag on the same commit its release-please
-// `truffle-v0.7.19` tag names, so this resolves that exact build through a
+// remote carries a plain `v0.7.22` tag on the same commit its release-please
+// `truffle-v0.7.22` tag names, so this resolves that exact build through a
 // stable requirement.
 //
 // Keep this equal to `package.version` in
@@ -74,7 +74,7 @@ let appleNativeChecksum = "3e22462cdab8b7ea132749ce2a909492c6d1433743daff49f8190
 // `package.revision` records the commit that version resolves to; the App Store
 // readiness check compares the resolved pin against both and fails closed.
 let truffleRepository = "https://github.com/vibecook-dev/truffle.git"
-let truffleVersion: Version = "0.7.19"
+let truffleVersion: Version = "0.7.22"
 
 let sources = "apple/GhostteaKit/Sources"
 let tests = "apple/GhostteaKit/Tests"
