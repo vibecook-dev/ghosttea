@@ -95,7 +95,10 @@ follows it and adds the build's `-Dmsvc-runtime` option, which compiles the C
 and C++ objects for one MSVC C runtime (`dll` adds `-fms-runtime-lib=dll`;
 `static`, clang's default, adds nothing). Rebase it with the rest, and keep
 its option reaching every C and C++ compile in the VT library, including the
-vendored simdutf and highway packages.
+vendored simdutf and highway packages. The Windows link witness,
+`ghosttea-vt-crt-witness`, must keep including a header that reaches the STL's
+`<yvals.h>`, where the runtime stamp lives (`<new>` does; `<utility>` does not):
+an unstamped witness links clean against a library built for either runtime.
 
 ## 3. Rebuild the downloadable and Apple artifacts
 

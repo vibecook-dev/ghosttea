@@ -289,7 +289,7 @@ for (const [path, requiredText] of [
 }
 
 console.log(
-  `Verified Ghostty VT ${commit} + ${sourceIdentity.patches.length} patch(es) (${sourceDigest}) and config ${configLock.ghostty.version} ${configCommit}: exact source/font/BOM locks, ${requiredInputs.length} inputs, and two-target artifact promotion.`,
+  `Verified Ghostty VT ${commit} + ${sourceIdentity.patches.length} patch(es) (${sourceDigest}) and config ${configLock.ghostty.version} ${configCommit}: exact source/font/BOM locks, ${requiredInputs.length} inputs, and ${Object.keys(targets).length}-target artifact promotion.`,
 );
 
 function read(path) {
