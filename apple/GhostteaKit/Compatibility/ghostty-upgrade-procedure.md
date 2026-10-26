@@ -178,6 +178,14 @@ at **[STOP-FONTS]** for unlicensed bytes, a missing script/glyph, unexplained
 metrics drift, fallback-policy drift, or a golden change without rendered
 desktop and iOS evidence.
 
+For the iOS evidence, dispatch `iOS release hardening` with `render_evidence`
+on the base ref and again on the candidate. Each run renders the font-parity
+rows, the visual golden's text, box drawing and a base with 64 combining marks
+through `GhostteaMetalRenderer` on the pinned toolchain, and uploads
+`ghosttea-render-evidence-<sha>`: `render.png`, and `render.json` with its pixel
+hash. Compare the two PNGs side by side. Equal pixel hashes mean the change
+moved no rendered pixel.
+
 ## 5. Hold terminal and TRF1 parity
 
 The immutable compatibility inputs are

@@ -547,6 +547,34 @@ final class GhostteaMetalRenderer {
     cursorBlinkVisible: Bool = true,
     damage: GhostteaTerminalRenderDamage = .full
   ) throws -> GhostteaMetalRenderResult {
+    try renderWithPixels(
+      state: state,
+      width: width,
+      height: height,
+      scale: scale,
+      theme: theme,
+      contentInsets: contentInsets,
+      selection: selection,
+      focused: focused,
+      cursorBlinkVisible: cursorBlinkVisible,
+      damage: damage
+    ).result
+  }
+
+  /// The offscreen render together with its RGBA8 bytes, row-major from the top-left. The render
+  /// evidence captures read the bytes; everything else needs only the result.
+  func renderWithPixels(
+    state: RetainedTRF1State,
+    width: Int,
+    height: Int,
+    scale: Float = 1,
+    theme: GhostteaMetalTheme = GhostteaMetalTheme(),
+    contentInsets: GhostteaTerminalContentInsets = .zero,
+    selection: GhostteaMetalSelection? = nil,
+    focused: Bool = true,
+    cursorBlinkVisible: Bool = true,
+    damage: GhostteaTerminalRenderDamage = .full
+  ) throws -> (result: GhostteaMetalRenderResult, pixels: [UInt8]) {
     let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(
       pixelFormat: .rgba8Unorm,
       width: width,
@@ -573,7 +601,7 @@ final class GhostteaMetalRenderer {
     let pixels = readPixels(texture: target, width: width, height: height)
     let nonBackgroundPixelCount = countNonBackgroundPixels(
       pixels, background: theme.background)
-    return GhostteaMetalRenderResult(
+    let result = GhostteaMetalRenderResult(
       width: width,
       height: height,
       rectangleVertexCount: draw.rectangleVertexCount,
@@ -595,6 +623,7 @@ final class GhostteaMetalRenderer {
       rowCacheEvictions: draw.rowCacheEvictions,
       residentBytes: atlases.residentBytes + pixels.count
     )
+    return (result, pixels)
   }
 
   func render(
