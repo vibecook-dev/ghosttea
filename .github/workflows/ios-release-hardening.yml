@@ -2,6 +2,11 @@ name: iOS release hardening
 
 on:
   workflow_dispatch:
+    inputs:
+      render_evidence:
+        description: Render the font-parity rows through GhostteaMetalRenderer and upload the PNG
+        type: boolean
+        default: false
   pull_request:
     paths:
       - ".cargo/**"
@@ -194,8 +199,21 @@ jobs:
         run: npm run build:ssh:apple
       - run: npm run build:apple-native
 
+      # A dispatch with `render_evidence` also writes the rendered Apple evidence (the font-parity
+      # rows through GhostteaMetalRenderer, as a PNG and its manifest) for a change that moves glyph
+      # pixels. Dispatch it on the base and on the candidate, and compare the two artifacts.
       - name: Run the complete local-artifact SwiftPM suite
+        env:
+          GHOSTTEA_RENDER_EVIDENCE_DIR: ${{ inputs.render_evidence && format('{0}/render-evidence', runner.temp) || '' }}
         run: swift test --disable-sandbox --package-path apple/GhostteaKit
+
+      - name: Preserve the rendered Apple evidence
+        if: inputs.render_evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: ghosttea-render-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/render-evidence
+          if-no-files-found: error
 
       - name: Link every public product against the candidate artifact
         run: npm run test:swiftpm:consumer:local
