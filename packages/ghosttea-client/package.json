@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea-client",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "description": "Electron-free Node control client for the Ghosttea terminal service.",
   "license": "MIT",
   "author": "James Yong",
@@ -41,7 +41,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@vibecook/ghosttea-protocol": "0.13.3"
+    "@vibecook/ghosttea-protocol": "0.13.4"
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
