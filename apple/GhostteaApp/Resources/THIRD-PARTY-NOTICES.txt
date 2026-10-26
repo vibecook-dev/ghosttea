@@ -2,220 +2,184 @@ GHOSTTEA iOS THIRD-PARTY NOTICES
 ================================
 
 This file is generated from the reviewed iOS release dependency graph.
-CycloneDX SHA-256: 71d16547bc4216a12085641e331b274e67ed30e4e5e278b50b1f2b08f539fcb4
-Components: 106
-Unique license documents: 96
+CycloneDX SHA-256: 838be937ec3c138a007db98920682edb97357c49fabd6e1a919bd42eb74761cf
+Components: 97
+Unique license documents: 91
 
 COMPONENT INDEX
 ===============
 
 ghosttea-apple-ffi 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 Ghostty VT f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: MIT
-  Documents: LICENSE-019
+  Documents: LICENSE-018
 
 OpenSSL openssl-3.5.7
   License: Apache-2.0
-  Documents: LICENSE-046
+  Documents: LICENSE-044
 
 libssh2 libssh2-1.11.1
   License: BSD-3-Clause and bundled notices
-  Documents: LICENSE-001, LICENSE-020, LICENSE-022, LICENSE-027, LICENSE-079, LICENSE-096
+  Documents: LICENSE-001, LICENSE-019, LICENSE-021, LICENSE-026, LICENSE-076, LICENSE-091
 
 Truffle Swift f7e3900df25a84fed1858b78dcb035759879ebd6
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 TailscaleKit d1dc45d039edb7759ecbee6ba2aea0c4bca884b8
   License: BSD-3-Clause
-  Documents: LICENSE-082
+  Documents: LICENSE-079
 
 Ghostty color-theme catalog 875a82f0fdc773ae45099ce683a11c56bb0f8b3d
   License: MIT
-  Documents: LICENSE-092
+  Documents: LICENSE-087
 
 Ghostty shader adaptations 85898f08fcf4a9274e418912098e99e00a5f8350
   License: Unlicense AND MIT AND CC-BY-3.0 AND CC-BY-NC-SA-3.0
-  Documents: LICENSE-092
+  Documents: LICENSE-087
 
 anyhow 1.0.103
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 base64 0.22.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-008, LICENSE-062
-
-bitflags 1.3.2
-  License: MIT/Apache-2.0
-  Documents: LICENSE-035, LICENSE-062
+  Documents: LICENSE-008, LICENSE-059
 
 bitflags 2.13.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-035, LICENSE-062
+  Documents: LICENSE-033, LICENSE-059
 
 block-buffer 0.10.4
   License: MIT OR Apache-2.0
-  Documents: LICENSE-065, LICENSE-081
+  Documents: LICENSE-062, LICENSE-078
 
 bytemuck_derive 1.11.0
   License: Zlib OR Apache-2.0 OR MIT
-  Documents: LICENSE-048, LICENSE-059, LICENSE-086
+  Documents: LICENSE-046, LICENSE-056, LICENSE-082
 
 bytemuck 1.25.1
   License: Zlib OR Apache-2.0 OR MIT
-  Documents: LICENSE-048, LICENSE-059, LICENSE-086
+  Documents: LICENSE-046, LICENSE-056, LICENSE-082
 
 bytes 1.12.1
   License: MIT
-  Documents: LICENSE-025
+  Documents: LICENSE-024
 
 cc 1.2.67
   License: MIT OR Apache-2.0
-  Documents: LICENSE-018, LICENSE-062
+  Documents: LICENSE-017, LICENSE-059
 
 cfg-if 1.0.4
   License: MIT OR Apache-2.0
-  Documents: LICENSE-018, LICENSE-062
-
-core-foundation-sys 0.8.7
-  License: MIT OR Apache-2.0
-  Documents: LICENSE-033, LICENSE-062
-
-core-foundation 0.9.4
-  License: MIT OR Apache-2.0
-  Documents: LICENSE-033, LICENSE-062
-
-core-graphics-types 0.1.3
-  License: MIT OR Apache-2.0
-  Documents: LICENSE-033, LICENSE-062
-
-core-graphics 0.22.3
-  License: MIT / Apache-2.0
-  Documents: LICENSE-033, LICENSE-062
-
-core-text 19.2.0
-  License: MIT/Apache-2.0
-  Documents: LICENSE-033, LICENSE-062
+  Documents: LICENSE-017, LICENSE-059
 
 cpufeatures 0.2.17
   License: MIT OR Apache-2.0
-  Documents: LICENSE-065, LICENSE-067
+  Documents: LICENSE-062, LICENSE-064
 
 crypto-common 0.1.7
   License: MIT OR Apache-2.0
-  Documents: LICENSE-016, LICENSE-065
+  Documents: LICENSE-015, LICENSE-062
 
 digest 0.10.7
   License: MIT OR Apache-2.0
-  Documents: LICENSE-060, LICENSE-065
+  Documents: LICENSE-057, LICENSE-062
 
 errno 0.3.14
   License: MIT OR Apache-2.0
-  Documents: LICENSE-049, LICENSE-062
+  Documents: LICENSE-047, LICENSE-059
 
 fastrand 2.4.1
   License: Apache-2.0 OR MIT
-  Documents: LICENSE-014, LICENSE-062
+  Documents: LICENSE-014, LICENSE-059
 
 filetime 0.2.27
   License: MIT/Apache-2.0
-  Documents: LICENSE-018, LICENSE-062
+  Documents: LICENSE-017, LICENSE-059
 
 find-msvc-tools 0.1.9
   License: MIT OR Apache-2.0
-  Documents: LICENSE-018, LICENSE-062
+  Documents: LICENSE-017, LICENSE-059
 
 font-types 0.11.3
   License: MIT OR Apache-2.0
-  Documents: LICENSE-004, LICENSE-051
+  Documents: LICENSE-004, LICENSE-049
 
 fontconfig-parser 0.5.8
   License: MIT
-  Documents: LICENSE-089
+  Documents: LICENSE-085
 
 fontdb 0.24.0
   License: MIT
-  Documents: LICENSE-030, LICENSE-073
-
-foreign-types-shared 0.1.1
-  License: MIT/Apache-2.0
-  Documents: LICENSE-015, LICENSE-070
-
-foreign-types 0.3.2
-  License: MIT/Apache-2.0
-  Documents: LICENSE-015, LICENSE-070
+  Documents: LICENSE-029, LICENSE-069
 
 generic-array 0.14.7
   License: MIT
-  Documents: LICENSE-087
+  Documents: LICENSE-083
 
 getrandom 0.2.17
   License: MIT OR Apache-2.0
-  Documents: LICENSE-023, LICENSE-066
+  Documents: LICENSE-022, LICENSE-063
 
 getrandom 0.4.3
   License: MIT OR Apache-2.0
-  Documents: LICENSE-028, LICENSE-066
+  Documents: LICENSE-027, LICENSE-063
 
 ghosttea-config 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-core 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-ffi 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-font-fixture-ffi 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-text 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-vt-sys 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
 ghosttea-vt 0.13.4
   License: MIT
-  Documents: LICENSE-080
+  Documents: LICENSE-077
 
-harfbuzz_rs 2.0.1
+harfbuzz_rs 3.0.1
   License: MIT
-  Documents: LICENSE-075
-
-harfbuzz-sys 0.5.0
-  License: MIT
-  Documents: LICENSE-058, LICENSE-078, LICENSE-084, LICENSE-090
+  Documents: LICENSE-070, LICENSE-071, LICENSE-073
 
 http 1.4.2
   License: MIT OR Apache-2.0
-  Documents: LICENSE-054, LICENSE-083
+  Documents: LICENSE-052, LICENSE-080
 
 httparse 1.10.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-011, LICENSE-062
+  Documents: LICENSE-011, LICENSE-059
 
 itoa 1.0.18
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 libc 0.2.186
   License: MIT OR Apache-2.0
-  Documents: LICENSE-010, LICENSE-034
+  Documents: LICENSE-010, LICENSE-032
 
 log 0.4.33
   License: MIT OR Apache-2.0
-  Documents: LICENSE-035, LICENSE-062
+  Documents: LICENSE-033, LICENSE-059
 
 memchr 2.8.3
   License: Unlicense OR MIT
@@ -227,175 +191,175 @@ memmap2 0.9.11
 
 once_cell 1.21.4
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-062
+  Documents: LICENSE-014, LICENSE-059
 
 percent-encoding 2.3.2
   License: MIT OR Apache-2.0
-  Documents: LICENSE-062, LICENSE-068
+  Documents: LICENSE-059, LICENSE-065
 
 pkg-config 0.3.33
   License: MIT OR Apache-2.0
-  Documents: LICENSE-018, LICENSE-062
+  Documents: LICENSE-017, LICENSE-059
 
 proc-macro2 1.0.106
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 quote 1.0.46
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 rand_core 0.10.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-038, LICENSE-053
+  Documents: LICENSE-036, LICENSE-051
 
 read-fonts 0.39.2
   License: MIT OR Apache-2.0
-  Documents: LICENSE-004, LICENSE-051
+  Documents: LICENSE-004, LICENSE-049
 
 ring 0.17.14
   License: Apache-2.0 AND ISC
-  Documents: LICENSE-002, LICENSE-039, LICENSE-061, LICENSE-062, LICENSE-069, LICENSE-088
+  Documents: LICENSE-002, LICENSE-037, LICENSE-058, LICENSE-059, LICENSE-066, LICENSE-084
 
 roxmltree 0.20.0
   License: MIT OR Apache-2.0
-  Documents: LICENSE-062, LICENSE-095
+  Documents: LICENSE-059, LICENSE-090
 
 rustix 1.1.4
   License: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
-  Documents: LICENSE-014, LICENSE-062, LICENSE-063
+  Documents: LICENSE-014, LICENSE-059, LICENSE-060
 
 rustls-pki-types 1.15.0
   License: MIT OR Apache-2.0
-  Documents: LICENSE-026, LICENSE-057
+  Documents: LICENSE-025, LICENSE-055
 
 rustls-webpki 0.103.16
   License: ISC
-  Documents: LICENSE-032
+  Documents: LICENSE-031
 
 rustls 0.23.46
   License: Apache-2.0 OR ISC OR MIT
-  Documents: LICENSE-040, LICENSE-045, LICENSE-062
+  Documents: LICENSE-038, LICENSE-043, LICENSE-059
 
 serde_core 1.0.228
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 serde_derive 1.0.228
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 serde_json 1.0.150
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 serde 1.0.228
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 sha2 0.10.9
   License: MIT OR Apache-2.0
-  Documents: LICENSE-065, LICENSE-071
+  Documents: LICENSE-062, LICENSE-067
 
 shlex 2.0.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-024, LICENSE-029
+  Documents: LICENSE-023, LICENSE-028
 
 skrifa 0.42.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-004, LICENSE-051
+  Documents: LICENSE-004, LICENSE-049
 
 slotmap 1.1.1
   License: Zlib
-  Documents: LICENSE-037
+  Documents: LICENSE-035
 
 smallvec 1.15.2
   License: MIT OR Apache-2.0
-  Documents: LICENSE-006, LICENSE-062
+  Documents: LICENSE-006, LICENSE-059
 
 subtle 2.6.1
   License: BSD-3-Clause
-  Documents: LICENSE-076
+  Documents: LICENSE-074
 
 swash 0.2.9
   License: Apache-2.0 OR MIT
-  Documents: LICENSE-042, LICENSE-062
+  Documents: LICENSE-040, LICENSE-059
 
 syn 2.0.119
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 tar 0.4.45
   License: MIT OR Apache-2.0
-  Documents: LICENSE-056, LICENSE-062
+  Documents: LICENSE-054, LICENSE-059
 
 tempfile 3.27.0
   License: MIT OR Apache-2.0
-  Documents: LICENSE-052, LICENSE-062
+  Documents: LICENSE-050, LICENSE-059
 
 tinyvec_macros 0.1.1
   License: MIT OR Apache-2.0 OR Zlib
-  Documents: LICENSE-012, LICENSE-013, LICENSE-036
+  Documents: LICENSE-012, LICENSE-013, LICENSE-034
 
 tinyvec 1.12.0
   License: Zlib OR Apache-2.0 OR MIT
-  Documents: LICENSE-048, LICENSE-077, LICENSE-094
+  Documents: LICENSE-046, LICENSE-075, LICENSE-089
 
 typenum 1.20.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-017, LICENSE-021, LICENSE-064
+  Documents: LICENSE-016, LICENSE-020, LICENSE-061
 
 unicode-ident 1.0.24
   License: (MIT OR Apache-2.0) AND Unicode-3.0
-  Documents: LICENSE-014, LICENSE-034, LICENSE-091
+  Documents: LICENSE-014, LICENSE-032, LICENSE-086
 
 unicode-segmentation 1.13.3
   License: MIT OR Apache-2.0
-  Documents: LICENSE-044, LICENSE-062
+  Documents: LICENSE-042, LICENSE-059
 
 unicode-width 0.2.2
   License: MIT OR Apache-2.0
-  Documents: LICENSE-044, LICENSE-062
+  Documents: LICENSE-042, LICENSE-059
 
 untrusted 0.9.0
   License: ISC
-  Documents: LICENSE-043
+  Documents: LICENSE-041
 
 ureq-proto 0.6.0
   License: MIT OR Apache-2.0
-  Documents: LICENSE-031
+  Documents: LICENSE-030
 
 ureq 3.3.0
   License: MIT OR Apache-2.0
-  Documents: LICENSE-047, LICENSE-074
+  Documents: LICENSE-045, LICENSE-072
 
 utf8-zero 0.8.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-014, LICENSE-034
+  Documents: LICENSE-014, LICENSE-032
 
 version_check 0.9.5
   License: MIT/Apache-2.0
-  Documents: LICENSE-062, LICENSE-072
+  Documents: LICENSE-059, LICENSE-068
 
 webpki-roots 1.0.10
   License: CDLA-Permissive-2.0
-  Documents: LICENSE-085
+  Documents: LICENSE-081
 
 xattr 1.6.1
   License: MIT OR Apache-2.0
-  Documents: LICENSE-052, LICENSE-062
+  Documents: LICENSE-050, LICENSE-059
 
 yazi 0.2.1
   License: Apache-2.0 OR MIT
-  Documents: LICENSE-050, LICENSE-062
+  Documents: LICENSE-048, LICENSE-059
 
 zeno 0.3.3
   License: Apache-2.0 OR MIT
-  Documents: LICENSE-042, LICENSE-062
+  Documents: LICENSE-040, LICENSE-059
 
 zeroize 1.9.0
   License: Apache-2.0 OR MIT
-  Documents: LICENSE-055, LICENSE-077
+  Documents: LICENSE-053, LICENSE-075
 
 zmij 1.0.23
   License: MIT
@@ -403,35 +367,35 @@ zmij 1.0.23
 
 JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 STIXTwoMath-Regular.otf v2.13b171
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
   License: OFL-1.1
-  Documents: LICENSE-041, LICENSE-093
+  Documents: LICENSE-039, LICENSE-088
 
 LICENSE DOCUMENTS
 =================
@@ -1468,31 +1432,6 @@ DEALINGS IN THE SOFTWARE.
 
 ================================================================================
 LICENSE-015 · LICENSE-MIT
-SHA-256: 333ea3aaa3cadb819f4acd9f9153f9feee060a995ca8710f32bc5bd9a4b91734
-Used by: foreign-types 0.3.2, foreign-types-shared 0.1.1
---------------------------------------------------------------------------------
-Copyright (c) 2017 The foreign-types Developers
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-================================================================================
-LICENSE-016 · LICENSE-MIT
 SHA-256: 3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897
 Used by: crypto-common 0.1.7
 --------------------------------------------------------------------------------
@@ -1523,14 +1462,14 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-017 · LICENSE
+LICENSE-016 · LICENSE
 SHA-256: 36bb253818ac13761081556ff5c457d626da9df1eb4f56194d9ad3926c418a68
 Used by: typenum 1.20.1
 --------------------------------------------------------------------------------
 MIT OR Apache-2.0
 
 ================================================================================
-LICENSE-018 · LICENSE-MIT
+LICENSE-017 · LICENSE-MIT
 SHA-256: 378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397
 Used by: cc 1.2.67, cfg-if 1.0.4, filetime 0.2.27, find-msvc-tools 0.1.9, pkg-config 0.3.33
 --------------------------------------------------------------------------------
@@ -1561,7 +1500,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-019 · LICENSE
+LICENSE-018 · LICENSE
 SHA-256: 386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1
 Used by: Ghostty VT f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
 --------------------------------------------------------------------------------
@@ -1588,7 +1527,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-020 · BSD-2-Clause.txt
+LICENSE-019 · BSD-2-Clause.txt
 SHA-256: 3aedabc2618dd11c18747e1ccc680b2841b4aa414de661ae9dc1d4602c0b93f0
 Used by: libssh2 libssh2-1.11.1
 --------------------------------------------------------------------------------
@@ -1603,7 +1542,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ================================================================================
-LICENSE-021 · LICENSE-APACHE
+LICENSE-020 · LICENSE-APACHE
 SHA-256: 3c97f5b6ad4e73ad22dc0d1e0c7120579a350df57095120017ddfe5a8669604e
 Used by: typenum 1.20.1
 --------------------------------------------------------------------------------
@@ -1810,7 +1749,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-022 · BSD-3-Clause.txt
+LICENSE-021 · BSD-3-Clause.txt
 SHA-256: 3cf06aba3588c41c514f6946bb2d757b413ff6491647d474800f55edca75dcb4
 Used by: libssh2 libssh2-1.11.1
 --------------------------------------------------------------------------------
@@ -1827,7 +1766,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ================================================================================
-LICENSE-023 · LICENSE-MIT
+LICENSE-022 · LICENSE-MIT
 SHA-256: 42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737
 Used by: getrandom 0.2.17
 --------------------------------------------------------------------------------
@@ -1859,7 +1798,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-024 · LICENSE-MIT
+LICENSE-023 · LICENSE-MIT
 SHA-256: 4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1
 Used by: shlex 2.0.1
 --------------------------------------------------------------------------------
@@ -1886,7 +1825,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ================================================================================
-LICENSE-025 · LICENSE
+LICENSE-024 · LICENSE
 SHA-256: 45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42
 Used by: bytes 1.12.1
 --------------------------------------------------------------------------------
@@ -1917,7 +1856,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-026 · LICENSE-APACHE
+LICENSE-025 · LICENSE-APACHE
 SHA-256: 45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742
 Used by: rustls-pki-types 1.15.0
 --------------------------------------------------------------------------------
@@ -2124,7 +2063,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-027 · SAX-PD-2.0.txt
+LICENSE-026 · SAX-PD-2.0.txt
 SHA-256: 49f2fc047b5f5cc66be8a70dd65825a37386f9bb8d08d6ed939351a3a7750b90
 Used by: libssh2 libssh2-1.11.1
 --------------------------------------------------------------------------------
@@ -2137,7 +2076,7 @@ David Megginson, Megginson Technologies Ltd.
 2000-05-05
 
 ================================================================================
-LICENSE-028 · LICENSE-MIT
+LICENSE-027 · LICENSE-MIT
 SHA-256: 523a42c25d245dde9c015f882cec7f4555aad883382a6cf19b4b7d9b2cd5419b
 Used by: getrandom 0.4.3
 --------------------------------------------------------------------------------
@@ -2169,7 +2108,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-029 · LICENSE-APACHE
+LICENSE-028 · LICENSE-APACHE
 SHA-256: 553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583
 Used by: shlex 2.0.1
 --------------------------------------------------------------------------------
@@ -2188,7 +2127,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-030 · LICENSE
+LICENSE-029 · LICENSE
 SHA-256: 59a1fdac3bd550043599bd159fd70f09a1108c2b09e3751d39b11e1ff8e51f00
 Used by: fontdb 0.24.0
 --------------------------------------------------------------------------------
@@ -2215,7 +2154,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-031 · LICENSE-MIT.txt
+LICENSE-030 · LICENSE-MIT.txt
 SHA-256: 5b460f37be48ac4cf2181596181cc6cae432fc2caae05944873f380730829a4b
 Used by: ureq-proto 0.6.0
 --------------------------------------------------------------------------------
@@ -2228,7 +2167,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-032 · LICENSE
+LICENSE-031 · LICENSE
 SHA-256: 5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
 Used by: rustls-webpki 0.103.16
 --------------------------------------------------------------------------------
@@ -2253,38 +2192,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 
 ================================================================================
-LICENSE-033 · LICENSE-MIT
-SHA-256: 62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3
-Used by: core-foundation 0.9.4, core-foundation-sys 0.8.7, core-graphics 0.22.3, core-graphics-types 0.1.3, core-text 19.2.0
---------------------------------------------------------------------------------
-Copyright (c) 2012-2013 Mozilla Foundation
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-================================================================================
-LICENSE-034 · LICENSE-APACHE
+LICENSE-032 · LICENSE-APACHE
 SHA-256: 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a
 Used by: anyhow 1.0.103, itoa 1.0.18, libc 0.2.186, proc-macro2 1.0.106, quote 1.0.46, serde 1.0.228, serde_core 1.0.228, serde_derive 1.0.228, serde_json 1.0.150, syn 2.0.119, unicode-ident 1.0.24, utf8-zero 0.8.1
 --------------------------------------------------------------------------------
@@ -2466,9 +2374,9 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ================================================================================
-LICENSE-035 · LICENSE-MIT
+LICENSE-033 · LICENSE-MIT
 SHA-256: 6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb
-Used by: bitflags 1.3.2, bitflags 2.13.1, log 0.4.33
+Used by: bitflags 2.13.1, log 0.4.33
 --------------------------------------------------------------------------------
 Copyright (c) 2014 The Rust Project Developers
 
@@ -2497,7 +2405,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-036 · LICENSE-ZLIB.md
+LICENSE-034 · LICENSE-ZLIB.md
 SHA-256: 6abdec69ada0c5f06d4819d9a0db0824ce54d610665df0b64c774480db9c1f2a
 Used by: tinyvec_macros 0.1.1
 --------------------------------------------------------------------------------
@@ -2522,7 +2430,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ================================================================================
-LICENSE-037 · LICENSE
+LICENSE-035 · LICENSE
 SHA-256: 6cec81441b2ab2b5090954c1fb5d0bcca81b86487b5849061fa8952d20ef67d4
 Used by: slotmap 1.1.1
 --------------------------------------------------------------------------------
@@ -2547,7 +2455,7 @@ the following restrictions:
  3. This notice may not be removed or altered from any source distribution.
 
 ================================================================================
-LICENSE-038 · LICENSE-APACHE
+LICENSE-036 · LICENSE-APACHE
 SHA-256: 6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51
 Used by: rand_core 0.10.1
 --------------------------------------------------------------------------------
@@ -2740,7 +2648,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 
 ================================================================================
-LICENSE-039 · LICENSE-MIT
+LICENSE-037 · LICENSE-MIT
 SHA-256: 6ee2ed6c77710de911761acd5fc1ad1da00f476beb1a7ef27e78c2d1858deafc
 Used by: ring 0.17.14
 --------------------------------------------------------------------------------
@@ -2769,7 +2677,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-040 · LICENSE-MIT
+LICENSE-038 · LICENSE-MIT
 SHA-256: 709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c
 Used by: rustls 0.23.46
 --------------------------------------------------------------------------------
@@ -2800,7 +2708,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-041 · FONT-NOTICES.md
+LICENSE-039 · FONT-NOTICES.md
 SHA-256: 74a171c239592ee050b78f675550e837814715caee6c4133f2b072c57b6579e6
 Used by: JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
 --------------------------------------------------------------------------------
@@ -2854,7 +2762,7 @@ A full copy of the BSD 2-Clause license can be found at [BSD-2-Clause.txt](./BSD
   - https://github.com/notofonts/symbols
 
 ================================================================================
-LICENSE-042 · LICENSE-MIT
+LICENSE-040 · LICENSE-MIT
 SHA-256: 74da489b69dcbd3ab41e84e289d66ff9f57f4ee8791de98523550f6f34027766
 Used by: swash 0.2.9, zeno 0.3.3
 --------------------------------------------------------------------------------
@@ -2885,7 +2793,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-043 · LICENSE.txt
+LICENSE-041 · LICENSE.txt
 SHA-256: 7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621
 Used by: untrusted 0.9.0
 --------------------------------------------------------------------------------
@@ -2904,7 +2812,7 @@ Used by: untrusted 0.9.0
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ================================================================================
-LICENSE-044 · LICENSE-MIT
+LICENSE-042 · LICENSE-MIT
 SHA-256: 7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0
 Used by: unicode-segmentation 1.13.3, unicode-width 0.2.2
 --------------------------------------------------------------------------------
@@ -2935,7 +2843,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-045 · LICENSE-ISC
+LICENSE-043 · LICENSE-ISC
 SHA-256: 7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4
 Used by: rustls 0.23.46
 --------------------------------------------------------------------------------
@@ -2956,7 +2864,7 @@ ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ================================================================================
-LICENSE-046 · LICENSE.txt
+LICENSE-044 · LICENSE.txt
 SHA-256: 7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a
 Used by: OpenSSL openssl-3.5.7
 --------------------------------------------------------------------------------
@@ -3139,7 +3047,7 @@ Used by: OpenSSL openssl-3.5.7
    END OF TERMS AND CONDITIONS
 
 ================================================================================
-LICENSE-047 · LICENSE-MIT
+LICENSE-045 · LICENSE-MIT
 SHA-256: 7e5886959f67f8c75063a9d55cd3cb08c5a8cbea9a944fa1df2d4ae038f53721
 Used by: ureq 3.3.0
 --------------------------------------------------------------------------------
@@ -3166,7 +3074,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-048 · LICENSE-ZLIB, LICENSE-ZLIB.md
+LICENSE-046 · LICENSE-ZLIB, LICENSE-ZLIB.md
 SHA-256: 84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151
 Used by: bytemuck 1.25.1, bytemuck_derive 1.11.0, tinyvec 1.12.0
 --------------------------------------------------------------------------------
@@ -3183,7 +3091,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ================================================================================
-LICENSE-049 · LICENSE-MIT
+LICENSE-047 · LICENSE-MIT
 SHA-256: 8764a597675778ddfd4e25f81b08a05dbcf089ac05662df7613fe67f150e3aa2
 Used by: errno 0.3.14
 --------------------------------------------------------------------------------
@@ -3214,7 +3122,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-050 · LICENSE-MIT
+LICENSE-048 · LICENSE-MIT
 SHA-256: 8811bcec8c5b5262bd309874eed9d865545fc8a7dfafcf538a18e6b30968db2e
 Used by: yazi 0.2.1
 --------------------------------------------------------------------------------
@@ -3239,7 +3147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ================================================================================
-LICENSE-051 · LICENSE-MIT
+LICENSE-049 · LICENSE-MIT
 SHA-256: 8a62fa27ffdccc3df19dce90f8bb3d572e27aecffc1a383d0c2601834dcec434
 Used by: font-types 0.11.3, read-fonts 0.39.2, skrifa 0.42.1
 --------------------------------------------------------------------------------
@@ -3270,7 +3178,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-052 · LICENSE-MIT
+LICENSE-050 · LICENSE-MIT
 SHA-256: 8b427f5bc501764575e52ba4f9d95673cf8f6d80a86d0d06599852e1a9a20a36
 Used by: tempfile 3.27.0, xattr 1.6.1
 --------------------------------------------------------------------------------
@@ -3301,7 +3209,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-053 · LICENSE-MIT
+LICENSE-051 · LICENSE-MIT
 SHA-256: 8b6e9feec03e7c9a5facb26855cecd31662bf989b636bcfe79521bdf8ac863f0
 Used by: rand_core 0.10.1
 --------------------------------------------------------------------------------
@@ -3332,7 +3240,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-054 · LICENSE-APACHE
+LICENSE-052 · LICENSE-APACHE
 SHA-256: 8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a
 Used by: http 1.4.2
 --------------------------------------------------------------------------------
@@ -3539,7 +3447,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-055 · LICENSE-MIT
+LICENSE-053 · LICENSE-MIT
 SHA-256: 8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b
 Used by: zeroize 1.9.0
 --------------------------------------------------------------------------------
@@ -3570,7 +3478,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-056 · LICENSE-MIT
+LICENSE-054 · LICENSE-MIT
 SHA-256: 8ca6b96cea9e67c6c5c63f452c31bd396db8bd2406231fdea5d48ef462b48077
 Used by: tar 0.4.45
 --------------------------------------------------------------------------------
@@ -3601,7 +3509,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-057 · LICENSE-MIT
+LICENSE-055 · LICENSE-MIT
 SHA-256: 9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639
 Used by: rustls-pki-types 1.15.0
 --------------------------------------------------------------------------------
@@ -3632,108 +3540,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-058 · COPYING
-SHA-256: 9b35b8485f69cd298fccbb3c40a827dc06cf1185553bef827903497d2944a8d7
-Used by: harfbuzz-sys 0.5.0
---------------------------------------------------------------------------------
-The following license applies to many of the fonts in this folder.
-
-
-This Font Software is licensed under the SIL Open Font License,
-Version 1.1.
-
-This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
-
------------------------------------------------------------
-SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
------------------------------------------------------------
-
-PREAMBLE
-The goals of the Open Font License (OFL) are to stimulate worldwide
-development of collaborative font projects, to support the font
-creation efforts of academic and linguistic communities, and to
-provide a free and open framework in which fonts may be shared and
-improved in partnership with others.
-
-The OFL allows the licensed fonts to be used, studied, modified and
-redistributed freely as long as they are not sold by themselves. The
-fonts, including any derivative works, can be bundled, embedded,
-redistributed and/or sold with any software provided that any reserved
-names are not used by derivative works. The fonts and derivatives,
-however, cannot be released under any other type of license. The
-requirement for fonts to remain under this license does not apply to
-any document created using the fonts or their derivatives.
-
-DEFINITIONS
-"Font Software" refers to the set of files released by the Copyright
-Holder(s) under this license and clearly marked as such. This may
-include source files, build scripts and documentation.
-
-"Reserved Font Name" refers to any names specified as such after the
-copyright statement(s).
-
-"Original Version" refers to the collection of Font Software
-components as distributed by the Copyright Holder(s).
-
-"Modified Version" refers to any derivative made by adding to,
-deleting, or substituting -- in part or in whole -- any of the
-components of the Original Version, by changing formats or by porting
-the Font Software to a new environment.
-
-"Author" refers to any designer, engineer, programmer, technical
-writer or other person who contributed to the Font Software.
-
-PERMISSION & CONDITIONS
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of the Font Software, to use, study, copy, merge, embed,
-modify, redistribute, and sell modified and unmodified copies of the
-Font Software, subject to the following conditions:
-
-1) Neither the Font Software nor any of its individual components, in
-Original or Modified Versions, may be sold by itself.
-
-2) Original or Modified Versions of the Font Software may be bundled,
-redistributed and/or sold with any software, provided that each copy
-contains the above copyright notice and this license. These can be
-included either as stand-alone text files, human-readable headers or
-in the appropriate machine-readable metadata fields within text or
-binary files as long as those fields can be easily viewed by the user.
-
-3) No Modified Version of the Font Software may use the Reserved Font
-Name(s) unless explicit written permission is granted by the
-corresponding Copyright Holder. This restriction only applies to the
-primary font name as presented to the users.
-
-4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
-Software shall not be used to promote, endorse or advertise any
-Modified Version, except to acknowledge the contribution(s) of the
-Copyright Holder(s) and the Author(s) or with their explicit written
-permission.
-
-5) The Font Software, modified or unmodified, in part or in whole,
-must be distributed entirely under this license, and must not be
-distributed under any other license. The requirement for fonts to
-remain under this license does not apply to any document created using
-the Font Software.
-
-TERMINATION
-This license becomes null and void if any of the above conditions are
-not met.
-
-DISCLAIMER
-THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
-OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
-COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
-DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
-OTHER DEALINGS IN THE FONT SOFTWARE.
-
-================================================================================
-LICENSE-059 · LICENSE-MIT
+LICENSE-056 · LICENSE-MIT
 SHA-256: 9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2
 Used by: bytemuck 1.25.1, bytemuck_derive 1.11.0
 --------------------------------------------------------------------------------
@@ -3748,7 +3555,7 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-060 · LICENSE-MIT
+LICENSE-057 · LICENSE-MIT
 SHA-256: 9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba
 Used by: digest 0.10.7
 --------------------------------------------------------------------------------
@@ -3779,7 +3586,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-061 · LICENSE
+LICENSE-058 · LICENSE
 SHA-256: 9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f
 Used by: ring 0.17.14
 --------------------------------------------------------------------------------
@@ -3800,9 +3607,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-062 · LICENSE-APACHE
+LICENSE-059 · LICENSE-APACHE
 SHA-256: a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
-Used by: base64 0.22.1, bitflags 1.3.2, bitflags 2.13.1, cc 1.2.67, cfg-if 1.0.4, core-foundation 0.9.4, core-foundation-sys 0.8.7, core-graphics 0.22.3, core-graphics-types 0.1.3, core-text 19.2.0, errno 0.3.14, fastrand 2.4.1, filetime 0.2.27, find-msvc-tools 0.1.9, httparse 1.10.1, log 0.4.33, once_cell 1.21.4, percent-encoding 2.3.2, pkg-config 0.3.33, ring 0.17.14, roxmltree 0.20.0, rustix 1.1.4, rustls 0.23.46, smallvec 1.15.2, swash 0.2.9, tar 0.4.45, tempfile 3.27.0, unicode-segmentation 1.13.3, unicode-width 0.2.2, version_check 0.9.5, xattr 1.6.1, yazi 0.2.1, zeno 0.3.3
+Used by: base64 0.22.1, bitflags 2.13.1, cc 1.2.67, cfg-if 1.0.4, errno 0.3.14, fastrand 2.4.1, filetime 0.2.27, find-msvc-tools 0.1.9, httparse 1.10.1, log 0.4.33, once_cell 1.21.4, percent-encoding 2.3.2, pkg-config 0.3.33, ring 0.17.14, roxmltree 0.20.0, rustix 1.1.4, rustls 0.23.46, smallvec 1.15.2, swash 0.2.9, tar 0.4.45, tempfile 3.27.0, unicode-segmentation 1.13.3, unicode-width 0.2.2, version_check 0.9.5, xattr 1.6.1, yazi 0.2.1, zeno 0.3.3
 --------------------------------------------------------------------------------
                               Apache License
                         Version 2.0, January 2004
@@ -4007,7 +3814,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-063 · LICENSE-Apache-2.0_WITH_LLVM-exception
+LICENSE-060 · LICENSE-Apache-2.0_WITH_LLVM-exception
 SHA-256: a6c48161a09acc75a0e25503bab66a731eb5fba5392ed4bb4743e4ba5085327a
 Used by: rustix 1.1.4
 --------------------------------------------------------------------------------
@@ -4232,7 +4039,7 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 
 ================================================================================
-LICENSE-064 · LICENSE-MIT
+LICENSE-061 · LICENSE-MIT
 SHA-256: a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f
 Used by: typenum 1.20.1
 --------------------------------------------------------------------------------
@@ -4259,7 +4066,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-065 · LICENSE-APACHE
+LICENSE-062 · LICENSE-APACHE
 SHA-256: a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
 Used by: block-buffer 0.10.4, cpufeatures 0.2.17, crypto-common 0.1.7, digest 0.10.7, sha2 0.10.9
 --------------------------------------------------------------------------------
@@ -4466,7 +4273,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-066 · LICENSE-APACHE
+LICENSE-063 · LICENSE-APACHE
 SHA-256: aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf
 Used by: getrandom 0.2.17, getrandom 0.4.3
 --------------------------------------------------------------------------------
@@ -4673,7 +4480,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-067 · LICENSE-MIT
+LICENSE-064 · LICENSE-MIT
 SHA-256: ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985
 Used by: cpufeatures 0.2.17
 --------------------------------------------------------------------------------
@@ -4704,7 +4511,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-068 · LICENSE-MIT
+LICENSE-065 · LICENSE-MIT
 SHA-256: b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5
 Used by: percent-encoding 2.3.2
 --------------------------------------------------------------------------------
@@ -4735,7 +4542,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-069 · LICENSE
+LICENSE-066 · LICENSE
 SHA-256: b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a
 Used by: ring 0.17.14
 --------------------------------------------------------------------------------
@@ -4750,214 +4557,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 
 ================================================================================
-LICENSE-070 · LICENSE-APACHE
-SHA-256: b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1
-Used by: foreign-types 0.3.2, foreign-types-shared 0.1.1
---------------------------------------------------------------------------------
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "{}"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright {yyyy} {name of copyright owner}
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-
-================================================================================
-LICENSE-071 · LICENSE-MIT
+LICENSE-067 · LICENSE-MIT
 SHA-256: b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1
 Used by: sha2 0.10.9
 --------------------------------------------------------------------------------
@@ -4990,7 +4590,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-072 · LICENSE-MIT
+LICENSE-068 · LICENSE-MIT
 SHA-256: b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e
 Used by: version_check 0.9.5
 --------------------------------------------------------------------------------
@@ -5015,7 +4615,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-073 · LICENSE.txt
+LICENSE-069 · LICENSE.txt
 SHA-256: b84fdd2c3da5db56385cdbb639795e90aa3e035c53bc3591135f18df3331451f
 Used by: fontdb 0.24.0
 --------------------------------------------------------------------------------
@@ -5032,7 +4632,82 @@ Karoly Barta bartakarcsi@gmail.com
 Michael Evans http://www.evertype.com
 
 ================================================================================
-LICENSE-074 · LICENSE-APACHE
+LICENSE-070 · COPYING
+SHA-256: ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64
+Used by: harfbuzz_rs 3.0.1
+--------------------------------------------------------------------------------
+HarfBuzz is licensed under the so-called "Old MIT" license.  Details follow.
+For parts of HarfBuzz that are licensed under different licenses see individual
+files names COPYING in subdirectories where applicable.
+
+Copyright © 2010-2022  Google, Inc.
+Copyright © 2015-2020  Ebrahim Byagowi
+Copyright © 2019,2020  Facebook, Inc.
+Copyright © 2012,2015  Mozilla Foundation
+Copyright © 2011  Codethink Limited
+Copyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)
+Copyright © 2009  Keith Stribley
+Copyright © 2011  Martin Hosken and SIL International
+Copyright © 2007  Chris Wilson
+Copyright © 2005,2006,2020,2021,2022,2023  Behdad Esfahbod
+Copyright © 2004,2007,2008,2009,2010,2013,2021,2022,2023  Red Hat, Inc.
+Copyright © 1998-2005  David Turner and Werner Lemberg
+Copyright © 2016  Igalia S.L.
+Copyright © 2022  Matthias Clasen
+Copyright © 2018,2021  Khaled Hosny
+Copyright © 2018,2019,2020  Adobe, Inc
+Copyright © 2013-2015  Alexei Podtelezhnikov
+
+For full copyright notices consult the individual files in the package.
+
+
+Permission is hereby granted, without written agreement and without
+license or royalty fees, to use, copy, modify, and distribute this
+software and its documentation for any purpose, provided that the
+above copyright notice and the following two paragraphs appear in
+all copies of this software.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR
+DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN
+IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGE.
+
+THE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
+BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
+PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+
+================================================================================
+LICENSE-071 · COPYING
+SHA-256: c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383
+Used by: harfbuzz_rs 3.0.1
+--------------------------------------------------------------------------------
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+
+================================================================================
+LICENSE-072 · LICENSE-APACHE
 SHA-256: c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4
 Used by: ureq 3.3.0
 --------------------------------------------------------------------------------
@@ -5239,9 +4914,9 @@ Used by: ureq 3.3.0
    limitations under the License.
 
 ================================================================================
-LICENSE-075 · LICENSE
+LICENSE-073 · LICENSE
 SHA-256: cab95955e7b2ba8623267dde6a1d910c5c524731f2c0d240d7a99113b8426532
-Used by: harfbuzz_rs 2.0.1
+Used by: harfbuzz_rs 3.0.1
 --------------------------------------------------------------------------------
 MIT License
 
@@ -5254,7 +4929,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-076 · LICENSE
+LICENSE-074 · LICENSE
 SHA-256: cc0332a88c2ea21d5f3c1298f966120f4c95196871c3f6bb4fcf615508b93fa1
 Used by: subtle 2.6.1
 --------------------------------------------------------------------------------
@@ -5289,7 +4964,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ================================================================================
-LICENSE-077 · LICENSE-APACHE, LICENSE-APACHE.md
+LICENSE-075 · LICENSE-APACHE, LICENSE-APACHE.md
 SHA-256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
 Used by: tinyvec 1.12.0, zeroize 1.9.0
 --------------------------------------------------------------------------------
@@ -5497,26 +5172,7 @@ Used by: tinyvec 1.12.0, zeroize 1.9.0
    limitations under the License.
 
 ================================================================================
-LICENSE-078 · COPYING
-SHA-256: d24039e4d22c9bc72096f6174374539d92a3d6e1163938546ec59179fe095e6f
-Used by: harfbuzz-sys 0.5.0
---------------------------------------------------------------------------------
-Copyright 2016 Unicode Inc. All rights reserved.
-
-Licensed under the Apache License, Version 2.0 (the “License”);
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an “AS IS” BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-================================================================================
-LICENSE-079 · curl.txt
+LICENSE-076 · curl.txt
 SHA-256: d3483fbbf511197d9b8402e48bf4bb5dc8c082abef0ae957334a2c3e8f32e976
 Used by: libssh2 libssh2-1.11.1
 --------------------------------------------------------------------------------
@@ -5543,7 +5199,7 @@ be used in advertising or otherwise to promote the sale, use or other dealings
 in this Software without prior written authorization of the copyright holder.
 
 ================================================================================
-LICENSE-080 · LICENSE, TRUFFLE-LICENSE
+LICENSE-077 · LICENSE, TRUFFLE-LICENSE
 SHA-256: d5988fd09ab1f97d46de9b2678a4fd2950286601f0a5995e739ac926c5a8eae0
 Used by: Truffle Swift f7e3900df25a84fed1858b78dcb035759879ebd6, ghosttea-apple-ffi 0.13.4, ghosttea-config 0.13.4, ghosttea-core 0.13.4, ghosttea-ffi 0.13.4, ghosttea-font-fixture-ffi 0.13.4, ghosttea-text 0.13.4, ghosttea-vt 0.13.4, ghosttea-vt-sys 0.13.4
 --------------------------------------------------------------------------------
@@ -5570,7 +5226,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-081 · LICENSE-MIT
+LICENSE-078 · LICENSE-MIT
 SHA-256: d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef
 Used by: block-buffer 0.10.4
 --------------------------------------------------------------------------------
@@ -5601,7 +5257,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-082 · TAILSCALE-LICENSE
+LICENSE-079 · TAILSCALE-LICENSE
 SHA-256: d6e14a92f27cd6c82f8914041c1bb43819fcf3167b827b9198c2c803d4dff5d3
 Used by: TailscaleKit d1dc45d039edb7759ecbee6ba2aea0c4bca884b8
 --------------------------------------------------------------------------------
@@ -5636,7 +5292,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ================================================================================
-LICENSE-083 · LICENSE-MIT
+LICENSE-080 · LICENSE-MIT
 SHA-256: dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff
 Used by: http 1.4.2
 --------------------------------------------------------------------------------
@@ -5667,51 +5323,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-084 · COPYING
-SHA-256: e1975aff2ce512248ab33a089b65155fd2f129ee7d2838a87c18acdc28902f32
-Used by: harfbuzz-sys 0.5.0
---------------------------------------------------------------------------------
-HarfBuzz is licensed under the so-called "Old MIT" license.  Details follow.
-For parts of HarfBuzz that are licensed under different licenses see individual
-files names COPYING in subdirectories where applicable.
-
-Copyright © 2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020  Google, Inc.
-Copyright © 2018,2019,2020  Ebrahim Byagowi
-Copyright © 2019,2020  Facebook, Inc.
-Copyright © 2012  Mozilla Foundation
-Copyright © 2011  Codethink Limited
-Copyright © 2008,2010  Nokia Corporation and/or its subsidiary(-ies)
-Copyright © 2009  Keith Stribley
-Copyright © 2009  Martin Hosken and SIL International
-Copyright © 2007  Chris Wilson
-Copyright © 2006  Behdad Esfahbod
-Copyright © 2005  David Turner
-Copyright © 2004,2007,2008,2009,2010  Red Hat, Inc.
-Copyright © 1998-2004  David Turner and Werner Lemberg
-
-For full copyright notices consult the individual files in the package.
-
-
-Permission is hereby granted, without written agreement and without
-license or royalty fees, to use, copy, modify, and distribute this
-software and its documentation for any purpose, provided that the
-above copyright notice and the following two paragraphs appear in
-all copies of this software.
-
-IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR
-DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
-ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN
-IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
-DAMAGE.
-
-THE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
-BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
-ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
-PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
-
-================================================================================
-LICENSE-085 · LICENSE
+LICENSE-081 · LICENSE
 SHA-256: e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8
 Used by: webpki-roots 1.0.10
 --------------------------------------------------------------------------------
@@ -5778,7 +5390,7 @@ of Data, including for example machine learning models and models'
 insights.
 
 ================================================================================
-LICENSE-086 · LICENSE-APACHE
+LICENSE-082 · LICENSE-APACHE
 SHA-256: e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb
 Used by: bytemuck 1.25.1, bytemuck_derive 1.11.0
 --------------------------------------------------------------------------------
@@ -5845,7 +5457,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-LICENSE-087 · LICENSE
+LICENSE-083 · LICENSE
 SHA-256: eb69613e00e596e13d2f58e820aee10e9d51754b91d7111bc997f1fc90791f66
 Used by: generic-array 0.14.7
 --------------------------------------------------------------------------------
@@ -5872,7 +5484,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-088 · LICENSE-other-bits
+LICENSE-084 · LICENSE-other-bits
 SHA-256: f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f
 Used by: ring 0.17.14
 --------------------------------------------------------------------------------
@@ -5891,7 +5503,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ================================================================================
-LICENSE-089 · LICENSE
+LICENSE-085 · LICENSE
 SHA-256: f421b8e542226295b847c1503204b08051bfd48150c645f065a41b06b60671ad
 Used by: fontconfig-parser 0.5.8
 --------------------------------------------------------------------------------
@@ -5918,26 +5530,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-090 · COPYING
-SHA-256: f55f74bf740db07bb032a90aa74af4307adea3d489c1ccba12453cf0c0a764cb
-Used by: harfbuzz-sys 0.5.0
---------------------------------------------------------------------------------
-Copyright 2000-2016 Adobe Systems Incorporated. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use these files except in compliance with the License.
-You may obtain a copy of the License at
-
- http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-================================================================================
-LICENSE-091 · LICENSE-UNICODE
+LICENSE-086 · LICENSE-UNICODE
 SHA-256: f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1
 Used by: unicode-ident 1.0.24
 --------------------------------------------------------------------------------
@@ -5982,7 +5575,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ================================================================================
-LICENSE-092 · THIRD_PARTY_NOTICES.md
+LICENSE-087 · THIRD_PARTY_NOTICES.md
 SHA-256: f90cd8afeb30b1dc6ec327a396d9be564d8b88bbc05f6d8649c1c57c17ddac02
 Used by: Ghostty color-theme catalog 875a82f0fdc773ae45099ce683a11c56bb0f8b3d, Ghostty shader adaptations 85898f08fcf4a9274e418912098e99e00a5f8350
 --------------------------------------------------------------------------------
@@ -6085,7 +5678,7 @@ effect; it is not evidence that the other unlicensed or non-commercial files
 in the source collection may be redistributed.
 
 ================================================================================
-LICENSE-093 · OFL-1.1.txt
+LICENSE-088 · OFL-1.1.txt
 SHA-256: fb755fa3280d1d215a20df2e64fe6a0f75f8208439b11671978214aae60d2997
 Used by: JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
 --------------------------------------------------------------------------------
@@ -6182,7 +5775,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ================================================================================
-LICENSE-094 · LICENSE-MIT.md
+LICENSE-089 · LICENSE-MIT.md
 SHA-256: fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc
 Used by: tinyvec 1.12.0
 --------------------------------------------------------------------------------
@@ -6193,7 +5786,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-LICENSE-095 · LICENSE-MIT
+LICENSE-090 · LICENSE-MIT
 SHA-256: fffe218c1e349e1d482a05677f2ce850502f88298174d77f6ac7c04821db7899
 Used by: roxmltree 0.20.0
 --------------------------------------------------------------------------------
@@ -6220,7 +5813,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-LICENSE-096 · FSFULLR.txt
+LICENSE-091 · FSFULLR.txt
 SHA-256: ffff0ec9c19fc90efbad30c66b7e335ab1f824a7ef806d943b45d28b67c75f9a
 Used by: libssh2 libssh2-1.11.1
 --------------------------------------------------------------------------------
