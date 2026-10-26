@@ -260,6 +260,55 @@ describe("terminal render worker surfaces", () => {
     expect(painted()).toContain("hidden");
   });
 
+  it("lets a visible pane it cannot draw wait for its size without asking for frames or holding idle", async () => {
+    const raf: FrameRequestCallback[] = [];
+    const postMessage = vi.fn();
+    vi.stubGlobal("self", { postMessage, requestAnimationFrame: (cb: FrameRequestCallback) => raf.push(cb) });
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown) => self.onmessage!({ data } as MessageEvent);
+    const settle = async () => {
+      for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    };
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    dispatch({ type: "frame", packet: textFrame(["cached"], 1n) });
+    dispatch({
+      type: "mount",
+      surfaceId: "collapsed",
+      sessionHandle: "1",
+      canvas: {},
+      size: { width: 0, height: 0, dpr: 2 },
+    });
+    await settle();
+    for (let frame = 0; frame < 3 && raf.length > 0; frame += 1) {
+      raf.splice(0).forEach((cb) => cb(0));
+      await settle();
+    }
+    // Dirty, visible and zero-size: a frame cannot draw it, so it asks for none.
+    expect(raf).toHaveLength(0);
+    expect(renderer.renderBatch).not.toHaveBeenCalled();
+
+    dispatch({ type: "performance-start", requestId: 1 });
+    await settle();
+    dispatch({ type: "performance-finish", requestId: 2, quietMs: 5, timeoutMs: 300 });
+    const result = await vi.waitFor(
+      () => {
+        const found = postMessage.mock.calls
+          .map(([message]) => message)
+          .find((message) => message?.type === "performance-result" && message.requestId === 2);
+        if (!found) throw new Error("no performance result yet");
+        return found;
+      },
+      { timeout: 2_000, interval: 10 },
+    );
+    expect(result.snapshot.timedOutWaitingForIdle).toBe(false);
+
+    // Its size arrives, and the pane it waited for is drawn.
+    dispatch({ type: "resize", surfaceId: "collapsed", width: 643, height: 417, dpr: 2 });
+    raf.splice(0).forEach((cb) => cb(0));
+    await settle();
+    expect(renderer.renderBatch.mock.calls.flatMap(([entries]) => entries.map(({ id }) => id))).toContain("collapsed");
+  });
+
   it("composes scrolling before a paint and fences reset, layout and selection changes", async () => {
     const raf: FrameRequestCallback[] = [];
     const scope = {
