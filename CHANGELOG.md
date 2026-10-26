@@ -3,6 +3,41 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.7 - 2026-10-26
+
+### Fixed
+
+- On Windows, `ghosttea-vt-sys` links a Ghostty VT library built for the C
+  runtime its consumer links. The library used to be built for the static
+  runtime (`/MT`) only, while a Rust target links the dynamic runtime (`/MD`)
+  unless it enables `crt-static`, so a consumer that also linked C++ of its
+  own failed with LNK2038 ("mismatch detected for 'RuntimeLibrary'").
+  - The default `x86_64-pc-windows-msvc` build links a library built for
+    `/MD`. A build with `-C target-feature=+crt-static` links one built for
+    `/MT`.
+  - The `/MD` library adds no dependency on `msvcp140.dll`.
+  - The Ghostty VT artifacts are released as `ghostty-vt-1dceb4dd5089`. The
+    macOS library is byte-identical to the previous one.
+
+### Changed
+
+- **Rust consumers must move their `truffle-core` pin** to `=0.7.23`. Every
+  crate sharing an application-owned Truffle node must resolve the same
+  version. Swift consumers get Truffle 0.7.23 through Ghosttea's exact pin.
+  - Truffle 0.7.23 keeps a dying sidecar's last stderr lines, which its
+    stderr forwarder used to drop at shutdown. Its Swift package is otherwise
+    unchanged.
+- The Apple native artifact is rebuilt for this release.
+
+### Validation
+
+- A Windows-only workspace crate links a C++ object built for the Rust
+  target's C runtime beside the Ghostty VT library, so a library built for the
+  other runtime fails CI at link time.
+- Packaging refuses a Windows Ghostty VT library whose objects are stamped for
+  the other C runtime.
+- Neither changes what ships.
+
 ## 0.13.6 - 2026-10-26
 
 ### Fixed
