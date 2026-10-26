@@ -18,8 +18,8 @@ import PackageDescription
 //
 // `exact:` rather than `from:` keeps the lockstep discipline the revision pin
 // had: exactly one Truffle across both planes, moved deliberately. Truffle's
-// remote carries a plain `v0.7.19` tag on the same commit its release-please
-// `truffle-v0.7.19` tag names, so this resolves that exact build through a
+// remote carries a plain `v0.7.22` tag on the same commit its release-please
+// `truffle-v0.7.22` tag names, so this resolves that exact build through a
 // stable requirement.
 //
 // Keep this equal to `package.version` in
@@ -27,7 +27,7 @@ import PackageDescription
 // commit that version resolves to; the App Store readiness check compares the
 // resolved pin against both and fails closed on drift.
 let truffleRepository = "https://github.com/vibecook-dev/truffle.git"
-let truffleVersion: Version = "0.7.19"
+let truffleVersion: Version = "0.7.22"
 
 let package = Package(
   name: "GhostteaKit",

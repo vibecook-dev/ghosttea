@@ -94,7 +94,7 @@ On macOS and Linux they are Unix sockets. On Windows they are named pipes with a
   - It looks for the library in this order: `GHOSTTY_VT_PREFIX`, `GHOSTTEA_GHOSTTY_VT_BUNDLE`, `native/build/ghostty`, then a verified download. `GHOSTTEA_GHOSTTY_VT_OFFLINE=1` forbids the download.
   - Ghostty itself is pinned by `native/ghostty.lock.json` and `native/patches/`.
 - `ghosttea-config`: Ghostty configuration compatibility, checked against Ghostty v1.3.1's key schema (`native/ghostty-config.lock.json`). It adds one extension key, `ghosttea-light-adaptation`.
-- `ghosttea-truffle`: the mesh adapter. It uses QUIC port 9420 between desktops and the compact Apple-client port 9421. Every crate sharing the host's Truffle node must resolve exactly `truffle-core =0.7.19`.
+- `ghosttea-truffle`: the mesh adapter. It uses QUIC port 9420 between desktops and the compact Apple-client port 9421. Every crate sharing the host's Truffle node must resolve exactly `truffle-core =0.7.22`.
 - `ghosttea-ffi` (C ABI v1, `include/ghosttea.h`) and `ghosttea-font-fixture-ffi`: folded into the single static library `ghosttea-apple-ffi` for iOS.
 
 **TypeScript (`packages/`)**
