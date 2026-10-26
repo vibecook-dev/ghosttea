@@ -206,7 +206,6 @@ for (const platform of platforms) {
   execute("cargo", ["build", "--locked", "--release", "-p", "ghosttea-apple-ffi", "--target", platform.target], {
     environment: {
       GHOSTTY_VT_PREFIX: prefix,
-      HARFBUZZ_SYS_NO_PKG_CONFIG: "1",
     },
   });
 }
