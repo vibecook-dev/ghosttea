@@ -1,12 +1,15 @@
 // Reads the C runtime an MSVC static library was compiled for, from the linker
 // directives its objects carry.
 //
-// Every object compiled against the MSVC C++ standard headers records its C
+// With autolink enabled, MSVC C++ standard headers record their C
 // runtime as `/FAILIFMISMATCH:"RuntimeLibrary=..."` in its `.drectve` section,
 // and the linker refuses two different values in one link (LNK2038). A Rust
 // target links the dynamic runtime unless it enables `crt-static`, so each
 // Windows Ghostty VT target is built for one runtime, and packaging refuses a
-// library whose objects say otherwise.
+// library whose objects say otherwise. Ghostty 1.4 disables autolink on its
+// SIMD code, so its patch adds one metadata-only witness per C++ compile group.
+// Witnesses use that group's exact compiler flags plus -fautolink and derive
+// the stamp from _MT/_DLL; packaging requires all three, not just any one.
 
 const ARCHIVE_MAGIC = "!<arch>\n";
 const MEMBER_HEADER_BYTES = 60;
@@ -103,16 +106,18 @@ function defaultLibraryOf(directive) {
  * "static"): an object stamped for the other runtime, a default library of the
  * other runtime, or no stamp at all, which would mean this reader saw nothing.
  */
-export function msvcRuntimeProblems(archive, runtime) {
+export function msvcRuntimeProblems(archive, runtime, requiredWitnesses = []) {
   const expected = RUNTIME_STAMPS[runtime];
   if (!expected) throw new Error(`unknown MSVC runtime ${runtime}`);
   const problems = [];
   let stamped = 0;
+  const witnesses = new Set();
   for (const member of archiveDirectives(archive)) {
     for (const directive of member.directives) {
       const stamp = stampOf(directive);
       if (stamp !== null) {
         stamped += 1;
+        witnesses.add(member.name.replaceAll("\\", "/").split("/").at(-1));
         if (stamp !== expected) problems.push(`${member.name} is stamped RuntimeLibrary=${stamp}, not ${expected}`);
       }
       const library = defaultLibraryOf(directive);
@@ -122,5 +127,8 @@ export function msvcRuntimeProblems(archive, runtime) {
     }
   }
   if (stamped === 0) problems.push(`no object records a RuntimeLibrary stamp; expected ${expected}`);
+  for (const witness of requiredWitnesses) {
+    if (!witnesses.has(witness)) problems.push(`missing stamped runtime witness ${witness}`);
+  }
   return problems;
 }

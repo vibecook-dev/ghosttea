@@ -54,7 +54,7 @@ then let both bootstrap commands reproduce the patched tree:
 git -C native/vendor/ghostty fetch --depth=1 origin NEW_FULL_COMMIT
 git -C native/vendor/ghostty checkout --detach NEW_FULL_COMMIT
 npm run bootstrap:ghostty-vt
-GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer \
+GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   npm run bootstrap:ghostty-vt:apple
 ```
 
@@ -103,7 +103,7 @@ an unstamped witness links clean against a library built for either runtime.
 ## 3. Rebuild the downloadable and Apple artifacts
 
 Build the desktop/server artifact in the pinned container with the locked
-single-job schedule, dependency seed, and `baseline` CPU target; normalize it
+single-job schedule, `fast` optimization, and `baseline` CPU target; normalize it
 with the locked Xcode build; and first package it as a diagnostic candidate. On
 a workstation where that Xcode is the main application rather than side-by-side,
 point the normalizer at it:
@@ -148,7 +148,7 @@ Build and validate every Apple slice, then recompose the local combined binary
 used by SwiftPM:
 
 ```sh
-GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer \
+GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   npm run build:ghostty-vt:apple
 npm run check:ghostty-vt:apple
 npm run test:ghostty-vt:apple

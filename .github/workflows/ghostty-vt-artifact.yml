@@ -182,8 +182,12 @@ jobs:
         shell: pwsh
         run: |
           $recipe = (Get-Content native/ghostty.lock.json | ConvertFrom-Json).builder.windowsPkgConfig
-          choco install $recipe.package --version=$($recipe.version) --yes --no-progress
-          if ($LASTEXITCODE -ne 0) { throw "pkg-config installation failed" }
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install $recipe.package --version=$($recipe.version) --yes --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { throw "pkg-config installation failed" }
+            Start-Sleep -Seconds 10
+          }
           $exe = Get-ChildItem "$env:ChocolateyInstall/lib/$($recipe.package)" -Recurse -Filter pkg-config.exe | Select-Object -First 1
           if (-not $exe) { throw "native pkg-config executable was not installed" }
           & $exe.FullName --version
@@ -196,6 +200,20 @@ jobs:
           npm run bootstrap:ghostty-vt -- --target="$TARGET"
           npm run build:ghostty-vt -- --target="$TARGET"
           npm run package:ghostty-vt -- --target="$TARGET" --allow-mismatch
+
+      - name: Test Rust consumers with the selected Windows runtime
+        if: github.ref_type != 'tag'
+        timeout-minutes: 20
+        run: |
+          export GHOSTTY_VT_PREFIX="$(cygpath -w "$PWD/native/build/ghostty/$TARGET/install")"
+          export GHOSTTEA_GHOSTTY_VT_OFFLINE=1
+          export GHOSTTEA_FONT_DIR="$(cygpath -w "$PWD/native/build/ghosttea-fonts")"
+          if [ "$TARGET" = "x86_64-pc-windows-msvc-crt-static" ]; then
+            export RUSTFLAGS="-C target-feature=+crt-static"
+          fi
+          node scripts/sync-ghosttea-fonts.mjs
+          cargo test --locked --target x86_64-pc-windows-msvc -p ghosttea-vt -p ghosttea-text -p ghosttea-core -p ghosttea-ffi
+          cargo test --locked --target x86_64-pc-windows-msvc -p ghosttea-ffi --test parity -- --ignored
 
       - name: Preserve rejected Windows build for diagnosis
         if: failure() && github.ref_type != 'tag'

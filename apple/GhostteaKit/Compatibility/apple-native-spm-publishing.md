@@ -73,19 +73,18 @@ or Git LFS content.
 ## Local candidate qualification
 
 Use the toolchain recorded in
-`Compatibility/ios-toolchain.lock.json` on Apple Silicon macOS. Ghostty's
-pinned Zig 0.15.2 build additionally requires the side-by-side Xcode recorded
-in `native/ghostty.lock.json`; Xcode 26.4 and later changed the macOS system
-stubs in a way Zig 0.15.2 cannot link. Keep the main release toolchain on Xcode
-26.6 and point only the two Ghostty commands at Xcode 26.3:
+`Compatibility/ios-toolchain.lock.json` on Apple Silicon macOS. Ghostty 1.4
+uses the checksum-pinned Zig 0.17.0 and Xcode 26.6 / SDK 26.5 recorded in
+`native/ghostty.lock.json`. The Ghostty and Rust/Swift builds now use the same
+reviewed Xcode installation:
 
 ```sh
 npm ci --ignore-scripts
 npm run check:ios-release-toolchain
 
-GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer \
+GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   npm run bootstrap:ghostty-vt:apple
-GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer \
+GHOSTTY_DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   npm run build:ghostty-vt:apple
 npm run bootstrap:ssh:apple
 npm run build:ssh:apple
@@ -101,14 +100,15 @@ npm run verify:ghosttea-apple-native-package
 
 CI selects the `macos-26` ARM runner and
 `/Applications/Xcode_26.6.app/Contents/Developer` explicitly for Rust, Swift,
-packaging, and tests. It selects
-`/Applications/Xcode_26.3.app/Contents/Developer` only for the Ghostty/Zig
-input. Both versions and SDK builds are verified against their committed
-locks. Do not replace either path with the runner's moving
-`/Applications/Xcode.app` default; the checks are intended to fail on drift.
-The split is the reviewed workaround for
+packaging, tests, and the Ghostty/Zig input. Versions and SDK builds remain
+verified against their committed locks. Do not replace the CI path with the
+runner's moving `/Applications/Xcode.app` default; the checks intentionally
+fail on drift. A workstation may set `GHOSTTY_DEVELOPER_DIR` to its main Xcode
+installation when it matches those exact checks.
+
+The previous Zig 0.15.2 / Xcode 26.3 split worked around
 [Zig issue 31658](https://codeberg.org/ziglang/zig/issues/31658), fixed
-upstream after Zig 0.15.2 by
+upstream before this compiler migration by
 [PR 31673](https://codeberg.org/ziglang/zig/pulls/31673).
 
 The external-consumer test imports and links every public library product into

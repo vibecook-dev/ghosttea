@@ -1,0 +1,26 @@
+{
+  "ghosttea-baseline-rust": {
+    "passed": 414,
+    "failed": 0,
+    "ignored": 3,
+    "testBinaries": 24
+  },
+  "ghosttea-candidate-rust": {
+    "passed": 422,
+    "failed": 0,
+    "ignored": 3,
+    "testBinaries": 25
+  },
+  "vibefield-baseline-rust": {
+    "passed": 493,
+    "failed": 0,
+    "ignored": 14,
+    "testBinaries": 31
+  },
+  "vibefield-candidate-rust": {
+    "passed": 493,
+    "failed": 0,
+    "ignored": 14,
+    "testBinaries": 31
+  }
+}

@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use ghosttea_text::{FontStyle, GlyphDefinition, ShapedRow, StyleSpan};
+use ghosttea_text::{FontStyle, GlyphDefinition, ShapedRow, TerminalCellSpan};
 use ghosttea_vt::{
     CellStyle, TerminalPalette, TerminalScrollbar, TerminalSelection, resolved_palette,
 };
@@ -46,7 +46,7 @@ impl FrameCell for ReplicaFrameCell {
 struct ReplicaRenderCache {
     rows: Vec<String>,
     cells: Vec<Vec<ReplicaFrameCell>>,
-    shape_spans: Vec<Vec<(usize, usize, FontStyle)>>,
+    shape_spans: Vec<Vec<TerminalCellSpan>>,
     shaped_rows: Vec<ShapedRow>,
     sent_glyphs: HashSet<u32>,
 }
@@ -407,18 +407,10 @@ impl LogicalReplicaModel {
             let wait = wait_started.elapsed();
             let hold_started = Instant::now();
             for row in prepared.iter().filter(|row| row.shape_spans.is_some()) {
-                let spans = row
-                    .shape_spans
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|&(byte_start, byte_end, style)| StyleSpan {
-                        byte_start,
-                        byte_end,
-                        style,
-                    })
-                    .collect::<Vec<_>>();
-                shaped_updates.push((row.index, engine.shape_styled_row(&row.text, &spans)?));
+                shaped_updates.push((
+                    row.index,
+                    engine.shape_terminal_row(&row.text, row.shape_spans.as_ref().unwrap())?,
+                ));
             }
             drop(engine);
             self.text_engine_performance
@@ -503,7 +495,7 @@ struct PreparedReplicaRow {
     index: usize,
     text: String,
     cells: Vec<ReplicaFrameCell>,
-    shape_spans: Option<Vec<(usize, usize, FontStyle)>>,
+    shape_spans: Option<Vec<TerminalCellSpan>>,
 }
 
 fn prepare_logical_row(
@@ -544,7 +536,7 @@ fn prepare_logical_cells(row: &LogicalRow, palette: &TerminalPalette) -> Vec<Rep
         .collect()
 }
 
-fn logical_shape_spans(row: &LogicalRow) -> Vec<(usize, usize, FontStyle)> {
+fn logical_shape_spans(row: &LogicalRow) -> Vec<TerminalCellSpan> {
     let mut byte_offset = 0;
     row.cells
         .iter()
@@ -554,19 +546,21 @@ fn logical_shape_spans(row: &LogicalRow) -> Vec<(usize, usize, FontStyle)> {
             }
             let byte_start = byte_offset;
             byte_offset = (byte_offset + cell.text.len()).min(row.text.len());
-            Some((
+            Some(TerminalCellSpan {
                 byte_start,
-                byte_offset,
-                FontStyle {
+                byte_end: byte_offset,
+                column: cell.column,
+                span: cell.span,
+                style: FontStyle {
                     bold: cell.style.bold,
                     italic: cell.style.italic,
                 },
-            ))
+            })
         })
         .collect()
 }
 
-fn shape_spans_match(row: &LogicalRow, cached: &[(usize, usize, FontStyle)]) -> bool {
+fn shape_spans_match(row: &LogicalRow, cached: &[TerminalCellSpan]) -> bool {
     let mut byte_offset = 0;
     let mut span_index = 0;
     for cell in &row.cells {
@@ -575,14 +569,16 @@ fn shape_spans_match(row: &LogicalRow, cached: &[(usize, usize, FontStyle)]) -> 
         }
         let byte_start = byte_offset;
         byte_offset = (byte_offset + cell.text.len()).min(row.text.len());
-        let span = (
+        let span = TerminalCellSpan {
             byte_start,
-            byte_offset,
-            FontStyle {
+            byte_end: byte_offset,
+            column: cell.column,
+            span: cell.span,
+            style: FontStyle {
                 bold: cell.style.bold,
                 italic: cell.style.italic,
             },
-        );
+        };
         if cached.get(span_index) != Some(&span) {
             return false;
         }
@@ -654,6 +650,58 @@ mod tests {
                 _ => None,
             })
             .expect("replica update must contain a frame")
+    }
+
+    #[test]
+    fn mirrors_preserve_host_unicode_width_and_reshape_geometry_only_changes() {
+        let runtime = Arc::new(TerminalRuntime::discover().unwrap());
+        let mut replica = LogicalReplicaModel::new(runtime, 42);
+        let row = |width| LogicalRow {
+            text: "\u{1f6d9}X".into(),
+            cells: vec![
+                crate::LogicalCell {
+                    column: 0,
+                    span: width,
+                    text: "\u{1f6d9}".into(),
+                    style: LogicalCellStyle::default(),
+                },
+                crate::LogicalCell {
+                    column: width,
+                    span: 1,
+                    text: "X".into(),
+                    style: LogicalCellStyle::default(),
+                },
+            ],
+        };
+        let mut initial = snapshot("X");
+        initial.rows = vec![row(1)];
+        replica.publish(initial).unwrap();
+        for (sequence, width) in [(1, 2), (2, 1), (3, 2)] {
+            let current = replica.latest().unwrap();
+            replica
+                .publish_patch(LogicalTerminalPatch {
+                    session_epoch: current.session_epoch,
+                    layout_epoch: current.layout_epoch,
+                    patch_sequence: sequence,
+                    terminal_revision: current.terminal_revision + 1,
+                    row_replacements: vec![RowReplacement {
+                        row_index: 0,
+                        row_revision: current.terminal_revision + 1,
+                        row: row(width),
+                    }],
+                    cursor: None,
+                    mouse_tracking: None,
+                    scrollbar: None,
+                })
+                .unwrap();
+            assert_eq!(replica.text_engine_performance().acquisition_count, 1);
+            assert!(
+                replica.render_cache.shaped_rows[0]
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == width && glyph.cell_span == 1)
+            );
+        }
     }
 
     #[test]

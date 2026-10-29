@@ -26,14 +26,14 @@ This bench is the first step of TDD:
 
 ## Sources of truth (priority order)
 
-| Priority | Source                          | Location / command                                   |
-| -------- | ------------------------------- | ---------------------------------------------------- |
-| 1        | Vendored Ghostty source at lock | `native/vendor/ghostty` @ `native/ghostty.lock.json` |
-| 2        | Default keybinds in source      | `src/config/Config.zig` → `Keybinds.init`            |
-| 3        | Action enum + docs              | `src/input/Binding.zig` → `Action`                   |
-| 4        | Installed Ghostty CLI dump      | `ghostty +list-keybinds --default --plain`           |
-| 5        | Default config dump             | `ghostty +show-config --default`                     |
-| 6        | Action list dump                | `ghostty +list-actions` / `--docs`                   |
+| Priority | Source                          | Location / command                                               |
+| -------- | ------------------------------- | ---------------------------------------------------------------- |
+| 1        | Vendored Ghostty source at lock | `native/ghostty-config.lock.json` → `uxGroundTruth.vendorCommit` |
+| 2        | Default keybinds in source      | `src/config/Config.zig` → `Keybinds.init`                        |
+| 3        | Action enum + docs              | `src/input/Binding.zig` → `Action`                               |
+| 4        | Installed Ghostty CLI dump      | `ghostty +list-keybinds --default --plain`                       |
+| 5        | Default config dump             | `ghostty +show-config --default`                                 |
+| 6        | Action list dump                | `ghostty +list-actions` / `--docs`                               |
 
 CLI dumps are convenient snapshots. When they disagree with the locked
 vendor commit, **the locked source wins**.
@@ -42,22 +42,28 @@ vendor commit, **the locked source wins**.
 
 Captured under [`ground-truth/`](./ground-truth/):
 
-| File                          | Contents                                       |
-| ----------------------------- | ---------------------------------------------- |
-| `vendor-commit.txt`           | Pinned Ghostty git commit used for builds      |
-| `ghostty-version.txt`         | Installed app version that produced CLI dumps  |
-| `keybinds-macos-default.txt`  | Raw `+list-keybinds --default --plain`         |
-| `keybinds-macos-default.json` | Structured trigger → action pairs              |
-| `actions.txt`                 | Full action names (`+list-actions`)            |
-| `actions-docs.txt`            | Actions with documentation                     |
-| `actions-from-source.json`    | Actions parsed from `Binding.zig`              |
-| `config-macos-default.txt`    | Full default config (`+show-config --default`) |
+| File                          | Contents                                          |
+| ----------------------------- | ------------------------------------------------- |
+| `vendor-commit.txt`           | Reviewed source commit when the dump was captured |
+| `ghostty-version.txt`         | Installed app version that produced CLI dumps     |
+| `keybinds-macos-default.txt`  | Raw `+list-keybinds --default --plain`            |
+| `keybinds-macos-default.json` | Structured trigger → action pairs                 |
+| `actions.txt`                 | Full action names (`+list-actions`)               |
+| `actions-docs.txt`            | Actions with documentation                        |
+| `actions-from-source.json`    | Actions parsed from `Binding.zig`                 |
+| `config-macos-default.txt`    | Full default config (`+show-config --default`)    |
 
 **Scale (macOS defaults):**
 
 - **85** bindable actions
 - **93** default keybind entries (includes digit_N physical + unicode aliases)
 - **200** non-keybind config keys with defaults
+
+The Ghostty 1.4 VT migration retains this 1.3.1 application UX baseline. The
+VT source, config schema source, and historical UX capture have distinct pins;
+upgrading the parser does not silently change shortcuts or application defaults.
+The CLI version is recorded independently of the source checkout and does not
+claim that the installed app was built from that checkout.
 
 ## Refresh procedure
 
@@ -68,9 +74,12 @@ npm run extract:ghostty-ux
 Or with an explicit binary:
 
 ```sh
-GHOSTTY=/Applications/Ghostty.app/Contents/MacOS/ghostty npm run extract:ghostty-ux
+GHOSTTY=/path/to/Ghostty-1.3.1.app/Contents/MacOS/ghostty \
+GHOSTTY_UX_SOURCE=/path/to/reviewed-ux-checkout npm run extract:ghostty-ux
 ```
 
+The extractor first checks the CLI version and source commit against the UX lock.
+A deliberate UX upgrade must review and update that lock separately.
 This rewrites `bench/ghostty-ux/ground-truth/*` and copies keybind fixtures into
 `packages/ghosttea-react/src/bindings/fixtures/` for the golden suite.
 `extensions.json` (⌘⇧O remote sessions) is always re-emitted as intentional.
