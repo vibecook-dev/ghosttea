@@ -174,12 +174,37 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # Zig 0.17 queries Windows system libraries through pkg-config. The
+      # runner's Strawberry Perl .BAT shim fails when spawned by Zig; use a
+      # native executable and record the tool version in the build recipe.
+      - name: Select native pkg-config
+        if: github.ref_type != 'tag'
+        shell: pwsh
+        run: |
+          $recipe = (Get-Content native/ghostty.lock.json | ConvertFrom-Json).builder.windowsPkgConfig
+          choco install $recipe.package --version=$($recipe.version) --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "pkg-config installation failed" }
+          $exe = Get-ChildItem "$env:ChocolateyInstall/lib/$($recipe.package)" -Recurse -Filter pkg-config.exe | Select-Object -First 1
+          if (-not $exe) { throw "native pkg-config executable was not installed" }
+          & $exe.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "native pkg-config is not executable" }
+          "PKG_CONFIG=$($exe.FullName)" >> $env:GITHUB_ENV
+
       - name: Build native Windows candidate
         if: github.ref_type != 'tag'
         run: |
           npm run bootstrap:ghostty-vt -- --target="$TARGET"
           npm run build:ghostty-vt -- --target="$TARGET"
           npm run package:ghostty-vt -- --target="$TARGET" --allow-mismatch
+
+      - name: Preserve rejected Windows build for diagnosis
+        if: failure() && github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rejected-${{ matrix.target }}
+          path: native/build/ghostty/${{ matrix.target }}/install/
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Resolve locked Windows candidate run
         if: github.ref_type == 'tag'
