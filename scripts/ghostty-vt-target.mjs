@@ -97,6 +97,7 @@ function assertNoIndexOrUntrackedChanges(vendor) {
 
 /** The immutable source description recorded in bundles and lock manifests. */
 export function ghosttySourceIdentity() {
+  ghosttyNormalizerFiles();
   const patches = patchInputs().map(({ path, sha256: checksum }) => ({ path, sha256: checksum }));
   return {
     repository: lock.ghostty.repository,
@@ -119,6 +120,17 @@ export function ghosttySourceIdentity() {
       ),
     },
   };
+}
+
+/** Reviewed Darwin postprocessing that the Linux cross-builder cannot run. */
+export function ghosttyNormalizerFiles() {
+  const input = lock.builder.normalizer?.libSystemOverride;
+  if (!input) return [];
+  const absolutePath = join(root, input.path);
+  if (sha256(readFileSync(absolutePath)) !== input.sha256) {
+    throw new Error(`Ghostty normalizer checksum mismatch: ${input.path}`);
+  }
+  return [{ ...input, absolutePath }];
 }
 
 /** Verified patch files for provenance packaging. */

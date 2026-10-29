@@ -34,9 +34,11 @@
       "developerDirectory": "/Applications/Xcode_26.6.app/Contents/Developer",
       "xcodeVersion": "26.6",
       "xcodeBuild": "17F113",
-      "stripFlags": [
-        "-S"
-      ]
+      "stripFlags": ["-S"],
+      "libSystemOverride": {
+        "path": "native/normalizers/ghostty-libsystem-override.sh",
+        "sha256": "e4f84e42c29e90744e50af5bcfabc7514638ddc01bcdcf5afe3700f93e4dd60f"
+      }
     },
     "zigOptimize": "fast",
     "zigPackageDirectory": "packages",
@@ -44,11 +46,7 @@
       "package": "pkgconfiglite",
       "version": "0.28"
     },
-    "msvcRuntimeWitnesses": [
-      "ghosttea-msvc-simd.obj",
-      "ghosttea-msvc-simdutf.obj",
-      "ghosttea-msvc-highway.obj"
-    ]
+    "msvcRuntimeWitnesses": ["ghosttea-msvc-simd.obj", "ghosttea-msvc-simdutf.obj", "ghosttea-msvc-highway.obj"]
   },
   "targets": {
     "aarch64-apple-darwin": {

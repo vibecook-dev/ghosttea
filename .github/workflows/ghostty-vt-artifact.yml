@@ -74,6 +74,23 @@ jobs:
         if: github.ref_type != 'tag'
         run: npm run package:ghostty-vt -- --target=aarch64-apple-darwin --allow-mismatch
 
+      - if: github.ref_type != 'tag'
+        uses: dtolnay/rust-toolchain@1.99.1
+
+      - name: Test consumers of the normalized macOS archive
+        if: github.ref_type != 'tag'
+        env:
+          GHOSTTY_DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+          RUSTFLAGS: -Dlinker-messages
+        run: |
+          npm run bootstrap:ghostty-vt:apple
+          npm run sync:fonts
+          export GHOSTTY_VT_PREFIX="$PWD/native/build/ghostty/aarch64-apple-darwin/install"
+          export GHOSTTEA_GHOSTTY_VT_OFFLINE=1
+          export GHOSTTEA_FONT_DIR="$PWD/native/build/ghosttea-fonts"
+          cargo test --locked -p ghosttea-vt -p ghosttea-text -p ghosttea-core -p ghosttea-ffi
+          cargo test --locked -p ghosttea-ffi --test parity -- --ignored
+
       - name: Resolve locked macOS candidate run
         if: github.ref_type == 'tag'
         id: macos_candidate

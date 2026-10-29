@@ -5,6 +5,7 @@ import { release as osRelease } from "node:os";
 import { join, relative } from "node:path";
 import {
   artifactNames,
+  ghosttyNormalizerFiles,
   ghosttyPatchFiles,
   ghosttySourceDigest,
   ghosttySourceIdentity,
@@ -108,6 +109,10 @@ const inputs = [
   ...ghosttyPatchFiles().map((patch) => ({
     bundlePath: `SOURCE-PATCHES/${patch.path}`,
     sourcePath: patch.absolutePath,
+  })),
+  ...ghosttyNormalizerFiles().map((normalizer) => ({
+    bundlePath: `SOURCE-NORMALIZERS/${normalizer.path}`,
+    sourcePath: normalizer.absolutePath,
   })),
 ].map((file) => ({ ...file, contents: readFileSync(file.sourcePath) }));
 
