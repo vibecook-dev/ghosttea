@@ -7,9 +7,10 @@
  *   1. GHOSTTY env / CLI binary
  *   2. /Applications/Ghostty.app/Contents/MacOS/ghostty
  *
- * Locked vendor commit (native/ghostty.lock.json) is recorded alongside dumps.
- * When CLI dumps disagree with the locked source, the locked source wins —
- * re-check by building Ghostty from vendor or re-running after upgrade.
+ * The application UX baseline is pinned separately from VT in
+ * native/ghostty-config.lock.json. Both the CLI version and reviewed source
+ * checkout must match before any fixture is overwritten. GHOSTTY_UX_SOURCE
+ * selects that checkout when the VT vendor has moved ahead.
  */
 
 import { execFileSync } from "node:child_process";
@@ -60,10 +61,25 @@ function main() {
     process.exit(1);
   }
 
+  const configLock = JSON.parse(readFileSync(join(root, "native/ghostty-config.lock.json"), "utf8"));
+  const expected = configLock.uxGroundTruth;
+  const version = run(ghostty, ["+version"]);
+  const cliVersion = version.match(/version:\s*(\S+)/)?.[1];
+  if (!expected || cliVersion !== expected.cliVersion || cliVersion !== configLock.ghostty?.version) {
+    throw new Error(`Ghostty CLI ${cliVersion ?? "unknown"} does not match the reviewed config/UX baseline.`);
+  }
+  const vendorGit = process.env.GHOSTTY_UX_SOURCE ?? join(root, "native/vendor/ghostty");
+  const vendorCommit = execFileSync("git", ["-C", vendorGit, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  if (vendorCommit !== expected.vendorCommit) {
+    throw new Error(`UX source must be ${expected.vendorCommit}; set GHOSTTY_UX_SOURCE to that reviewed checkout.`);
+  }
+  const vendorNote =
+    `${vendorCommit}\n` +
+    execFileSync("git", ["-C", vendorGit, "log", "-1", "--format=%H%n%s%n%ci"], { encoding: "utf8" });
+
   mkdirSync(outDir, { recursive: true });
   mkdirSync(fixtureDir, { recursive: true });
 
-  const version = run(ghostty, ["+version"]);
   write(join(outDir, "ghostty-version.txt"), version);
 
   const keybindsTxt = run(ghostty, ["+list-keybinds", "--default", "--plain"]);
@@ -136,24 +152,8 @@ function main() {
     .filter(Boolean);
   write(join(outDir, "actions-from-source.json"), JSON.stringify(actions, null, 2));
 
-  // Vendor commit record
-  const lockPath = join(root, "native/ghostty.lock.json");
-  let vendorNote = "";
-  if (existsSync(lockPath)) {
-    const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-    vendorNote += `${lock.ghostty?.commit ?? "unknown"}\n`;
-  }
-  const vendorGit = join(root, "native/vendor/ghostty");
-  if (existsSync(join(vendorGit, ".git"))) {
-    try {
-      vendorNote += execFileSync("git", ["-C", vendorGit, "log", "-1", "--format=%H%n%s%n%ci"], {
-        encoding: "utf8",
-      });
-    } catch {
-      // ignore
-    }
-  }
-  write(join(outDir, "vendor-commit.txt"), vendorNote || "unknown\n");
+  // The independently reviewed application UX source, not the current VT source.
+  write(join(outDir, "vendor-commit.txt"), vendorNote);
 
   // Intentional Ghosttea extensions (never overwrite note casually)
   const extensions = {

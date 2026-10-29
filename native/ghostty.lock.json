@@ -4,7 +4,7 @@
     "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd"
   },
   "vtPatchSet": {
-    "diffSha256": "6adbd51a5afc23da809951e5df2919a951f007820e432ccf91c89e1f8bff94c3",
+    "diffSha256": "63a9c60e8f5a1bf7707ea2a6f836d38cc1c6251883d748819fb0987a22c0a523",
     "patches": [
       {
         "path": "native/patches/ghostty-vt-g15-g21.patch",
@@ -12,7 +12,7 @@
       },
       {
         "path": "native/patches/ghostty-vt-msvc-runtime.patch",
-        "sha256": "5a86c9ebde9f90245212a3dfd80713a50fe84db3c03bbf7cc5664fe8c495a7ab"
+        "sha256": "ff22fe161179669320cb68a5c5e42c5549c7f0e47419cef6f458f43c1c61df93"
       }
     ]
   },
@@ -43,7 +43,12 @@
     "windowsPkgConfig": {
       "package": "pkgconfiglite",
       "version": "0.28"
-    }
+    },
+    "msvcRuntimeWitnesses": [
+      "ghosttea-msvc-simd.obj",
+      "ghosttea-msvc-simdutf.obj",
+      "ghosttea-msvc-highway.obj"
+    ]
   },
   "targets": {
     "aarch64-apple-darwin": {

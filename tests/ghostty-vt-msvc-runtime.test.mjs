@@ -95,3 +95,16 @@ test("refuses a library in which no object records a stamp, since that reads as 
     "no object records a RuntimeLibrary stamp; expected MD_DynamicRelease",
   ]);
 });
+
+test("requires a stamped witness for every independently compiled C++ group", () => {
+  const required = ["ghosttea-msvc-simd.obj", "ghosttea-msvc-simdutf.obj", "ghosttea-msvc-highway.obj"];
+  const complete = required.map((name) => [`D:\\build\\${name}`, object(DYNAMIC)]);
+  assert.deepEqual(msvcRuntimeProblems(archive(complete), "dll", required), []);
+  assert.deepEqual(msvcRuntimeProblems(archive(complete.slice(0, 2)), "dll", required), [
+    "missing stamped runtime witness ghosttea-msvc-highway.obj",
+  ]);
+  complete[2] = [required[2], object(STATIC)];
+  assert.ok(
+    msvcRuntimeProblems(archive(complete), "dll", required).some((problem) => problem.includes("MT_StaticRelease")),
+  );
+});

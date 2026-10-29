@@ -116,8 +116,11 @@ const inputs = [
 // whatever `--allow-mismatch` says: that flag tolerates a manifest that has not
 // caught up, never a library its consumers cannot link.
 if (config.zigTarget.endsWith("-msvc")) {
+  if (!Array.isArray(lock.builder.msvcRuntimeWitnesses) || lock.builder.msvcRuntimeWitnesses.length !== 3) {
+    throw new Error("The Windows build recipe must require all three SIMD runtime witnesses.");
+  }
   const archive = inputs.find((file) => file.bundlePath === library).contents;
-  const problems = msvcRuntimeProblems(archive, config.msvcRuntime);
+  const problems = msvcRuntimeProblems(archive, config.msvcRuntime, lock.builder.msvcRuntimeWitnesses);
   if (problems.length > 0) {
     throw new Error(`${target} is not built for the ${config.msvcRuntime} C runtime:\n- ${problems.join("\n- ")}`);
   }

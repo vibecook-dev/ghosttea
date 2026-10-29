@@ -174,9 +174,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/ghostty-org/ghostty@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "pkg:github/ghostty-org/ghostty@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "Ghostty VT",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -184,7 +184,7 @@
           }
         }
       ],
-      "purl": "pkg:github/ghostty-org/ghostty@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "purl": "pkg:github/ghostty-org/ghostty@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "externalReferences": [
         {
           "type": "vcs",
@@ -3038,9 +3038,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/regular@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/regular@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "JetBrainsMonoNerdFont-Regular.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3073,9 +3073,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/bold@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/bold@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "JetBrainsMonoNerdFont-Bold.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3108,9 +3108,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "JetBrainsMonoNerdFont-Italic.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3143,9 +3143,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/bold-italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/bold-italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "JetBrainsMonoNerdFont-BoldItalic.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3178,9 +3178,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/fallback-emoji@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/fallback-emoji@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "NotoColorEmoji.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3191,7 +3191,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "bf2a8506b80614ba190a34c7b037af1269a7d614fe9f3b613cc15cdeec6f814b"
+          "content": "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b"
         }
       ],
       "externalReferences": [
@@ -3283,9 +3283,9 @@
     },
     {
       "type": "file",
-      "bom-ref": "ghosttea:font/fallback-emoji-text@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "bom-ref": "ghosttea:font/fallback-emoji-text@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "name": "NotoEmoji-Regular.ttf",
-      "version": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "version": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "licenses": [
         {
           "license": {
@@ -3296,7 +3296,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "84a38f2f02374efb72cac2b7eb5589102e06fffc33f7b531ed708f4a08236c91"
+          "content": "cd07743a4c93d8da929afdd28c1d368f11da478a1093146a13610081c2a58440"
         }
       ],
       "externalReferences": [
@@ -3327,14 +3327,14 @@
         "pkg:github/vibecook-dev/truffle@0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
         "pkg:github/mbadolato/iTerm2-Color-Schemes@875a82f0fdc773ae45099ce683a11c56bb0f8b3d",
         "pkg:github/0xhckr/ghostty-shaders@85898f08fcf4a9274e418912098e99e00a5f8350",
-        "ghosttea:font/regular@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
-        "ghosttea:font/bold@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
-        "ghosttea:font/italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
-        "ghosttea:font/bold-italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
-        "ghosttea:font/fallback-emoji@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+        "ghosttea:font/regular@83fb95624b0439ee660c2679b43b38c8b63769cd",
+        "ghosttea:font/bold@83fb95624b0439ee660c2679b43b38c8b63769cd",
+        "ghosttea:font/italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
+        "ghosttea:font/bold-italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
+        "ghosttea:font/fallback-emoji@83fb95624b0439ee660c2679b43b38c8b63769cd",
         "ghosttea:font/fallback-symbols-math@v2.13b171",
         "ghosttea:font/fallback-symbols@NotoSansSymbols2-v2.008",
-        "ghosttea:font/fallback-emoji-text@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69"
+        "ghosttea:font/fallback-emoji-text@83fb95624b0439ee660c2679b43b38c8b63769cd"
       ]
     },
     {
@@ -3342,11 +3342,11 @@
       "dependsOn": [
         "pkg:cargo/ghosttea-ffi@0.13.7",
         "pkg:cargo/ghosttea-font-fixture-ffi@0.13.7",
-        "pkg:github/ghostty-org/ghostty@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69"
+        "pkg:github/ghostty-org/ghostty@83fb95624b0439ee660c2679b43b38c8b63769cd"
       ]
     },
     {
-      "ref": "pkg:github/ghostty-org/ghostty@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "pkg:github/ghostty-org/ghostty@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
@@ -3952,23 +3952,23 @@
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/regular@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/regular@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/bold@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/bold@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/bold-italic@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/bold-italic@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/fallback-emoji@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/fallback-emoji@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     },
     {
@@ -3980,7 +3980,7 @@
       "dependsOn": []
     },
     {
-      "ref": "ghosttea:font/fallback-emoji-text@f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+      "ref": "ghosttea:font/fallback-emoji-text@83fb95624b0439ee660c2679b43b38c8b63769cd",
       "dependsOn": []
     }
   ]

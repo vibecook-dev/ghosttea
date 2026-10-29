@@ -1,0 +1,83 @@
+{
+  "oldFontsWithNewEngineExactlyMatchGolden": true,
+  "cases": [
+    {
+      "case": "ascii-ligatures",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    },
+    {
+      "case": "bold",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    },
+    {
+      "case": "italic",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    },
+    {
+      "case": "bold-italic",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    },
+    {
+      "case": "combining-wide-missing",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    },
+    {
+      "case": "emoji-fallback",
+      "layoutUnchanged": true,
+      "changedGlyphs": [
+        {
+          "glyphId": 56,
+          "dimensionsBefore": [
+            32,
+            30
+          ],
+          "dimensionsAfter": [
+            32,
+            30
+          ],
+          "onlyPixelsChanged": true
+        }
+      ]
+    },
+    {
+      "case": "emoji-presentation",
+      "layoutUnchanged": true,
+      "changedGlyphs": [
+        {
+          "glyphId": 56,
+          "dimensionsBefore": [
+            32,
+            30
+          ],
+          "dimensionsAfter": [
+            32,
+            30
+          ],
+          "onlyPixelsChanged": true
+        },
+        {
+          "glyphId": 58,
+          "dimensionsBefore": [
+            32,
+            30
+          ],
+          "dimensionsAfter": [
+            32,
+            30
+          ],
+          "onlyPixelsChanged": true
+        }
+      ]
+    },
+    {
+      "case": "symbol-fallback",
+      "layoutUnchanged": true,
+      "changedGlyphs": []
+    }
+  ]
+}

@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use fontdb::{Database, Family, ID, Query, Source as FontSource, Stretch, Style, Weight};
 use harfrust::{Buffer, ShapeOptions, ShaperFont, shape};
 use swash::{
@@ -153,6 +153,18 @@ pub struct StyleSpan {
     pub style: FontStyle,
 }
 
+/// A terminal host's authoritative text cluster and grid placement.
+/// Keep these boundaries when rendering a local or mirrored terminal: the
+/// host's Unicode version and grapheme mode may differ from this shaper's.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TerminalCellSpan {
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub column: u16,
+    pub span: u16,
+    pub style: FontStyle,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum GlyphFormat {
@@ -234,6 +246,7 @@ struct Grapheme<'a> {
 struct CachedShapedRow {
     text: String,
     spans: Vec<StyleSpan>,
+    cells: Option<Vec<TerminalCellSpan>>,
     shaped: ShapedRow,
 }
 
@@ -502,19 +515,43 @@ impl TextEngine {
     }
 
     pub fn shape_styled_row(&mut self, text: &str, spans: &[StyleSpan]) -> Result<ShapedRow> {
-        let cache_key = shaped_row_hash(text, spans);
+        self.shape_row_layout(text, spans, None)
+    }
+
+    /// Shapes using the terminal's cell boundaries, widths and columns.
+    /// Empty cell metadata retains the text-only API's layout for legacy
+    /// logical rows. Nonempty metadata must cover the complete UTF-8 text.
+    pub fn shape_terminal_row(
+        &mut self,
+        text: &str,
+        cells: &[TerminalCellSpan],
+    ) -> Result<ShapedRow> {
+        self.shape_row_layout(text, &[], (!cells.is_empty()).then_some(cells))
+    }
+
+    fn shape_row_layout(
+        &mut self,
+        text: &str,
+        spans: &[StyleSpan],
+        cells: Option<&[TerminalCellSpan]>,
+    ) -> Result<ShapedRow> {
+        let cache_key = shaped_row_hash(text, spans, cells);
         if let Some(shaped) = self
             .shaped_rows
             .get(&cache_key)
             .and_then(|rows| {
-                rows.iter()
-                    .find(|row| row.text == text && row.spans == spans)
+                rows.iter().find(|row| {
+                    row.text == text && row.spans == spans && row.cells.as_deref() == cells
+                })
             })
             .map(|row| row.shaped.clone())
         {
             return Ok(shaped);
         }
-        let graphemes = self.resolve_graphemes(text, spans)?;
+        let graphemes = match cells {
+            Some(cells) => self.resolve_terminal_cells(text, cells)?,
+            None => self.resolve_graphemes(text, spans)?,
+        };
         let mut output = ShapedRow::default();
         let mut used_definitions = HashSet::new();
         let mut run_start = 0;
@@ -525,6 +562,10 @@ impl TextEngine {
             while run_end < graphemes.len()
                 && graphemes[run_end].face == face
                 && graphemes[run_end].style == style
+                && graphemes[run_end].cell_start
+                    == graphemes[run_end - 1]
+                        .cell_start
+                        .saturating_add(graphemes[run_end - 1].cell_span)
             {
                 run_end += 1;
             }
@@ -555,6 +596,7 @@ impl TextEngine {
                 .push(CachedShapedRow {
                     text: text.to_owned(),
                     spans: spans.to_vec(),
+                    cells: cells.map(<[_]>::to_vec),
                     shaped: output.clone(),
                 });
             self.shaped_row_count += 1;
@@ -564,6 +606,59 @@ impl TextEngine {
             }
             self.shaped_row_candidates.insert(cache_key);
         }
+        Ok(output)
+    }
+
+    fn resolve_terminal_cells<'a>(
+        &mut self,
+        text: &'a str,
+        cells: &[TerminalCellSpan],
+    ) -> Result<Vec<Grapheme<'a>>> {
+        let mut byte_end = 0;
+        let mut column_end = 0;
+        let mut output = Vec::with_capacity(cells.len());
+        for cell in cells {
+            ensure!(
+                cell.byte_start == byte_end && cell.byte_end > cell.byte_start,
+                "terminal cells must cover the row without gaps or overlaps"
+            );
+            ensure!(
+                cell.span > 0 && cell.column >= column_end,
+                "terminal cells must have positive, non-overlapping grid spans"
+            );
+            let cluster = text
+                .get(cell.byte_start..cell.byte_end)
+                .context("terminal cell is not a valid UTF-8 range")?;
+            column_end = cell
+                .column
+                .checked_add(cell.span)
+                .context("terminal cell exceeds the grid")?;
+            byte_end = cell.byte_end;
+            let primary = *self
+                .styled_faces
+                .get(&cell.style)
+                .context("missing styled primary face")?;
+            let presentation = cluster_presentation(cluster);
+            let face = if self.face_supports(primary, cluster)?
+                && self.face_matches(primary, presentation)
+            {
+                primary
+            } else {
+                self.fallback_for(cluster, presentation).unwrap_or(primary)
+            };
+            output.push(Grapheme {
+                text: cluster,
+                byte_start: cell.byte_start,
+                cell_start: cell.column,
+                cell_span: cell.span,
+                face,
+                style: cell.style,
+            });
+        }
+        ensure!(
+            byte_end == text.len(),
+            "terminal cells do not cover the complete row"
+        );
         Ok(output)
     }
 
@@ -988,10 +1083,11 @@ fn style_id(style: FontStyle) -> u32 {
     u32::from(style.bold) | (u32::from(style.italic) << 1)
 }
 
-fn shaped_row_hash(text: &str, spans: &[StyleSpan]) -> u64 {
+fn shaped_row_hash(text: &str, spans: &[StyleSpan], cells: Option<&[TerminalCellSpan]>) -> u64 {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     spans.hash(&mut hasher);
+    cells.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -1072,6 +1168,87 @@ mod tests {
         );
         assert_eq!(engine.fallback_for(missing, FontPresentation::Text), None);
         assert!(engine.fallback_for("a", FontPresentation::Text).is_some());
+    }
+
+    #[test]
+    fn terminal_layout_preserves_missing_glyph_width_and_separates_cached_host_layouts() {
+        let mut engine = presentation_test_engine();
+        let text = "\u{1f6d9}X";
+        // Unicode 17 and 18 hosts disagree about the new character's width.
+        // Neither bundled emoji font has artwork yet; the next cell still
+        // belongs at the position sent by that host, including on cache hits.
+        assert_eq!(
+            engine.fallback_for("\u{1f6d9}", FontPresentation::Emoji),
+            None
+        );
+        for width in [1, 2, 1, 2, 2, 1] {
+            let cells = [
+                TerminalCellSpan {
+                    byte_start: 0,
+                    byte_end: 4,
+                    column: 0,
+                    span: width,
+                    style: FontStyle::default(),
+                },
+                TerminalCellSpan {
+                    byte_start: 4,
+                    byte_end: 5,
+                    column: width,
+                    span: 1,
+                    style: FontStyle::default(),
+                },
+            ];
+            let shaped = engine.shape_terminal_row(text, &cells).unwrap();
+            assert!(
+                shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == width && glyph.cell_span == 1)
+            );
+            assert!(
+                shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == 0 && glyph.cell_span == width)
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_layout_keeps_grid_gaps_and_rejects_invalid_utf8_ranges() {
+        let mut engine = presentation_test_engine();
+        let mut cells = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 1,
+                column: 0,
+                span: 1,
+                style: FontStyle::default(),
+            },
+            TerminalCellSpan {
+                byte_start: 1,
+                byte_end: 2,
+                column: 5,
+                span: 1,
+                style: FontStyle::default(),
+            },
+        ];
+        let shaped = engine.shape_terminal_row("XX", &cells).unwrap();
+        assert_eq!(
+            shaped
+                .glyphs
+                .iter()
+                .map(|g| g.cell_start)
+                .collect::<Vec<_>>(),
+            [0, 5]
+        );
+        assert!(shaped.glyphs[1].x >= 5.0 * engine.metrics().cell_width_px);
+        assert!(engine.shape_terminal_row("é", &cells).is_err());
+        cells[1].column = 0;
+        assert!(engine.shape_terminal_row("XX", &cells).is_err());
+        cells[1].column = 1;
+        cells[1].span = 0;
+        assert!(engine.shape_terminal_row("XX", &cells).is_err());
     }
 
     #[test]

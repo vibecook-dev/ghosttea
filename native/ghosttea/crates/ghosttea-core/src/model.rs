@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use ghosttea_text::{FontStyle, GlyphDefinition, ShapedRow, StyleSpan, TextEngine};
+use ghosttea_text::{FontStyle, GlyphDefinition, ShapedRow, TerminalCellSpan, TextEngine};
 use ghosttea_vt::{GhosttyTerminalCore, TerminalSnapshot, TrackedTerminalSelection};
 
 use crate::{
@@ -89,7 +89,7 @@ pub struct TerminalModelOptions {
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct RowShapeKey {
     text: String,
-    spans: Vec<(usize, usize, FontStyle)>,
+    spans: Vec<TerminalCellSpan>,
 }
 
 #[derive(Clone)]
@@ -534,14 +534,16 @@ impl TerminalModel {
                         }
                         let byte_start = byte_offset;
                         byte_offset = (byte_offset + cell.text.len()).min(row.len());
-                        Some((
+                        Some(TerminalCellSpan {
                             byte_start,
-                            byte_offset,
-                            FontStyle {
+                            byte_end: byte_offset,
+                            column: cell.column,
+                            span: cell.span,
+                            style: FontStyle {
                                 bold: cell.style.bold,
                                 italic: cell.style.italic,
                             },
-                        ))
+                        })
                     })
                     .collect();
                 let key = RowShapeKey {
@@ -558,15 +560,7 @@ impl TerminalModel {
                     cache.rows[row_index as usize] = Some(Arc::clone(cached));
                     continue;
                 }
-                let spans: Vec<_> = span_tuples
-                    .into_iter()
-                    .map(|(byte_start, byte_end, style)| StyleSpan {
-                        byte_start,
-                        byte_end,
-                        style,
-                    })
-                    .collect();
-                missing.push((row_index, key, spans));
+                missing.push((row_index, key, span_tuples));
             }
             // Only actual shaping takes the shared engine lock. Cache lookup,
             // row movement and frame assembly remain local to the session.
@@ -579,7 +573,7 @@ impl TerminalModel {
                 let hold_started = Instant::now();
                 for (row_index, key, spans) in missing {
                     let shaped = engine
-                        .shape_styled_row(&key.text, &spans)
+                        .shape_terminal_row(&key.text, &spans)
                         .with_context(|| format!("shape terminal row {row_index}"))?;
                     cache.rows[row_index as usize] = Some(Arc::new(CachedRow { key, shaped }));
                 }
@@ -715,6 +709,37 @@ fn logical_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unicode_18_rendered_glyphs_follow_the_terminal_grid() {
+        let runtime = Arc::new(TerminalRuntime::discover().unwrap());
+        for codepoint in [
+            0x1f6d9, 0x1fa8b, 0x1fa8c, 0x1fa8d, 0x1facc, 0x1fadd, 0x1faeb, 0x1faf9, 0x1fafa,
+        ] {
+            let mut model = TerminalModel::new(
+                runtime.clone(),
+                TerminalModelOptions {
+                    session_handle: 1,
+                    session_epoch: 1,
+                    layout_epoch: 1,
+                    cols: 10,
+                    rows: 2,
+                    scrollback_bytes: 4096,
+                },
+            )
+            .unwrap();
+            let text = format!("{}X", char::from_u32(codepoint).unwrap());
+            model.feed(text.as_bytes(), RenderRequest::Full).unwrap();
+            let row = model.render_cache.rows[0].as_ref().unwrap();
+            assert!(
+                row.shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == 2 && glyph.cell_span == 1),
+                "X must occupy column 2 after U+{codepoint:X}, including when its artwork is unavailable"
+            );
+        }
+    }
 
     #[test]
     fn scrolling_reuses_each_models_rows_beyond_the_shared_cache_capacity() {

@@ -19,7 +19,7 @@ Seven Rust crates, ten `@vibecook/*` npm packages and the SwiftPM package share 
 - Rust 1.88+, the workspace minimum. There is no rust-toolchain file.
 - Apple work also needs:
   - Xcode 26.6.
-  - Xcode 26.3 installed side by side at `/Applications/Xcode_26.3.app`. It is used only for the Ghostty/Zig 0.15.2 build; override the path with `GHOSTTY_DEVELOPER_DIR`.
+  - Ghostty 1.4 uses the locked Zig 0.17.0 and Xcode 26.6 toolchain; `GHOSTTY_DEVELOPER_DIR` can select that Xcode installation.
   - Rust 1.97.1 with the `aarch64-apple-ios` and `aarch64-apple-ios-sim` targets.
 
 **Get started**
@@ -36,7 +36,7 @@ npm run dev   # build:sdk, then the Electron demo (apps/desktop, workspace "ghos
   2. `test:desktop`: vitest in every workspace, `cargo test --workspace --locked`, the FFI parity/ASan probe, the release-script tests, the integration smokes and the bench tests.
   3. `package:check:built`: packs every package and crate, then builds consumers from those archives.
   4. `test:lifecycle:soak`.
-- **Before running locally:** run `npm run bootstrap:ghostty-vt` once before `ci:desktop` or `test:desktop`. `test:ghosttea-core:ffi` syncs fonts from `native/vendor/ghostty` at the locked commit and fails without it. CI on macOS uses the `:apple` variant, which needs Xcode 26.3.
+- **Before running locally:** run `npm run bootstrap:ghostty-vt` once before `ci:desktop` or `test:desktop`. `test:ghosttea-core:ffi` syncs fonts from `native/vendor/ghostty` at the locked commit and fails without it. CI on macOS uses the `:apple` variant, which uses the locked Xcode 26.6 toolchain.
 - **Format and lint:** `npm run format` writes prettier and `cargo fmt`. `npm run lint` runs eslint with `--max-warnings 0`. Prettier (width 120, LF line endings enforced by `.gitattributes`) covers only the paths named in the `format` script, not `docs/`, `draft/`, `apple/` or `native/`.
 - **Full checks:** `npm run check` runs the lint and type checks plus the iOS release-metadata gates: BOM, resources, App Store, beta matrix and SwiftPM manifests.
 

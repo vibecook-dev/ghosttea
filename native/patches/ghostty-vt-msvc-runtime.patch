@@ -1,30 +1,75 @@
 diff --git a/pkg/highway/build.zig b/pkg/highway/build.zig
-index 18dbf92c2af0ed5e31c11532601be9863585ddf7..b5d92a7fdf529495991b94633c983911fa42cf80 100644
+index 18dbf92c2af0ed5e31c11532601be9863585ddf7..58d85cab3c009f6fb36d20e769b0e6decefad73d 100644
 --- a/pkg/highway/build.zig
 +++ b/pkg/highway/build.zig
 @@ -1,0 +2 @@ const std = @import("std");
 +const MsvcRuntime = enum { static, dll };
 @@ -5,0 +7 @@ pub fn build(b: *std.Build) !void {
 +    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
-@@ -115,0 +118,5 @@ pub fn build(b: *std.Build) !void {
-+    // `static` is clang's default for msvc, so only `dll` adds a flag.
-+    if (target.result.abi == .msvc and msvc_runtime == .dll) {
-+        try flags.append(b.allocator, "-fms-runtime-lib=dll");
+@@ -115,0 +118,27 @@ pub fn build(b: *std.Build) !void {
++    if (target.result.abi == .msvc) {
++        try flags.append(b.allocator, if (msvc_runtime == .dll) "-fms-runtime-lib=dll" else "-fms-runtime-lib=static");
++    }
++
++    // Upstream disables autolink on the SIMD objects. Compile a metadata-only
++    // witness with the SAME flags, enabling autolink only for its pragma. It
++    // derives the stamp from compiler macros, not the requested option.
++    if (target.result.abi == .msvc) {
++        const witness = b.addWriteFiles().add("ghosttea-msvc-highway.cpp",
++            \\#ifndef _MT
++            \\#error MSVC runtime selection did not define _MT
++            \\#endif
++            \\#ifdef _DEBUG
++            \\#error Ghosttea release artifacts must not use a debug CRT
++            \\#endif
++            \\#ifdef _DLL
++            \\#pragma detect_mismatch("RuntimeLibrary", "MD_DynamicRelease")
++            \\#else
++            \\#pragma detect_mismatch("RuntimeLibrary", "MT_StaticRelease")
++            \\#endif
++        );
++        const witness_flags = try b.allocator.alloc([]const u8, flags.items.len + 1);
++        @memcpy(witness_flags[0..flags.items.len], flags.items);
++        witness_flags[flags.items.len] = "-fautolink";
++        lib.root_module.addCSourceFile(.{ .file = witness, .flags = witness_flags });
 +    }
 +
 diff --git a/pkg/simdutf/build.zig b/pkg/simdutf/build.zig
-index 3efc0826344c30e406b6801f669852fcec500fab..451ac6033aafd9c0ba543bfe1e1c0778f4c863b7 100644
+index 3efc0826344c30e406b6801f669852fcec500fab..e895df610df3dfb7fa99c34c1f50489d5e273bd7 100644
 --- a/pkg/simdutf/build.zig
 +++ b/pkg/simdutf/build.zig
 @@ -1,0 +2 @@ const std = @import("std");
 +const MsvcRuntime = enum { static, dll };
 @@ -6,0 +8 @@ pub fn build(b: *std.Build) !void {
 +    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
-@@ -71,0 +74,2 @@ pub fn build(b: *std.Build) !void {
-+        // `static` is clang's default for msvc, so only `dll` adds a flag.
-+        if (msvc_runtime == .dll) try flags.append(b.allocator, "-fms-runtime-lib=dll");
+@@ -71,0 +74 @@ pub fn build(b: *std.Build) !void {
++        try flags.append(b.allocator, if (msvc_runtime == .dll) "-fms-runtime-lib=dll" else "-fms-runtime-lib=static");
+@@ -81,0 +85,23 @@ pub fn build(b: *std.Build) !void {
++    // Upstream disables autolink on the SIMD objects. Compile a metadata-only
++    // witness with the SAME flags, enabling autolink only for its pragma. It
++    // derives the stamp from compiler macros, not the requested option.
++    if (target.result.abi == .msvc) {
++        const witness = b.addWriteFiles().add("ghosttea-msvc-simdutf.cpp",
++            \\#ifndef _MT
++            \\#error MSVC runtime selection did not define _MT
++            \\#endif
++            \\#ifdef _DEBUG
++            \\#error Ghosttea release artifacts must not use a debug CRT
++            \\#endif
++            \\#ifdef _DLL
++            \\#pragma detect_mismatch("RuntimeLibrary", "MD_DynamicRelease")
++            \\#else
++            \\#pragma detect_mismatch("RuntimeLibrary", "MT_StaticRelease")
++            \\#endif
++        );
++        const witness_flags = try b.allocator.alloc([]const u8, flags.items.len + 1);
++        @memcpy(witness_flags[0..flags.items.len], flags.items);
++        witness_flags[flags.items.len] = "-fautolink";
++        lib.root_module.addCSourceFile(.{ .file = witness, .flags = witness_flags });
++    }
++
 diff --git a/src/build/Config.zig b/src/build/Config.zig
-index 24157293b5cb349d519b06f09616c99edd6adc20..50824d2cd48a97542ae90281267d1c82c5c6549a 100644
+index 24157293b5cb349d519b06f09616c99edd6adc20..16d8238edc0dfecfcd3a1c07b4e3365660d45750 100644
 --- a/src/build/Config.zig
 +++ b/src/build/Config.zig
 @@ -50,0 +51 @@ strip: bool = false,
@@ -47,7 +92,7 @@ index 24157293b5cb349d519b06f09616c99edd6adc20..50824d2cd48a97542ae90281267d1c82
 +    pub fn cFlags(self: MsvcRuntime, target: std.Target) []const []const u8 {
 +        if (target.abi != .msvc) return &.{};
 +        return switch (self) {
-+            .static => &.{},
++            .static => &.{"-fms-runtime-lib=static"},
 +            .dll => &.{"-fms-runtime-lib=dll"},
 +        };
 +    }
@@ -61,7 +106,7 @@ index 9d987240bf8d09e5497487f71affc577191943ba..53b5c250fc439d9accc31b4de3a2663a
 -        try SharedDeps.addSimd(b, vt, simd_libs);
 +        try SharedDeps.addSimd(b, vt, simd_libs, cfg.msvc_runtime);
 diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
-index 8f4e23954211c1517f0ae96143326cf74ba84937..fc9071c37f97654b32a9cde429879ff21f0b8ca5 100644
+index 8f4e23954211c1517f0ae96143326cf74ba84937..e78966ec2b14b696d930f056768bacd32aff17b5 100644
 --- a/src/build/SharedDeps.zig
 +++ b/src/build/SharedDeps.zig
 @@ -431,0 +432 @@ pub fn add(
@@ -72,6 +117,29 @@ index 8f4e23954211c1517f0ae96143326cf74ba84937..fc9071c37f97654b32a9cde429879ff2
 +            .@"msvc-runtime" = msvc_runtime,
 @@ -912,0 +916 @@ pub fn addSimd(
 +            .@"msvc-runtime" = msvc_runtime,
-@@ -983,0 +988,2 @@ pub fn addSimd(
+@@ -983,0 +988,25 @@ pub fn addSimd(
 +        try flags.appendSlice(b.allocator, msvc_runtime.cFlags(target.result));
++
++        // Upstream disables autolink on the SIMD objects. Compile a metadata-only
++        // witness with the SAME flags, enabling autolink only for its pragma. It
++        // derives the stamp from compiler macros, not the requested option.
++        if (target.result.abi == .msvc) {
++            const witness = b.addWriteFiles().add("ghosttea-msvc-simd.cpp",
++                \\#ifndef _MT
++                \\#error MSVC runtime selection did not define _MT
++                \\#endif
++                \\#ifdef _DEBUG
++                \\#error Ghosttea release artifacts must not use a debug CRT
++                \\#endif
++                \\#ifdef _DLL
++                \\#pragma detect_mismatch("RuntimeLibrary", "MD_DynamicRelease")
++                \\#else
++                \\#pragma detect_mismatch("RuntimeLibrary", "MT_StaticRelease")
++                \\#endif
++            );
++            const witness_flags = try b.allocator.alloc([]const u8, flags.items.len + 1);
++            @memcpy(witness_flags[0..flags.items.len], flags.items);
++            witness_flags[flags.items.len] = "-fautolink";
++            m.addCSourceFile(.{ .file = witness, .flags = witness_flags });
++        }
 +

@@ -1,0 +1,18 @@
+{
+  "title": "Test - VibeField",
+  "result": "Failed",
+  "passedTests": 825,
+  "failedTests": 1,
+  "skippedTests": 0,
+  "totalTestCount": 826,
+  "testFailures": [
+    {
+      "failureText": "Issue recorded: timed out waiting for the demand to come back",
+      "targetName": "FieldTerminalTests",
+      "testIdentifier": 41,
+      "testIdentifierString": "LanesOverTheDoorTests/theCellASessionOpensOrComesBackOnIsSaidFocused()",
+      "testIdentifierURL": "test://com.apple.xcode/VibeField/FieldTerminalTests/LanesOverTheDoorTests/theCellASessionOpensOrComesBackOnIsSaidFocused()",
+      "testName": "theCellASessionOpensOrComesBackOnIsSaidFocused()"
+    }
+  ]
+}
