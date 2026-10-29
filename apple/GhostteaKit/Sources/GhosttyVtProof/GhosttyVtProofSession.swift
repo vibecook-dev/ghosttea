@@ -32,13 +32,8 @@ public final class GhosttyVtProofSession {
     maxScrollbackBytes: Int
   ) throws {
     var handle: GhosttyTerminal?
-    let options = GhosttyTerminalOptions(
-      cols: columns,
-      rows: rows,
-      max_scrollback: maxScrollbackBytes
-    )
     try ghosttyRequireSuccess(
-      ghostty_terminal_new(nil, &handle, options),
+      ghostty_terminal_new(nil, &handle, columns, rows),
       operation: "create terminal"
     )
     guard let handle else {
@@ -47,6 +42,11 @@ public final class GhosttyVtProofSession {
 
     let collector = ReplyCollector()
     do {
+      var scrollbackBytes = maxScrollbackBytes
+      try ghosttyRequireSuccess(
+        ghostty_terminal_set(handle, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollbackBytes),
+        operation: "set scrollback limit"
+      )
       try ghosttyRequireSuccess(
         ghostty_terminal_set(
           handle,

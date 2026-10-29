@@ -1,8 +1,8 @@
 diff --git a/include/ghostty/vt/formatter.h b/include/ghostty/vt/formatter.h
-index 5cdcd11a3a7aed8aa73f9c2104ba10df0391a503..6da16fe6133966fbc3459f1dbf755bd3df03ff2d 100644
+index 938fc4b39cd8d2df87645d611191a656d447bf5d..f0e7c3489d16b96f6d37bbe342504fc80fea8265 100644
 --- a/include/ghostty/vt/formatter.h
 +++ b/include/ghostty/vt/formatter.h
-@@ -139,0 +140,25 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
+@@ -168,0 +169,25 @@ GHOSTTY_API GhosttyResult ghostty_formatter_format(
 +/**
 + * Create a formatter that emits terminal state without screen content.
 + *
@@ -75,10 +75,10 @@ index c43791dc238cf09b8c8488ef10c044e67eb44440..c463d9bd610947739cbee464609082d6
 +    GhosttyHyperlinkIdentity *out_identity);
 +
 diff --git a/include/ghostty/vt/terminal.h b/include/ghostty/vt/terminal.h
-index 26ee0c0b8670b4a7c81a4840480063b03bb320a7..28a54fd337d03c552cd8723c323a6460e9953dc3 100644
+index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da2958998fbb4 100644
 --- a/include/ghostty/vt/terminal.h
 +++ b/include/ghostty/vt/terminal.h
-@@ -319,0 +320,96 @@ typedef enum GHOSTTY_ENUM_TYPED {
+@@ -400,0 +401,96 @@ typedef enum GHOSTTY_ENUM_TYPED {
 +/** Character set designation stored by a terminal screen. */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  GHOSTTY_TERMINAL_CHARSET_UTF8 = 0,
@@ -175,7 +175,7 @@ index 26ee0c0b8670b4a7c81a4840480063b03bb320a7..28a54fd337d03c552cd8723c323a6460
 +  GhosttyTerminalSemanticClick semantic_prompt_click;
 +} GhosttyTerminalScreenState;
 +
-@@ -1425,0 +1522,86 @@ GHOSTTY_API GhosttyResult ghostty_terminal_mode_set(GhosttyTerminal terminal,
+@@ -3641,0 +3738,86 @@ GHOSTTY_API GhosttyResult ghostty_terminal_compress(
 +/**
 + * Read the DECSC saved-cursor slot belonging to a specific screen.
 + *
@@ -263,10 +263,10 @@ index 26ee0c0b8670b4a7c81a4840480063b03bb320a7..28a54fd337d03c552cd8723c323a6460
 +    GhosttyHyperlinkIdentity* out_identity);
 +
 diff --git a/include/ghostty/vt/types.h b/include/ghostty/vt/types.h
-index 214d282296c5f66aa29b4c9b183655f9c6793ac5..5d0def15cf39a65f72dcbc0174c58399a52c275c 100644
+index 465976898755efc2308f5287a3eaf81079c9e0e7..c053836002e3660f39e8feefea90cf4e9aedb4f1 100644
 --- a/include/ghostty/vt/types.h
 +++ b/include/ghostty/vt/types.h
-@@ -159,0 +160,10 @@ typedef struct GhosttyRenderStateRowCellsImpl* GhosttyRenderStateRowCells;
+@@ -211,0 +212,10 @@ typedef struct GhosttySearchImpl* GhosttySearch;
 +/**
 + * Opaque iterator over every retained row of one selected terminal screen.
 + *
@@ -278,29 +278,29 @@ index 214d282296c5f66aa29b4c9b183655f9c6793ac5..5d0def15cf39a65f72dcbc0174c58399
 +typedef struct GhosttyTerminalScreenRowIteratorImpl* GhosttyTerminalScreenRowIterator;
 +
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index e01cdbb892c36cf88d4088c45bb464a429654d57..b1b2b10086b74980b9b1074b95a52d5ae241da17 100644
+index 06252080a2facbfc7593cd13ace3b16d1f8375b3..82771cfdb1bd77a9f3be93bf2a3e96114c4e6651 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -230,0 +231 @@ comptime {
-+        @export(&c.formatter_terminal_state_new, .{ .name = "ghostty_formatter_terminal_state_new" });
-@@ -269,0 +271,7 @@ comptime {
-+        @export(&c.terminal_saved_cursor, .{ .name = "ghostty_terminal_saved_cursor" });
-+        @export(&c.terminal_screen_get, .{ .name = "ghostty_terminal_screen_get" });
-+        @export(&c.terminal_screen_grid_ref, .{ .name = "ghostty_terminal_screen_grid_ref" });
-+        @export(&c.terminal_screen_row_iterator_new, .{ .name = "ghostty_terminal_screen_row_iterator_new" });
-+        @export(&c.terminal_screen_row_iterator_free, .{ .name = "ghostty_terminal_screen_row_iterator_free" });
-+        @export(&c.terminal_screen_row_iterator_next, .{ .name = "ghostty_terminal_screen_row_iterator_next" });
-+        @export(&c.terminal_screen_cursor_hyperlink, .{ .name = "ghostty_terminal_screen_cursor_hyperlink" });
-@@ -311,0 +320 @@ comptime {
-+        @export(&c.grid_ref_hyperlink_identity, .{ .name = "ghostty_grid_ref_hyperlink_identity" });
+@@ -259,0 +260,9 @@ comptime {
++            @export(&c.terminal_saved_cursor, .{ .name = "ghostty_terminal_saved_cursor" });
++            @export(&c.terminal_screen_get, .{ .name = "ghostty_terminal_screen_get" });
++            @export(&c.terminal_screen_grid_ref, .{ .name = "ghostty_terminal_screen_grid_ref" });
++            @export(&c.terminal_screen_row_iterator_new, .{ .name = "ghostty_terminal_screen_row_iterator_new" });
++            @export(&c.terminal_screen_row_iterator_free, .{ .name = "ghostty_terminal_screen_row_iterator_free" });
++            @export(&c.terminal_screen_row_iterator_next, .{ .name = "ghostty_terminal_screen_row_iterator_next" });
++            @export(&c.terminal_screen_cursor_hyperlink, .{ .name = "ghostty_terminal_screen_cursor_hyperlink" });
++            @export(&c.grid_ref_hyperlink_identity, .{ .name = "ghostty_grid_ref_hyperlink_identity" });
++
+@@ -287,0 +297 @@ comptime {
++            @export(&c.formatter_terminal_state_new, .{ .name = "ghostty_formatter_terminal_state_new" });
 diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
-index 6c4db3237c84ace7079e2f2eaa7b379580667d45..e07a98dd3ea48cef129e0cd147091397b55c059c 100644
+index 0fd016774df4d314ab4a4f939dec30e25de2088c..5bccc34b47d3db0fd559530ccd7d09a8cb2a593e 100644
 --- a/src/terminal/Screen.zig
 +++ b/src/terminal/Screen.zig
-@@ -1315 +1315 @@ pub fn cursorCopy(self: *Screen, other: Cursor, opts: struct {
+@@ -1530 +1530 @@ pub fn cursorCopy(self: *Screen, other: Cursor, opts: struct {
 -            // This shouldn't happen because startHyperlink should handle
 +            // This shouldn't happen because startHyperlink handles
-@@ -1394,6 +1394,5 @@ inline fn cursorChangePin(self: *Screen, new: Pin) void {
+@@ -1614,6 +1614,5 @@ inline fn cursorChangePin(self: *Screen, new: Pin) void {
 -        // Re-add
 -        self.startHyperlink(link.uri, switch (link.id) {
 -            .explicit => |v| v,
@@ -312,7 +312,7 @@ index 6c4db3237c84ace7079e2f2eaa7b379580667d45..e07a98dd3ea48cef129e0cd147091397
 +        // live OSC 8 run merely because it crossed a page boundary.
 +        self.startHyperlinkValue(link.*) catch |err| {
 +            // This shouldn't happen because startHyperlinkValue handles
-@@ -2440 +2439,10 @@ pub fn startHyperlink(
+@@ -2868 +2867,10 @@ pub fn startHyperlink(
 -    // Loop until we have enough page memory to add the hyperlink
 +    return self.startHyperlinkValue(link);
 +}
@@ -325,10 +325,10 @@ index 6c4db3237c84ace7079e2f2eaa7b379580667d45..e07a98dd3ea48cef129e0cd147091397
 +) PageList.IncreaseCapacityError!void {
 +    // Loop until we have enough page memory to add the hyperlink.
 diff --git a/src/terminal/c/formatter.zig b/src/terminal/c/formatter.zig
-index 5b4504c8c8f2dd7767e2b3d55aaf42bcc7055617..6139976f1a41f9445cf4f4f41dad9081c225df7f 100644
+index 00239d6373191aa4a1cc33935bae9137b2bcf56e..d5c33f51032b835ec6401dc2467c66707eca91a0 100644
 --- a/src/terminal/c/formatter.zig
 +++ b/src/terminal/c/formatter.zig
-@@ -115,0 +116,26 @@ pub fn terminal_new(
+@@ -116,0 +117,26 @@ pub fn terminal_new(
 +        false,
 +    ) catch |err| {
 +        result.* = null;
@@ -355,9 +355,9 @@ index 5b4504c8c8f2dd7767e2b3d55aaf42bcc7055617..6139976f1a41f9445cf4f4f41dad9081
 +        terminal_,
 +        opts,
 +        true,
-@@ -130,0 +157 @@ fn terminal_new_(
+@@ -131,0 +158 @@ fn terminal_new_(
 +    state_only: bool,
-@@ -150,4 +177,8 @@ fn terminal_new_(
+@@ -151,4 +178,8 @@ fn terminal_new_(
 -    if (opts.selection) |sel| formatter.content = .{
 -        .selection = sel.toZig() orelse
 -            return error.InvalidValue,
@@ -370,14 +370,11 @@ index 5b4504c8c8f2dd7767e2b3d55aaf42bcc7055617..6139976f1a41f9445cf4f4f41dad9081
 +                return error.InvalidValue,
 +        };
 +    }
-@@ -405,0 +437,63 @@ test "format vt" {
+@@ -571,0 +603,57 @@ test "format vt" {
 +test "terminal_state_new emits state without screen content" {
 +    var source: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &source,
-+        .{ .cols = 12, .rows = 3, .max_scrollback = 10_000 },
-+    ));
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &source, 12, 3));
++    try testing.expectEqual(Result.success, terminal_c.set(source, .scrollback_max_bytes, &@as(usize, 10_000)));
 +    defer terminal_c.free(source);
 +
 +    terminal_c.vt_write(source, "secret\x1b[?2004h", 14);
@@ -420,11 +417,8 @@ index 5b4504c8c8f2dd7767e2b3d55aaf42bcc7055617..6139976f1a41f9445cf4f4f41dad9081
 +    try testing.expect(std.mem.indexOf(u8, buf[0..written], "secret") == null);
 +
 +    var replacement: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &replacement,
-+        .{ .cols = 12, .rows = 3, .max_scrollback = 10_000 },
-+    ));
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &replacement, 12, 3));
++    try testing.expectEqual(Result.success, terminal_c.set(replacement, .scrollback_max_bytes, &@as(usize, 10_000)));
 +    defer terminal_c.free(replacement);
 +    terminal_c.vt_write(replacement, buf[0..written].ptr, written);
 +
@@ -435,7 +429,7 @@ index 5b4504c8c8f2dd7767e2b3d55aaf42bcc7055617..6139976f1a41f9445cf4f4f41dad9081
 +}
 +
 diff --git a/src/terminal/c/grid_ref.zig b/src/terminal/c/grid_ref.zig
-index 946ca8a1e36c35cbc305e6f18fc6325e7b744c43..a407153b73b0d93ab1773ca2a29df06b4091bde0 100644
+index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d14c5b1e9 100644
 --- a/src/terminal/c/grid_ref.zig
 +++ b/src/terminal/c/grid_ref.zig
 @@ -42,0 +43,14 @@ pub const CGridRef = extern struct {
@@ -491,15 +485,12 @@ index 946ca8a1e36c35cbc305e6f18fc6325e7b744c43..a407153b73b0d93ab1773ca2a29df06b
 +    return .success;
 +}
 +
-@@ -255,0 +307,118 @@ test "grid_ref_hyperlink_uri with hyperlink" {
+@@ -257,0 +309,112 @@ test "grid_ref_hyperlink_uri with hyperlink" {
 +
 +test "grid_ref_hyperlink_identity preserves explicit bytes" {
 +    var terminal: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &terminal,
-+        .{ .cols = 80, .rows = 24, .max_scrollback = 10_000 },
-+    ));
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &terminal, 80, 24));
++    try testing.expectEqual(Result.success, terminal_c.set(terminal, .scrollback_max_bytes, &@as(usize, 10_000)));
 +    defer terminal_c.free(terminal);
 +
 +    const seq =
@@ -538,11 +529,8 @@ index 946ca8a1e36c35cbc305e6f18fc6325e7b744c43..a407153b73b0d93ab1773ca2a29df06b
 +
 +test "grid_ref implicit hyperlink identity is stable across pages" {
 +    var terminal: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(
-+        &lib.alloc.test_allocator,
-+        &terminal,
-+        .{ .cols = 215, .rows = 2, .max_scrollback = 20_000_000 },
-+    ));
++    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &terminal, 215, 2));
++    try testing.expectEqual(Result.success, terminal_c.set(terminal, .scrollback_max_bytes, &@as(usize, 20_000_000)));
 +    defer terminal_c.free(terminal);
 +
 +    const open = "\x1b]8;;https://example.com/implicit\x1b\\";
@@ -611,12 +599,12 @@ index 946ca8a1e36c35cbc305e6f18fc6325e7b744c43..a407153b73b0d93ab1773ca2a29df06b
 +    );
 +}
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index 37dc57684aa5e6edea164acb3d4faa37955667b3..bd49b01f84ef1a67cf7dd6489563b616aac90299 100644
+index a0c0dc33cf3485d17db3a6ba1ee7351e2509b458..9411509642d7cc3e96650bd9b0847aab2379972a 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
-@@ -78,0 +79 @@ pub const formatter_terminal_new = formatter.terminal_new;
+@@ -84,0 +85 @@ pub const formatter_format = formatter.format;
 +pub const formatter_terminal_state_new = formatter.terminal_state_new;
-@@ -191,0 +193,7 @@ pub const terminal_get_multi = terminal.get_multi;
+@@ -204,0 +206,7 @@ pub const terminal_continuation_alloc = terminal.continuation_alloc;
 +pub const terminal_saved_cursor = terminal.saved_cursor;
 +pub const terminal_screen_get = terminal.screen_get;
 +pub const terminal_screen_grid_ref = terminal.screen_grid_ref;
@@ -624,15 +612,15 @@ index 37dc57684aa5e6edea164acb3d4faa37955667b3..bd49b01f84ef1a67cf7dd6489563b616
 +pub const terminal_screen_row_iterator_free = terminal.screen_row_iterator_free;
 +pub const terminal_screen_row_iterator_next = terminal.screen_row_iterator_next;
 +pub const terminal_screen_cursor_hyperlink = terminal.screen_cursor_hyperlink;
-@@ -225,0 +234 @@ pub const grid_ref_hyperlink_uri = grid_ref.grid_ref_hyperlink_uri;
+@@ -259,0 +268 @@ pub const grid_ref_hyperlink_uri = grid_ref.grid_ref_hyperlink_uri;
 +pub const grid_ref_hyperlink_identity = grid_ref.grid_ref_hyperlink_identity;
 diff --git a/src/terminal/c/terminal.zig b/src/terminal/c/terminal.zig
-index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0c4126606 100644
+index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174fc5ba4e8 100644
 --- a/src/terminal/c/terminal.zig
 +++ b/src/terminal/c/terminal.zig
-@@ -14,0 +15 @@ const modes = @import("../modes.zig");
+@@ -19,0 +20 @@ const mouse = @import("../mouse.zig");
 +const charsets = @import("../charsets.zig");
-@@ -624,0 +626,9 @@ pub const TerminalCursorStyle = enum(c_int) {
+@@ -1804,0 +1806,9 @@ pub const TerminalCursorStyle = enum(c_int) {
 +
 +    fn fromZig(value: Screen.CursorStyle) TerminalCursorStyle {
 +        return switch (value) {
@@ -642,7 +630,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +            .block_hollow => .block_hollow,
 +        };
 +    }
-@@ -720,0 +731,131 @@ pub const TerminalScreen = ScreenSet.Key;
+@@ -1865,0 +1876,131 @@ pub const TerminalScreen = ScreenSet.Key;
 +const ScreenRowIteratorWrapper = struct {
 +    alloc: std.mem.Allocator,
 +    rows: PageList.RowIterator,
@@ -675,8 +663,8 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +/// C: GhosttyTerminalSemanticClick
 +pub const TerminalSemanticClick = enum(c_int) {
 +    none = 0,
-+    click_events_absolute = 1,
-+    click_events_relative = 2,
++    events_absolute = 1,
++    events_relative = 2,
 +    line = 3,
 +    multiple = 4,
 +    conservative_vertical = 5,
@@ -686,8 +674,8 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +        return switch (value) {
 +            .none => .none,
 +            .click_events => |click| switch (click) {
-+                .absolute => .click_events_absolute,
-+                .relative => .click_events_relative,
++                .absolute => .events_absolute,
++                .relative => .events_relative,
 +            },
 +            .cl => |click| switch (click) {
 +                .line => .line,
@@ -774,7 +762,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    semantic_prompt_click: TerminalSemanticClick,
 +};
 +
-@@ -834,0 +976,188 @@ pub fn get_multi(
+@@ -2062,0 +2204,188 @@ pub fn get_multi(
 +pub fn saved_cursor(
 +    terminal_: Terminal,
 +    screen_key: TerminalScreen,
@@ -784,7 +772,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    const result = out orelse return .invalid_value;
 +    if (result.size < @sizeOf(SavedCursor)) return .invalid_value;
 +    if (comptime std.debug.runtime_safety) {
-+        _ = std.meta.intToEnum(TerminalScreen, @intFromEnum(screen_key)) catch
++        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
 +            return .invalid_value;
 +    }
 +    const screen = t.screens.get(screen_key) orelse return .no_value;
@@ -802,7 +790,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    const result = out orelse return .invalid_value;
 +    if (result.size < @sizeOf(ScreenState)) return .invalid_value;
 +    if (comptime std.debug.runtime_safety) {
-+        _ = std.meta.intToEnum(TerminalScreen, @intFromEnum(screen_key)) catch
++        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
 +            return .invalid_value;
 +    }
 +    const screen = t.screens.get(screen_key) orelse return .no_value;
@@ -826,8 +814,8 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +        .charset = .fromZig(screen.charset),
 +        .kitty_keyboard_flags = @as(u8, screen.kitty_keyboard.current().int()),
 +        .viewport_offset = @intCast(scrollbar.offset),
-+        .cursor_semantic_content = @enumFromInt(
-+            @intFromEnum(screen.cursor.semantic_content),
++        .cursor_semantic_content = @fromBackingInt(
++            @backingInt(screen.cursor.semantic_content),
 +        ),
 +        .cursor_semantic_content_clear_eol = screen.cursor.semantic_content_clear_eol,
 +        .hyperlink_implicit_id = @intCast(screen.cursor.hyperlink_implicit_id),
@@ -848,7 +836,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +) callconv(lib.calling_conv) Result {
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
 +    if (comptime std.debug.runtime_safety) {
-+        _ = std.meta.intToEnum(TerminalScreen, @intFromEnum(screen_key)) catch
++        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
 +            return .invalid_value;
 +    }
 +    const screen = t.screens.get(screen_key) orelse return .no_value;
@@ -868,7 +856,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    result.* = null;
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
 +    if (comptime std.debug.runtime_safety) {
-+        _ = std.meta.intToEnum(TerminalScreen, @intFromEnum(screen_key)) catch
++        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
 +            return .invalid_value;
 +    }
 +    const screen = t.screens.get(screen_key) orelse return .no_value;
@@ -931,7 +919,7 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    if (identity.size < @sizeOf(grid_ref_c.HyperlinkIdentity))
 +        return .invalid_value;
 +    if (comptime std.debug.runtime_safety) {
-+        _ = std.meta.intToEnum(TerminalScreen, @intFromEnum(screen_key)) catch
++        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
 +            return .invalid_value;
 +    }
 +    const screen = t.screens.get(screen_key) orelse return .no_value;
@@ -963,18 +951,11 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +    return .success;
 +}
 +
-@@ -1472,0 +1802,243 @@ test "mode_set unknown mode" {
+@@ -3420,0 +3750,233 @@ test "set and get mode validate configuration" {
 +test "saved cursor and screen reads are screen selected" {
 +    var t: Terminal = null;
-+    try testing.expectEqual(Result.success, new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        .{
-+            .cols = 8,
-+            .rows = 3,
-+            .max_scrollback = 10_000,
-+        },
-+    ));
++    try testing.expectEqual(Result.success, new(&lib.alloc.test_allocator, &t, 8, 3));
++    try testing.expectEqual(Result.success, set(t, .scrollback_max_bytes, &@as(usize, 10_000)));
 +    defer free(t);
 +
 +    var saved: SavedCursor = undefined;
@@ -1126,11 +1107,8 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +
 +test "screen cursor hyperlink exposes URI and semantic identity" {
 +    var t: Terminal = null;
-+    try testing.expectEqual(Result.success, new(
-+        &lib.alloc.test_allocator,
-+        &t,
-+        .{ .cols = 12, .rows = 3, .max_scrollback = 10_000 },
-+    ));
++    try testing.expectEqual(Result.success, new(&lib.alloc.test_allocator, &t, 12, 3));
++    try testing.expectEqual(Result.success, set(t, .scrollback_max_bytes, &@as(usize, 10_000)));
 +    defer free(t);
 +
 +    var identity: grid_ref_c.HyperlinkIdentity = .{};
@@ -1208,29 +1186,38 @@ index 1c3b9f0c557aa603cf40eab920623eba07cdc7e8..7eafd01b2271c57342d8a3ea649ccbb0
 +}
 +
 diff --git a/src/terminal/c/types.zig b/src/terminal/c/types.zig
-index f160f3852bf12aed376abf10a9b62ac1c336abe1..2434505631c6ffe038f753a2d06ee5ad4f04bf04 100644
+index db75bfddf2a0594edff74a84d295bef66d5d9e49..21dcc605cd617b5ad0c254e4b1d6346213dea26a 100644
 --- a/src/terminal/c/types.zig
 +++ b/src/terminal/c/types.zig
-@@ -51,0 +52 @@ pub const structs: std.StaticStringMap(StructInfo) = structs: {
-+        .{ "GhosttyHyperlinkIdentity", StructInfo.init(grid_ref.HyperlinkIdentity) },
-@@ -70,0 +72 @@ pub const structs: std.StaticStringMap(StructInfo) = structs: {
-+        .{ "GhosttyTerminalCharsetState", StructInfo.init(terminal.TerminalCharsetState) },
-@@ -71,0 +74,2 @@ pub const structs: std.StaticStringMap(StructInfo) = structs: {
-+        .{ "GhosttyTerminalSavedCursor", StructInfo.init(terminal.SavedCursor) },
-+        .{ "GhosttyTerminalScreenState", StructInfo.init(terminal.ScreenState) },
-@@ -79 +83 @@ pub const json: [:0]const u8 = json: {
--    @setEvalBranchQuota(100000);
-+    @setEvalBranchQuota(200_000);
+@@ -173,0 +174,10 @@ const type_decls = [_]TypeDecl{
++    .initStruct("GhosttyHyperlinkIdentity", grid_ref.HyperlinkIdentity),
++    .initStruct("GhosttyTerminalCharsetState", terminal.TerminalCharsetState),
++    .initStruct("GhosttyTerminalSavedCursor", terminal.SavedCursor),
++    .initStruct("GhosttyTerminalScreenState", terminal.ScreenState),
++    .initOpaque("GhosttyTerminalScreenRowIterator"),
++    .initEnum("GhosttyHyperlinkIdentityTag", grid_ref.HyperlinkIdentityTag, "GHOSTTY_HYPERLINK_IDENTITY_"),
++    .initEnum("GhosttyTerminalCharset", terminal.TerminalCharset, "GHOSTTY_TERMINAL_CHARSET_"),
++    .initEnum("GhosttyTerminalCharsetSlot", terminal.TerminalCharsetSlot, "GHOSTTY_TERMINAL_CHARSET_SLOT_"),
++    .initEnum("GhosttyTerminalProtectedMode", terminal.TerminalProtectedMode, "GHOSTTY_TERMINAL_PROTECTED_MODE_"),
++    .initEnum("GhosttyTerminalSemanticClick", terminal.TerminalSemanticClick, "GHOSTTY_TERMINAL_SEMANTIC_CLICK_"),
 diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
-index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc24543125660365 100644
+index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84ee346b52 100644
 --- a/src/terminal/formatter.zig
 +++ b/src/terminal/formatter.zig
-@@ -298,0 +299,58 @@ pub const TerminalFormatter = struct {
+@@ -409,4 +409,4 @@ pub const TerminalFormatter = struct {
+-        // Emit terminal modes that differ from defaults. We probably have
+-        // some modes we want to emit before and some after, but for now for
+-        // simplicity we just emit them all before. If we make this more complex
+-        // later we should add test cases for it.
 +        // DECCOLM (mode 3) is ignored unless mode 40 is already enabled, and a
 +        // successful DECCOLM resize recreates the tabstop table. Restore this
 +        // pair before custom tabstops and before the generated mode-order loop
 +        // (where numeric mode 3 otherwise precedes mode 40).
-+        if (self.opts.emit == .vt and self.extra.modes) {
+@@ -414,4 +414,8 @@ pub const TerminalFormatter = struct {
+-            inline for (@typeInfo(modespkg.Mode).@"enum".field_names, @typeInfo(modespkg.Mode).@"enum".field_values) |field, field_value| {
+-                const mode: modespkg.Mode = @fromBackingInt(field_value);
+-                const current = self.terminal.modes.get(mode);
+-                const default_val = @field(self.terminal.modes.default, field);
 +            const mode_40 = self.terminal.modes.get(.enable_mode_3);
 +            const mode_40_default = self.terminal.modes.default.enable_mode_3;
 +            if (mode_40 != mode_40_default) {
@@ -1239,7 +1226,12 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +                    .{if (mode_40) "h" else "l"},
 +                );
 +            }
-+
+@@ -419,5 +423,24 @@ pub const TerminalFormatter = struct {
+-                if (current != default_val) {
+-                    const tag: modespkg.ModeTag = @bitCast(@backingInt(mode));
+-                    const prefix = if (tag.ansi) "" else "?";
+-                    const suffix = if (current) "h" else "l";
+-                    try writer.print("\x1b[{s}{d}{s}", .{ prefix, tag.value, suffix });
 +            const mode_3 = self.terminal.modes.get(.@"132_column");
 +            const mode_3_default = self.terminal.modes.default.@"132_column";
 +            if (mode_3 != mode_3_default) {
@@ -1250,90 +1242,65 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +            }
 +        }
 +
-+        // Tabstop restoration moves the cursor. Emit it after DECCOLM but
-+        // before the remaining modes and screen content so origin mode and
-+        // horizontal margins cannot shift the requested absolute columns.
++        // Emit tabstop positions before the screen contents because setting
++        // them moves the cursor. Screen formatting will restore the requested
++        // cursor position afterwards.
 +        if (self.opts.emit == .vt and self.extra.tabstops) {
 +            // Clear all tabs (CSI 3 g)
 +            try writer.print("\x1b[3g", .{});
 +
-+            // Set each configured tabstop by moving cursor and using HTS.
++            // Set each configured tabstop by moving cursor and using HTS
 +            for (0..self.terminal.cols) |col| {
 +                if (self.terminal.tabstops.get(col)) {
++                    // Move cursor to the column (1-indexed)
 +                    try writer.print("\x1b[{d}G", .{col + 1});
++                    // Set tab (HTS)
 +                    try writer.print("\x1bH", .{});
-+                }
-+            }
-+            // PageListFormatter begins from the terminal home position.
-+            try writer.print("\x1b[H", .{});
+@@ -426,0 +450,3 @@ pub const TerminalFormatter = struct {
++            // Screen contents are formatted relative to the top-left.
++            try writer.writeAll("\x1b[H");
 +
-+            if (self.pin_map) |*m| {
-+                var discarding: std.Io.Writer.Discarding = .init(&.{});
-+                var extra_formatter: TerminalFormatter = self;
-+                extra_formatter.content = .none;
-+                extra_formatter.pin_map = null;
-+                extra_formatter.extra = .none;
+@@ -434 +460 @@ pub const TerminalFormatter = struct {
+-                extra_formatter.extra.modes = true;
 +                extra_formatter.extra.tabstops = true;
-+                try extra_formatter.format(&discarding.writer);
-+
-+                m.map.appendNTimes(
-+                    m.alloc,
-+                    self.terminal.screens.active.pages.getTopLeft(.screen),
-+                    std.math.cast(usize, discarding.count) orelse return error.WriteFailed,
-+                ) catch return error.WriteFailed;
-+            }
-+        }
-+
-@@ -305,0 +364 @@ pub const TerminalFormatter = struct {
+@@ -447,6 +473,10 @@ pub const TerminalFormatter = struct {
+-        // Emit tabstop positions before the screen contents because setting
+-        // them moves the cursor. Screen formatting will restore the requested
+-        // cursor position afterwards.
+-        if (self.opts.emit == .vt and self.extra.tabstops) {
+-            // Clear all tabs (CSI 3 g)
+-            try writer.print("\x1b[3g", .{});
++        // Emit terminal modes that differ from defaults. We probably have
++        // some modes we want to emit before and some after, but for now for
++        // simplicity we just emit them all before. If we make this more complex
++        // later we should add test cases for it.
++        if (self.opts.emit == .vt and self.extra.modes) {
++            inline for (@typeInfo(modespkg.Mode).@"enum".field_names, @typeInfo(modespkg.Mode).@"enum".field_values) |field, field_value| {
++                const mode: modespkg.Mode = @fromBackingInt(field_value);
 +                if (mode == .enable_mode_3 or mode == .@"132_column") continue;
-@@ -339,0 +399,3 @@ pub const TerminalFormatter = struct {
-+        // Terminal-level extras below can reset or move the cursor. Delay CUP
-+        // until all of them have been emitted.
-+        if (self.opts.emit == .vt) screen_formatter.extra.cursor = false;
-@@ -363,16 +424,0 @@ pub const TerminalFormatter = struct {
--            // Emit tabstop positions
--            if (self.extra.tabstops) {
--                // Clear all tabs (CSI 3 g)
--                try writer.print("\x1b[3g", .{});
++                const current = self.terminal.modes.get(mode);
++                const default_val = @field(self.terminal.modes.default, field);
+@@ -454,7 +484,5 @@ pub const TerminalFormatter = struct {
+-            // Set each configured tabstop by moving cursor and using HTS
+-            for (0..self.terminal.cols) |col| {
+-                if (self.terminal.tabstops.get(col)) {
+-                    // Move cursor to the column (1-indexed)
+-                    try writer.print("\x1b[{d}G", .{col + 1});
+-                    // Set tab (HTS)
+-                    try writer.print("\x1bH", .{});
++                if (current != default_val) {
++                    const tag: modespkg.ModeTag = @bitCast(@backingInt(mode));
++                    const prefix = if (tag.ansi) "" else "?";
++                    const suffix = if (current) "h" else "l";
++                    try writer.print("\x1b[{s}{d}{s}", .{ prefix, tag.value, suffix });
+@@ -464,3 +491,0 @@ pub const TerminalFormatter = struct {
+-            // Screen contents are formatted relative to the top-left.
+-            try writer.writeAll("\x1b[H");
 -
--                // Set each configured tabstop by moving cursor and using HTS
--                for (0..self.terminal.cols) |col| {
--                    if (self.terminal.tabstops.get(col)) {
--                        // Move cursor to the column (1-indexed)
--                        try writer.print("\x1b[{d}G", .{col + 1});
--                        // Set tab (HTS)
--                        try writer.print("\x1bH", .{});
--                    }
--                }
--            }
--
-@@ -392,0 +439,21 @@ pub const TerminalFormatter = struct {
-+            // Restore the cursor last. CUP is relative to the margins while
-+            // origin mode is active, so translate Ghostty's absolute cursor
-+            // coordinates only when this formatter emitted both pieces of
-+            // state that make the target interpret CUP that way.
-+            if (self.extra.screen.cursor) {
-+                const cursor = &self.terminal.screens.active.cursor;
-+                const origin = self.extra.modes and
-+                    self.terminal.modes.get(.origin) and
-+                    self.extra.scrolling_region;
-+                const row = if (origin)
-+                    cursor.y -| self.terminal.scrolling_region.top
-+                else
-+                    cursor.y;
-+                const column = if (origin and
-+                    self.terminal.modes.get(.enable_left_and_right_margin))
-+                    cursor.x -| self.terminal.scrolling_region.left
-+                else
-+                    cursor.x;
-+                try writer.print("\x1b[{d};{d}H", .{ row + 1, column + 1 });
-+            }
-+
-@@ -401 +467,0 @@ pub const TerminalFormatter = struct {
--                extra_formatter.extra.tabstops = self.extra.tabstops;
-@@ -403,0 +470 @@ pub const TerminalFormatter = struct {
-+                extra_formatter.extra.screen.cursor = self.extra.screen.cursor;
-@@ -652,0 +720,12 @@ pub const ScreenFormatter = struct {
+@@ -474 +499 @@ pub const TerminalFormatter = struct {
+-                extra_formatter.extra.tabstops = true;
++                extra_formatter.extra.modes = true;
+@@ -864,0 +890,12 @@ pub const ScreenFormatter = struct {
 +
 +            // SS2/SS3 applies to exactly the next printable character. It
 +            // therefore has to be emitted after all other formatter output
@@ -1346,16 +1313,16 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +                };
 +                try writer.print("{s}", .{seq});
 +            }
-@@ -4876 +4955 @@ test "Screen vt with kitty keyboard" {
+@@ -6370 +6407 @@ test "Screen vt with kitty keyboard" {
 -test "Screen vt with charsets" {
 +test "Screen vt with charsets including pending single shift" {
-@@ -4892,2 +4971,3 @@ test "Screen vt with charsets" {
+@@ -6387,2 +6424,3 @@ test "Screen vt with charsets" {
 -    // Set G0 to DEC special and shift to G1
 -    s.nextSlice("\x1b(0\x0ehello");
 +    // Set G0 and G2 to DEC special, shift GL to G1, and leave SS2
 +    // pending. The formatter must not consume that one-shot state itself.
 +    s.nextSlice("\x1b(0\x0ehello\x1b*0\x1bN");
-@@ -4923,0 +5004,8 @@ test "Screen vt with charsets" {
+@@ -6418,0 +6457,8 @@ test "Screen vt with charsets" {
 +    try testing.expectEqual(
 +        t.screens.active.charset.charsets.get(.G2),
 +        t2.screens.active.charset.charsets.get(.G2),
@@ -1364,7 +1331,7 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +        t.screens.active.charset.single_shift,
 +        t2.screens.active.charset.single_shift,
 +    );
-@@ -5073,0 +5162,82 @@ test "Terminal vt with tabstops" {
+@@ -6720,0 +6767,82 @@ test "Terminal vt with tabstops" {
 +test "Terminal vt restores cursor after margins and tabstops" {
 +    const testing = std.testing;
 +    const alloc = testing.allocator;
@@ -1372,7 +1339,7 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +    var builder: std.Io.Writer.Allocating = .init(alloc);
 +    defer builder.deinit();
 +
-+    var t = try Terminal.init(alloc, .{
++    var t = try Terminal.init(testing.io, alloc, .{
 +        .cols = 20,
 +        .rows = 6,
 +    });
@@ -1391,7 +1358,7 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +    try formatter.format(&builder.writer);
 +    const output = builder.writer.buffered();
 +
-+    var t2 = try Terminal.init(alloc, .{
++    var t2 = try Terminal.init(testing.io, alloc, .{
 +        .cols = 20,
 +        .rows = 6,
 +    });
@@ -1418,7 +1385,7 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +    var builder: std.Io.Writer.Allocating = .init(alloc);
 +    defer builder.deinit();
 +
-+    var source = try Terminal.init(alloc, .{ .cols = 80, .rows = 6 });
++    var source = try Terminal.init(testing.io, alloc, .{ .cols = 80, .rows = 6 });
 +    defer source.deinit(alloc);
 +    var source_stream = source.vtStream();
 +    defer source_stream.deinit();
@@ -1434,7 +1401,7 @@ index 553ea28d0930ec68a387ae041a0ffaa338bca997..91d621b641755a45f76106d0dc245431
 +    formatter.extra.tabstops = true;
 +    try formatter.format(&builder.writer);
 +
-+    var replacement = try Terminal.init(alloc, .{ .cols = 80, .rows = 6 });
++    var replacement = try Terminal.init(testing.io, alloc, .{ .cols = 80, .rows = 6 });
 +    defer replacement.deinit(alloc);
 +    var replacement_stream = replacement.vtStream();
 +    defer replacement_stream.deinit();

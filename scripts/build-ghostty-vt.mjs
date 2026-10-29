@@ -51,16 +51,13 @@ function zigArguments(resolve) {
   return [
     "build",
     `-j${lock.builder.zigBuildJobs}`,
-    "--seed",
-    String(lock.builder.zigBuildSeed),
     "--cache-dir",
     resolve("cache"),
-    "--global-cache-dir",
-    resolve("global"),
     "--prefix",
     resolve("install"),
     "-Demit-lib-vt",
-    "-Doptimize=ReleaseFast",
+    "-Demit-xcframework=false",
+    `-Doptimize=${lock.builder.zigOptimize}`,
     `-Dtarget=${config.zigTarget}`,
     `-Dcpu=${config.zigCpu}`,
     ...msvcRuntimeArguments(),
@@ -97,6 +94,8 @@ function containerBuild() {
       lock.builder.platform,
       "--user",
       `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`,
+      "--env",
+      "ZIG_GLOBAL_CACHE_DIR=/out/global",
       "-v",
       `${vendor}:/src:ro`,
       "-v",
@@ -125,7 +124,7 @@ function nativeBuild() {
   return spawnSync(
     zig,
     zigArguments((part) => join(output, part)),
-    { cwd: vendor, stdio: "inherit" },
+    { cwd: vendor, stdio: "inherit", env: { ...process.env, ZIG_GLOBAL_CACHE_DIR: join(output, "global") } },
   );
 }
 

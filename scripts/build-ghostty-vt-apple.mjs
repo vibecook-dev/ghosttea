@@ -11,7 +11,11 @@ const xcframework = join(install, "lib/ghostty-vt.xcframework");
 const packageArtifact = join(root, "apple/GhostteaKit/Artifacts/ghostty-vt.xcframework");
 const developerDir =
   process.env.GHOSTTY_DEVELOPER_DIR ?? `/Applications/Xcode_${lock.appleBuilder.xcodeVersion}.app/Contents/Developer`;
-const commandEnvironment = { ...process.env, DEVELOPER_DIR: developerDir };
+const commandEnvironment = {
+  ...process.env,
+  DEVELOPER_DIR: developerDir,
+  ZIG_GLOBAL_CACHE_DIR: join(output, "global"),
+};
 
 function capture(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, env: commandEnvironment, encoding: "utf8" });
@@ -66,15 +70,14 @@ mkdirSync(output, { recursive: true });
 
 const args = [
   "build",
+  `-j${lock.builder.zigBuildJobs}`,
   "--cache-dir",
   join(output, "cache"),
-  "--global-cache-dir",
-  join(output, "global"),
   "--prefix",
   install,
   "-Demit-lib-vt",
   "-Demit-xcframework",
-  "-Doptimize=ReleaseFast",
+  `-Doptimize=${lock.builder.zigOptimize}`,
 ];
 const result = spawnSync(zig, args, { cwd: vendor, env: commandEnvironment, stdio: "inherit" });
 if (result.error) throw result.error;
