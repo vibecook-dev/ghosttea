@@ -2,40 +2,46 @@
   "schemaVersion": 1,
   "source": {
     "repository": "https://github.com/ghostty-org/ghostty.git",
-    "commit": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69",
+    "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd",
     "patches": [
       {
         "path": "native/patches/ghostty-vt-g15-g21.patch",
-        "sha256": "c33a0d43191760d5a816f7b2553c45f5bae5f010dfa075c5db645a85b59c4842"
+        "sha256": "d5942d6ad16bf402f1a574a158ed1e081566dcc857b6557104daf874f4557a82"
       },
       {
         "path": "native/patches/ghostty-vt-msvc-runtime.patch",
-        "sha256": "42235a49af44573401208c98fc145f2274bf1642f6b0ab55ffc93d8ee8376205"
+        "sha256": "ff22fe161179669320cb68a5c5e42c5549c7f0e47419cef6f458f43c1c61df93"
       }
     ],
-    "diffSha256": "107cd162e53350f3a9dede4565a8cc1cedb073d2670df2ec35b1a558cc832981",
+    "diffSha256": "63a9c60e8f5a1bf7707ea2a6f836d38cc1c6251883d748819fb0987a22c0a523",
     "buildRecipe": {
       "zig": {
-        "version": "0.15.2",
-        "linuxAarch64Url": "https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz",
-        "linuxAarch64Sha256": "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f",
-        "macosAarch64Url": "https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz",
-        "macosAarch64Sha256": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b",
-        "windowsX8664Url": "https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip",
-        "windowsX8664Sha256": "3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c"
+        "version": "0.17.0",
+        "linuxAarch64Url": "https://ziglang.org/download/0.17.0/zig-aarch64-linux-0.17.0.tar.xz",
+        "linuxAarch64Sha256": "9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8",
+        "macosAarch64Url": "https://ziglang.org/download/0.17.0/zig-aarch64-macos-0.17.0.tar.xz",
+        "macosAarch64Sha256": "b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a",
+        "windowsX8664Url": "https://ziglang.org/download/0.17.0/zig-x86_64-windows-0.17.0.zip",
+        "windowsX8664Sha256": "b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428"
       },
       "builder": {
         "image": "debian@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
         "platform": "linux/arm64",
         "zigBuildJobs": 1,
-        "zigBuildSeed": 0,
         "normalizer": {
           "runner": "macos-26",
           "developerDirectory": "/Applications/Xcode_26.6.app/Contents/Developer",
           "xcodeVersion": "26.6",
           "xcodeBuild": "17F113",
           "stripFlags": ["-S"]
-        }
+        },
+        "zigOptimize": "fast",
+        "zigPackageDirectory": "packages",
+        "windowsPkgConfig": {
+          "package": "pkgconfiglite",
+          "version": "0.28"
+        },
+        "msvcRuntimeWitnesses": ["ghosttea-msvc-simd.obj", "ghosttea-msvc-simdutf.obj", "ghosttea-msvc-highway.obj"]
       },
       "targets": {
         "aarch64-apple-darwin": {
@@ -65,47 +71,47 @@
         }
       }
     },
-    "digest": "1dceb4dd5089652bd3fd07974cd7663cddde0653074bc73d70c2b2e65c779616"
+    "digest": "4bf5fbebe3f2f961ccdd550aa1d71151ad51f3b305f569d15af0f568b2b37b50"
   },
   "targets": {
     "aarch64-apple-darwin": {
-      "sourceDigest": "1dceb4dd5089652bd3fd07974cd7663cddde0653074bc73d70c2b2e65c779616",
-      "release": "ghostty-vt-1dceb4dd5089",
-      "filename": "ghostty-vt-1dceb4dd5089-aarch64-apple-darwin.tar",
-      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-1dceb4dd5089/ghostty-vt-1dceb4dd5089-aarch64-apple-darwin.tar",
-      "sha256": "dd29f5ea46b4a7ebd90012b9e1f9230c0b88529bdbf7f9ea54c70eb8b1fc5755",
-      "size": 2497024,
+      "sourceDigest": "4bf5fbebe3f2f961ccdd550aa1d71151ad51f3b305f569d15af0f568b2b37b50",
+      "release": "ghostty-vt-4bf5fbebe3f2",
+      "filename": "ghostty-vt-4bf5fbebe3f2-aarch64-apple-darwin.tar",
+      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-4bf5fbebe3f2/ghostty-vt-4bf5fbebe3f2-aarch64-apple-darwin.tar",
+      "sha256": "704d69addca21ecf33164ac2b740e10e29f1a34916c5775dd56fa5230f46c021",
+      "size": 3675136,
       "libraryPath": "lib/libghostty-vt.a",
-      "librarySha256": "54525d46e0563d8adfc714dece62e9fd1e75f55597f549926f8cbfa10ae7851b",
-      "headersSha256": "e4de5535809e4fb95b857febf9805e767932f8e99f8705c89f7998a484366342",
+      "librarySha256": "f202bdb37ebb79747248ca03c7a864ef8b0603b8df80de02076359478d44808f",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
       "reproducible": false,
-      "candidateRunId": 40385660334
+      "candidateRunId": 40969422970
     },
     "x86_64-pc-windows-msvc": {
-      "sourceDigest": "1dceb4dd5089652bd3fd07974cd7663cddde0653074bc73d70c2b2e65c779616",
-      "release": "ghostty-vt-1dceb4dd5089",
-      "filename": "ghostty-vt-1dceb4dd5089-x86_64-pc-windows-msvc.tar",
-      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-1dceb4dd5089/ghostty-vt-1dceb4dd5089-x86_64-pc-windows-msvc.tar",
-      "sha256": "36f61e496fa43bb8012384fd50a9c3eefebb1b4cf0d89ec4d2ca9afca03dfc48",
-      "size": 9510400,
+      "sourceDigest": "4bf5fbebe3f2f961ccdd550aa1d71151ad51f3b305f569d15af0f568b2b37b50",
+      "release": "ghostty-vt-4bf5fbebe3f2",
+      "filename": "ghostty-vt-4bf5fbebe3f2-x86_64-pc-windows-msvc.tar",
+      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-4bf5fbebe3f2/ghostty-vt-4bf5fbebe3f2-x86_64-pc-windows-msvc.tar",
+      "sha256": "e479a6d4dc4ef389cc5a22fab80ba485ae252e1574b518569a5005566c6c11c7",
+      "size": 13622784,
       "libraryPath": "lib/ghostty-vt-static.lib",
-      "librarySha256": "fbf782697f7ac12dd45415e518b4af1a375331cdf9ae9be1719649c9da75a7ba",
-      "headersSha256": "e4de5535809e4fb95b857febf9805e767932f8e99f8705c89f7998a484366342",
+      "librarySha256": "383326b227dc9a4c72f486d696f43c3d60704d98fd71bd6e42eeb469c60543dd",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
       "reproducible": false,
-      "candidateRunId": 40385660334
+      "candidateRunId": 40969422970
     },
     "x86_64-pc-windows-msvc-crt-static": {
-      "sourceDigest": "1dceb4dd5089652bd3fd07974cd7663cddde0653074bc73d70c2b2e65c779616",
-      "release": "ghostty-vt-1dceb4dd5089",
-      "filename": "ghostty-vt-1dceb4dd5089-x86_64-pc-windows-msvc-crt-static.tar",
-      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-1dceb4dd5089/ghostty-vt-1dceb4dd5089-x86_64-pc-windows-msvc-crt-static.tar",
-      "sha256": "3b9bd9cd484a261e0007170643730fe3c73ef8cf9c7a7916b17f3366e46cb05d",
-      "size": 9510400,
+      "sourceDigest": "4bf5fbebe3f2f961ccdd550aa1d71151ad51f3b305f569d15af0f568b2b37b50",
+      "release": "ghostty-vt-4bf5fbebe3f2",
+      "filename": "ghostty-vt-4bf5fbebe3f2-x86_64-pc-windows-msvc-crt-static.tar",
+      "url": "https://github.com/vibecook-dev/ghosttea/releases/download/ghostty-vt-4bf5fbebe3f2/ghostty-vt-4bf5fbebe3f2-x86_64-pc-windows-msvc-crt-static.tar",
+      "sha256": "3ada5088a79fe821f9ba7a93185686e7f8b8fee001aac8a48c3269b9a0d09539",
+      "size": 13624320,
       "libraryPath": "lib/ghostty-vt-static.lib",
-      "librarySha256": "089bd69e28f91e986f6c0b954ca47ce345e63f98f6c81e1ed8bc584b33596280",
-      "headersSha256": "e4de5535809e4fb95b857febf9805e767932f8e99f8705c89f7998a484366342",
+      "librarySha256": "86e1d1178e258506d86d6a92f65bccc45b3b84d00e9de79f7c294e7e04e20e7e",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
       "reproducible": false,
-      "candidateRunId": 40385660334
+      "candidateRunId": 40969422970
     }
   }
 }
