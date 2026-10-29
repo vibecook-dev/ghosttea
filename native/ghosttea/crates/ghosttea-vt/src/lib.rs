@@ -2557,12 +2557,17 @@ mod tests {
         assert_eq!(restored.scrollbar, bottom.scrollbar);
     }
 
-    /// Ghostty performs strict page reclamation only on 64-bit Linux and
-    /// Darwin (`src/terminal/mem.zig`). Elsewhere full compression reports
+    /// Ghostty performs strict page reclamation on 64-bit Linux, Darwin,
+    /// Windows and FreeBSD (`src/terminal/mem.zig`). Elsewhere full compression reports
     /// unsupported and leaves scrollback memory resident.
     const SCROLLBACK_RECLAIM_SUPPORTED: bool = cfg!(all(
         target_pointer_width = "64",
-        any(target_os = "linux", target_vendor = "apple")
+        any(
+            target_os = "linux",
+            target_vendor = "apple",
+            target_os = "windows",
+            target_os = "freebsd"
+        )
     ));
 
     #[test]

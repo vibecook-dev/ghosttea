@@ -241,6 +241,7 @@ struct Grapheme<'a> {
     cell_span: u16,
     face: ID,
     style: FontStyle,
+    presentation: FontPresentation,
 }
 
 struct CachedShapedRow {
@@ -562,6 +563,14 @@ impl TextEngine {
             while run_end < graphemes.len()
                 && graphemes[run_end].face == face
                 && graphemes[run_end].style == style
+                // A host may keep a ZWJ sequence in separate cells when
+                // grapheme clustering is disabled. Joining those cells here
+                // would stretch one emoji over their combined grid width.
+                // Complete emoji within one host cell still shape together;
+                // ordinary text runs retain their cross-cell ligatures.
+                && (cells.is_none()
+                    || (graphemes[run_end - 1].presentation != FontPresentation::Emoji
+                        && graphemes[run_end].presentation != FontPresentation::Emoji))
                 && graphemes[run_end].cell_start
                     == graphemes[run_end - 1]
                         .cell_start
@@ -653,6 +662,7 @@ impl TextEngine {
                 cell_span: cell.span,
                 face,
                 style: cell.style,
+                presentation,
             });
         }
         ensure!(
@@ -695,6 +705,7 @@ impl TextEngine {
                 cell_span: span,
                 face,
                 style,
+                presentation,
             });
             cell = cell.saturating_add(span);
         }
@@ -1116,7 +1127,7 @@ mod tests {
         FontResource::new("test-monospace", bytes).with_face_index(index as usize)
     }
 
-    fn presentation_test_engine() -> TextEngine {
+    pub(super) fn presentation_test_engine() -> TextEngine {
         let mut fonts = FontResources::new(FontResource::new(
             "JetBrainsMonoNerdFont-Regular.ttf",
             include_bytes!(
@@ -1524,5 +1535,80 @@ mod tests {
 
         engine.shape_row("different", FontStyle::default()).unwrap();
         assert_eq!(engine.shaped_row_count, 1);
+    }
+}
+
+#[cfg(test)]
+mod terminal_emoji_boundaries {
+    use super::*;
+
+    #[test]
+    fn emoji_joining_respects_host_cell_boundaries_without_stretching() {
+        let mut engine = super::tests::presentation_test_engine();
+        let text = "👩\u{200d}💻X";
+        let style = FontStyle::default();
+        // Legacy width accounting keeps the two emoji in separate cells.
+        let split = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 7,
+                column: 0,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 7,
+                byte_end: 11,
+                column: 2,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 11,
+                byte_end: 12,
+                column: 4,
+                span: 1,
+                style,
+            },
+        ];
+        let row = engine.shape_terminal_row(text, &split).unwrap();
+        assert!(
+            row.glyphs.iter().all(|glyph| glyph.cell_span <= 2),
+            "a joined emoji must not stretch across distinct terminal cells: {:?}",
+            row.glyphs
+        );
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 4 && glyph.cell_span == 1)
+        );
+        // Mode 2027 hosts give the entire ZWJ sequence one two-column cell.
+        let joined = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 11,
+                column: 0,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 11,
+                byte_end: 12,
+                column: 2,
+                span: 1,
+                style,
+            },
+        ];
+        let row = engine.shape_terminal_row(text, &joined).unwrap();
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 0 && glyph.cell_span == 2)
+        );
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 2 && glyph.cell_span == 1)
+        );
     }
 }

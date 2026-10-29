@@ -711,6 +711,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn emoji_rendering_preserves_the_hosts_grapheme_mode() {
+        let runtime = Arc::new(TerminalRuntime::discover().unwrap());
+        for (mode, next_column) in [("\u{1b}[?2027l", 4), ("\u{1b}[?2027h", 2)] {
+            let mut model = TerminalModel::new(
+                runtime.clone(),
+                TerminalModelOptions {
+                    session_handle: 1,
+                    session_epoch: 1,
+                    layout_epoch: 1,
+                    cols: 10,
+                    rows: 2,
+                    scrollback_bytes: 4096,
+                },
+            )
+            .unwrap();
+            model
+                .feed(format!("{mode}👩‍💻X").as_bytes(), RenderRequest::Full)
+                .unwrap();
+            let row = model.render_cache.rows[0].as_ref().unwrap();
+            assert!(
+                row.shaped.glyphs.iter().all(|glyph| glyph.cell_span <= 2),
+                "an emoji must not stretch across distinct terminal cells"
+            );
+            assert!(
+                row.shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == next_column && glyph.cell_span == 1)
+            );
+            let logical = model.latest_logical.as_ref().unwrap();
+            assert!(
+                logical.rows[0]
+                    .cells
+                    .iter()
+                    .any(|cell| cell.column == next_column && cell.text == "X")
+            );
+        }
+    }
+
+    #[test]
     fn unicode_18_rendered_glyphs_follow_the_terminal_grid() {
         let runtime = Arc::new(TerminalRuntime::discover().unwrap());
         for codepoint in [
