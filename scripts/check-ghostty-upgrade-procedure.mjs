@@ -100,6 +100,7 @@ requireEqual(artifacts.source, sourceIdentity, "native artifact source-and-recip
 requireEqual(fonts.source, lock.ghostty, "font source pin");
 requireEqual(lock.builder?.zigBuildJobs, 1, "Ghostty VT Zig build concurrency");
 requireEqual(lock.builder?.zigOptimize, "fast", "Ghostty VT optimization mode");
+requireEqual(lock.builder?.zigPackageDirectory, "packages", "Ghostty VT writable package directory");
 requireEqual(lock.builder?.normalizer?.runner, "macos-26", "Ghostty VT normalizer runner");
 for (const field of ["developerDirectory", "xcodeVersion", "xcodeBuild"]) {
   if (typeof lock.builder?.normalizer?.[field] !== "string" || lock.builder.normalizer[field] === "") {
@@ -275,6 +276,7 @@ for (const text of [
   "-Doptimize=${lock.builder.zigOptimize}",
   "-Demit-xcframework=false",
   "ZIG_GLOBAL_CACHE_DIR",
+  "lock.builder.zigPackageDirectory",
   "-Dmsvc-runtime=${config.msvcRuntime}",
 ]) {
   if (!desktopBuild.includes(text)) {

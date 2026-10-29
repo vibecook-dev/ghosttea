@@ -36,7 +36,8 @@
       "xcodeBuild": "17F113",
       "stripFlags": ["-S"]
     },
-    "zigOptimize": "fast"
+    "zigOptimize": "fast",
+    "zigPackageDirectory": "packages"
   },
   "targets": {
     "aarch64-apple-darwin": {
