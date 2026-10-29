@@ -731,7 +731,15 @@ mod tests {
                 .unwrap();
             let row = model.render_cache.rows[0].as_ref().unwrap();
             assert!(
-                row.shaped.glyphs.iter().all(|glyph| glyph.cell_span <= 2),
+                row.shaped.glyphs.iter().all(|glyph| glyph.width
+                    <= 2.0
+                        * runtime
+                            .text_engine()
+                            .lock()
+                            .unwrap()
+                            .metrics()
+                            .cell_width_px
+                        + 1.0),
                 "an emoji must not stretch across distinct terminal cells"
             );
             assert!(

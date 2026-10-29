@@ -560,17 +560,15 @@ impl TextEngine {
             let face = graphemes[run_start].face;
             let mut run_end = run_start + 1;
             let style = graphemes[run_start].style;
+            let presentation = graphemes[run_start].presentation;
             while run_end < graphemes.len()
                 && graphemes[run_end].face == face
                 && graphemes[run_end].style == style
-                // A host may keep a ZWJ sequence in separate cells when
-                // grapheme clustering is disabled. Joining those cells here
-                // would stretch one emoji over their combined grid width.
-                // Complete emoji within one host cell still shape together;
-                // ordinary text runs retain their cross-cell ligatures.
+                // Emoji need independent visual fitting while their grid
+                // advance still comes from the host. Keep normal text runs
+                // together so ordinary cross-cell ligatures are unchanged.
                 && (cells.is_none()
-                    || (graphemes[run_end - 1].presentation != FontPresentation::Emoji
-                        && graphemes[run_end].presentation != FontPresentation::Emoji))
+                    || graphemes[run_end].presentation == presentation)
                 && graphemes[run_end].cell_start
                     == graphemes[run_end - 1]
                         .cell_start
@@ -583,6 +581,7 @@ impl TextEngine {
                 &graphemes[run_start..run_end],
                 face,
                 style,
+                cells.is_some() && presentation == FontPresentation::Emoji,
                 &mut output.glyphs,
                 &mut used_definitions,
             )?;
@@ -797,6 +796,7 @@ impl TextEngine {
         graphemes: &[Grapheme<'_>],
         face_id: ID,
         style: FontStyle,
+        grid_emoji: bool,
         output: &mut Vec<GlyphInstance>,
         used_definitions: &mut HashSet<u32>,
     ) -> Result<()> {
@@ -827,6 +827,13 @@ impl TextEngine {
             1.0
         };
         let mut pen_x = first.cell_start as f32 * metrics.cell_width_px;
+        let mut emoji_positions = HashMap::<u32, (f32, f32)>::new();
+        if grid_emoji {
+            for glyph in &shaped {
+                emoji_positions.entry(glyph.cluster).or_default().0 +=
+                    glyph.x_advance as f32 / 64.0;
+            }
+        }
 
         let mut cluster_starts: Vec<u32> = shaped.iter().map(|glyph| glyph.cluster).collect();
         cluster_starts.sort_unstable();
@@ -852,10 +859,28 @@ impl TextEngine {
                 .map(|grapheme| grapheme.cell_start)
                 .unwrap_or_else(|| last.cell_start.saturating_add(last.cell_span));
             let cluster_span = cluster_end_cell.saturating_sub(cluster_cell_start).max(1);
+            let (glyph_x, scale_x) = if grid_emoji {
+                // Legacy width mode may reserve four (or more) columns for
+                // one ZWJ emoji. Preserve its combined artwork at at most two
+                // columns, then anchor the next cluster at ITS host column.
+                // Breaking the ZWJ into separate shaping runs would change
+                // the symbol; scaling the whole run would stretch it.
+                let (advance, offset) = emoji_positions.get_mut(&glyph.cluster).unwrap();
+                let scale = if advance.abs() > f32::EPSILON {
+                    f32::from(cluster_span.min(2)) * metrics.cell_width_px / *advance
+                } else {
+                    1.0
+                };
+                let x = f32::from(cluster_cell_start) * metrics.cell_width_px + *offset * scale;
+                *offset += glyph.x_advance as f32 / 64.0;
+                (x, scale)
+            } else {
+                (pen_x, run_scale_x)
+            };
             if let Some((glyph_id, definition)) = self.rasterize(&loaded, glyph.glyph_id, style)? {
-                let x = pen_x
-                    + glyph.x_offset as f32 / 64.0 * run_scale_x
-                    + definition.bearing_x as f32 / raster_scale * run_scale_x;
+                let x = glyph_x
+                    + glyph.x_offset as f32 / 64.0 * scale_x
+                    + definition.bearing_x as f32 / raster_scale * scale_x;
                 let y = metrics.baseline_px
                     - glyph.y_offset as f32 / 64.0
                     - definition.bearing_y as f32 / raster_scale;
@@ -864,7 +889,7 @@ impl TextEngine {
                     style_id: style_id(style),
                     x,
                     y,
-                    width: definition.width as f32 / raster_scale * run_scale_x,
+                    width: definition.width as f32 / raster_scale * scale_x,
                     height: definition.height as f32 / raster_scale,
                     cell_start: cluster_cell_start,
                     cell_span: cluster_span,
@@ -1573,7 +1598,9 @@ mod terminal_emoji_boundaries {
         ];
         let row = engine.shape_terminal_row(text, &split).unwrap();
         assert!(
-            row.glyphs.iter().all(|glyph| glyph.cell_span <= 2),
+            row.glyphs
+                .iter()
+                .all(|glyph| glyph.width <= 2.0 * engine.metrics().cell_width_px + 1.0),
             "a joined emoji must not stretch across distinct terminal cells: {:?}",
             row.glyphs
         );
@@ -1582,6 +1609,12 @@ mod terminal_emoji_boundaries {
                 .iter()
                 .any(|glyph| glyph.cell_start == 4 && glyph.cell_span == 1)
         );
+        assert_eq!(
+            row.glyphs.len(),
+            2,
+            "the ZWJ must remain one combined emoji plus X"
+        );
+        let split_emoji = row.glyphs[0];
         // Mode 2027 hosts give the entire ZWJ sequence one two-column cell.
         let joined = [
             TerminalCellSpan {
@@ -1609,6 +1642,56 @@ mod terminal_emoji_boundaries {
             row.glyphs
                 .iter()
                 .any(|glyph| glyph.cell_start == 2 && glyph.cell_span == 1)
+        );
+        assert_eq!(row.glyphs[0].glyph_id, split_emoji.glyph_id);
+        assert_eq!(row.glyphs[0].width, split_emoji.width);
+        assert_eq!(row.glyphs[0].height, split_emoji.height);
+        let adjacent = engine
+            .shape_terminal_row(
+                "👩‍💻😀X",
+                &[
+                    TerminalCellSpan {
+                        byte_start: 0,
+                        byte_end: 7,
+                        column: 0,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 7,
+                        byte_end: 11,
+                        column: 2,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 11,
+                        byte_end: 15,
+                        column: 4,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 15,
+                        byte_end: 16,
+                        column: 6,
+                        span: 1,
+                        style,
+                    },
+                ],
+            )
+            .unwrap();
+        let second_emoji = adjacent
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.cell_start == 4)
+            .unwrap();
+        assert!((second_emoji.x - 4.0 * engine.metrics().cell_width_px).abs() < 1.0);
+        assert!(
+            adjacent
+                .glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 6 && glyph.cell_span == 1)
         );
     }
 }
