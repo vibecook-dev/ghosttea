@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { installPrefix, libraryPath, lock, resolveTarget, targetConfig } from "./ghostty-vt-target.mjs";
+import {
+  ghosttyNormalizerFiles,
+  installPrefix,
+  libraryPath,
+  lock,
+  resolveTarget,
+  targetConfig,
+} from "./ghostty-vt-target.mjs";
 
 const target = resolveTarget();
 const config = targetConfig(target);
@@ -50,6 +57,20 @@ for (const expected of [`Xcode ${normalizer.xcodeVersion}`, `Build version ${nor
     );
   }
 }
+
+// Upstream applies this step only on a Darwin build host. Our Linux cross-build
+// reaches Darwin here: apply the same reviewed compiler-rt/libSystem policy
+// before stripping, or its two memset definitions collide in Rust consumers.
+const [override] = ghosttyNormalizerFiles();
+if (!override) throw new Error("The Darwin normalizer must pin the upstream libSystem override.");
+const normalized = `${library}.libsystem`;
+const postprocess = spawnSync("/bin/sh", [override.absolutePath, library, normalized], {
+  env: commandEnvironment,
+  stdio: "inherit",
+});
+if (postprocess.error) throw postprocess.error;
+if (postprocess.status !== 0) process.exit(postprocess.status ?? 1);
+renameSync(normalized, library);
 
 const strip = spawnSync("xcrun", ["strip", ...normalizer.stripFlags, library], {
   env: commandEnvironment,
