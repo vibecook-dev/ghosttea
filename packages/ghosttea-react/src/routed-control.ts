@@ -3,6 +3,8 @@ import {
   ROUTED_DOOR_LIMITS,
   ROUTED_LEG_OUTBOUND,
   ROUTED_PROTOCOL_VERSION,
+  ROUTED_SELECTION_TEXT_CAPABILITY,
+  type RoutedSelectionTextRequest,
   decodeRoutedMessage,
   encodeRoutedMessage,
   type RoutedCellActivationStatus,
@@ -106,6 +108,15 @@ interface ControlConnection {
   accepted?: RoutedConnectionAccepted;
   activationIds: Set<string>;
   pendingGeometry: PendingGeometryReply[];
+  pendingSelections: Map<
+    string,
+    {
+      request: RoutedSelectionTextRequest;
+      resolve(text: string): void;
+      reject(error: Error): void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >;
   replacements: Map<string, ControlReplacement>;
   heartbeatSequence: number;
   heartbeatAckSequence: number;
@@ -238,6 +249,56 @@ export class RoutedControlTransport {
     });
   }
 
+  /** A read, independent of the input lease. Never send it to an older host.
+   * Bound outstanding work and reject on detach, timeout or connection loss. */
+  selectionText(
+    activationId: string,
+    selection: Omit<RoutedSelectionTextRequest, "requestId" | "sessionId" | "activationId" | "leaseEpoch">,
+  ): Promise<string> {
+    const activation = this.#activations.get(activationId);
+    const connection = activation ? this.#connections.get(activation.request.cellBootId) : undefined;
+    if (
+      !activation ||
+      !connection?.accepted?.capabilities.includes(ROUTED_SELECTION_TEXT_CAPABILITY) ||
+      connection.socket.readyState !== socketOpen ||
+      !activation.request.attachGrant.claims.rights.includes("read")
+    ) {
+      return Promise.reject(new Error("Selection copy is unavailable on this terminal host."));
+    }
+    if (connection.pendingSelections.size >= 16) return Promise.reject(new Error("Too many pending selection copies."));
+    const request: RoutedSelectionTextRequest = {
+      ...selection,
+      requestId: crypto.randomUUID(),
+      sessionId: activation.request.attachGrant.claims.sessionId,
+      activationId,
+      leaseEpoch: activation.request.attachGrant.claims.leaseEpoch ?? 0,
+    };
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        connection.pendingSelections.delete(request.requestId);
+        reject(new Error("Selection copy timed out."));
+      }, 5_000);
+      connection.pendingSelections.set(request.requestId, { request, resolve, reject, timer });
+      try {
+        if (!this.#sendActivation(activationId, encodeRoutedMessage("SelectionTextRequest", request)))
+          throw new Error("Selection copy is unavailable on this terminal host.");
+      } catch (error) {
+        clearTimeout(timer);
+        connection.pendingSelections.delete(request.requestId);
+        reject(error);
+      }
+    });
+  }
+
+  #cancelSelections(connection: ControlConnection, activationId?: string): void {
+    for (const [id, pending] of connection.pendingSelections) {
+      if (activationId !== undefined && pending.request.activationId !== activationId) continue;
+      clearTimeout(pending.timer);
+      connection.pendingSelections.delete(id);
+      pending.reject(new Error("Terminal detached before selection copy completed."));
+    }
+  }
+
   /**
    * Extension seam for a future terminal-input wire verb. The current T1
    * contract publishes no such tag, so Ghosttea never invents one itself.
@@ -254,6 +315,7 @@ export class RoutedControlTransport {
     this.#activations.delete(activationId);
     const connection = this.#connections.get(activation.request.cellBootId);
     connection?.activationIds.delete(activationId);
+    if (connection) this.#cancelSelections(connection, activationId);
     const replacement = connection?.replacements.get(activation.request.attachGrant.claims.sessionId);
     if (replacement?.queued === activation) delete replacement.queued;
   }
@@ -263,6 +325,7 @@ export class RoutedControlTransport {
     this.#disposed = true;
     for (const activationId of [...this.#activations.keys()]) this.detach(activationId);
     for (const connection of this.#connections.values()) {
+      this.#cancelSelections(connection);
       if (connection.heartbeatTimer !== undefined) clearTimeout(connection.heartbeatTimer);
       if (connection.heartbeatDeadlineTimer !== undefined) clearTimeout(connection.heartbeatDeadlineTimer);
       if (connection.socket.readyState < socketClosing) connection.socket.close(1000, "runtime-destroyed");
@@ -290,6 +353,7 @@ export class RoutedControlTransport {
       socket,
       activationIds: new Set(),
       pendingGeometry: [],
+      pendingSelections: new Map(),
       replacements: new Map(),
       heartbeatSequence: 0,
       heartbeatAckSequence: 0,
@@ -373,6 +437,35 @@ export class RoutedControlTransport {
     }
     if (!connection.accepted) {
       this.#closeConnection(connection, 4003, "message before ConnectionAccepted", true);
+      return;
+    }
+    if (message.type === "SelectionTextResult") {
+      if (!connection.accepted.capabilities.includes(ROUTED_SELECTION_TEXT_CAPABILITY)) {
+        this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "unnegotiated selection result", true);
+        return;
+      }
+      const pending = connection.pendingSelections.get(message.requestId);
+      if (!pending) return; // A late result from a timed-out/detached request.
+      const request = pending.request;
+      if (
+        message.sessionId !== request.sessionId ||
+        message.activationId !== request.activationId ||
+        message.leaseEpoch !== request.leaseEpoch
+      ) {
+        this.#closeConnection(connection, ROUTED_CLOSE_CODES.PROTOCOL, "selection result binding mismatch", true);
+        return;
+      }
+      clearTimeout(pending.timer);
+      connection.pendingSelections.delete(message.requestId);
+      if (message.error !== undefined)
+        pending.reject(
+          new Error(
+            message.error === "TOO_LARGE"
+              ? "Selection is too large to copy. Select a smaller range."
+              : "Selection copy is unavailable on this terminal host.",
+          ),
+        );
+      else pending.resolve(message.text!);
       return;
     }
     if (message.type === "LegHeartbeatAck") {
@@ -642,6 +735,7 @@ export class RoutedControlTransport {
   #closed(connection: ControlConnection, code: number, reason: string): void {
     if (this.#connections.get(connection.cellBootId) !== connection) return;
     this.#connections.delete(connection.cellBootId);
+    this.#cancelSelections(connection);
     if (connection.heartbeatTimer !== undefined) clearTimeout(connection.heartbeatTimer);
     if (connection.heartbeatDeadlineTimer !== undefined) clearTimeout(connection.heartbeatDeadlineTimer);
     this.#emit({

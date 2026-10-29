@@ -118,3 +118,25 @@ describe("TPv3 routed protocol", () => {
     expect(routedCrc32c(new TextEncoder().encode("123456789"))).toBe(0xe306_9283);
   });
 });
+
+describe("selection-text wire bounds", () => {
+  const identity = { requestId: "copy-1", sessionId: "session-a", activationId: "activation-a", leaseEpoch: 4 };
+  it("accepts absolute history selections and read results only on their proper leg", () => {
+    const body = { ...identity, startColumn: 0, startRow: 160, endColumn: 79, endRow: 170, selectAll: false };
+    const encoded = encodeRoutedMessage("SelectionTextRequest", body);
+    expect(decodeRoutedMessage(encoded, ROUTED_LEG_INBOUND.control).ok).toBe(true);
+    expect(decodeRoutedMessage(encoded, ROUTED_LEG_INBOUND.frames).ok).toBe(false);
+    for (const patch of [{ startRow: -1 }, { endColumn: 65536 }, { endRow: 4294967296 }, { leaseEpoch: 1.5 }])
+      expect(decodeRoutedMessage(JSON.stringify({ type: "SelectionTextRequest", ...body, ...patch })).ok).toBe(false);
+  });
+  it("requires exactly one success or refusal and preserves Unicode", () => {
+    for (const fields of [{ text: "中 é 👩‍💻 🛙X" }, { text: "" }, { error: "UNAVAILABLE" }, { error: "TOO_LARGE" }])
+      expect(decodeRoutedMessage(JSON.stringify({ type: "SelectionTextResult", ...identity, ...fields })).ok).toBe(
+        true,
+      );
+    for (const fields of [{}, { text: "private", error: "UNAVAILABLE" }, { text: null }, { error: "unknown" }])
+      expect(decodeRoutedMessage(JSON.stringify({ type: "SelectionTextResult", ...identity, ...fields })).ok).toBe(
+        false,
+      );
+  });
+});

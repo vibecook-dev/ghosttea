@@ -470,6 +470,15 @@ function TerminalSurfaceSession({
   const focusedRef = useRef(false);
   const [viewId] = useState(() => crypto.randomUUID());
   const [inputFocused, setInputFocused] = useState(false);
+  const [copyError, setCopyError] = useState<string>();
+  useEffect(() => {
+    if (!copyError) return;
+    const timer = setTimeout(() => setCopyError(undefined), 5_000);
+    return () => clearTimeout(timer);
+  }, [copyError]);
+  const reportCopyError = useCallback((error: unknown) => {
+    setCopyError(error instanceof Error ? error.message : "Terminal copy failed. Try again.");
+  }, []);
   const selectionAnchorRef = useRef<CellPoint | null>(null);
   const selectionRef = useRef<{ anchor: CellPoint; focus: CellPoint } | null>(null);
   const selectionAllRef = useRef(false);
@@ -565,9 +574,10 @@ function TerminalSurfaceSession({
       if (availability !== "performed") return availability;
 
       if (effect.type === "copy" && selection) {
+        setCopyError(undefined);
         void terminalRuntime
           .copySelection(session.id, viewId, selection, selectionAllRef.current)
-          .catch((error: unknown) => console.error("[terminal-runtime] clipboard copy failed", error));
+          .catch(reportCopyError);
         return "performed";
       }
       if (effect.type === "select_all") {
@@ -656,7 +666,16 @@ function TerminalSurfaceSession({
       }
       return "unperformed";
     },
-    [interactive, readClipboard, session.handle, session.id, setLocalSelection, terminalRuntime, viewId],
+    [
+      interactive,
+      readClipboard,
+      reportCopyError,
+      session.handle,
+      session.id,
+      setLocalSelection,
+      terminalRuntime,
+      viewId,
+    ],
   );
 
   // Text input is typing: it ends the local selection, as a forwarded key does.
@@ -1047,9 +1066,10 @@ function TerminalSurfaceSession({
         setLocalSelection(null);
         terminalRuntime.setSelection(session.handle, null, viewId);
       } else {
+        setCopyError(undefined);
         void terminalRuntime
           .copySelection(session.id, viewId, selectionRef.current, selectionAllRef.current)
-          .catch((error: unknown) => console.error("[terminal-runtime] clipboard copy failed", error));
+          .catch(reportCopyError);
       }
     }
     pointerModeRef.current = null;
@@ -1137,6 +1157,11 @@ function TerminalSurfaceSession({
 
   return (
     <div className="terminal-surface">
+      {copyError ? (
+        <div className="terminal-operation-error" role="status">
+          {copyError}
+        </div>
+      ) : null}
       <canvas
         ref={canvasRef}
         aria-label={`Terminal session ${session.id}`}

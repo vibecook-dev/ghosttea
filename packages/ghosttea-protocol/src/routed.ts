@@ -455,6 +455,31 @@ export interface RoutedCalibrationPing {
   [key: string]: unknown;
 }
 
+/** Optional, negotiated read on the authenticated control leg. Coordinates
+ * use the terminal's absolute history rows; the cell selects the engine view. */
+export interface RoutedSelectionTextRequest {
+  requestId: string;
+  sessionId: string;
+  activationId: string;
+  leaseEpoch: number;
+  startColumn: number;
+  startRow: number;
+  endColumn: number;
+  endRow: number;
+  selectAll: boolean;
+}
+
+export interface RoutedSelectionTextResult {
+  requestId: string;
+  sessionId: string;
+  activationId: string;
+  leaseEpoch: number;
+  text?: string;
+  error?: "UNAVAILABLE" | "TOO_LARGE";
+}
+
+export const ROUTED_SELECTION_TEXT_CAPABILITY = "selection-text";
+
 export type RoutedMessageBodyMap = {
   ConnectionHello: RoutedConnectionHello;
   ConnectionAccepted: RoutedConnectionAccepted;
@@ -477,6 +502,8 @@ export type RoutedMessageBodyMap = {
   TransportCredit: RoutedTransportCredit;
   SceneApplied: RoutedSceneApplied;
   CalibrationPing: RoutedCalibrationPing;
+  SelectionTextRequest: RoutedSelectionTextRequest;
+  SelectionTextResult: RoutedSelectionTextResult;
 };
 
 export type RoutedMessageType = keyof RoutedMessageBodyMap;
@@ -506,6 +533,8 @@ export const ROUTED_MESSAGE_TYPES = [
   "TransportCredit",
   "SceneApplied",
   "CalibrationPing",
+  "SelectionTextRequest",
+  "SelectionTextResult",
 ] as const satisfies readonly RoutedMessageType[];
 
 export const ROUTED_LEG_INBOUND = {
@@ -517,6 +546,7 @@ export const ROUTED_LEG_INBOUND = {
     "ClaimGeometry",
     "ReleaseGeometry",
     "TransferGeometry",
+    "SelectionTextRequest",
   ],
   frames: ["ConnectionHello", "LegHeartbeat", "AttachFramesLeg", "TransportCredit", "SceneApplied", "CalibrationPing"],
 } as const satisfies Readonly<Record<RoutedTransportChannel, readonly RoutedMessageType[]>>;
@@ -532,6 +562,7 @@ export const ROUTED_LEG_OUTBOUND = {
     "CellActivationStatus",
     "GeometryCommitted",
     "GeometryRefused",
+    "SelectionTextResult",
   ],
   frames: ["ConnectionAccepted", "ConnectionRefused", "LegHeartbeatAck", "FramesLegAttached", "AttachRefused"],
 } as const satisfies Readonly<Record<RoutedTransportChannel, readonly RoutedMessageType[]>>;
@@ -742,6 +773,29 @@ function hasActivation(record: Record<string, unknown>): boolean {
 
 function validateRoutedBody(type: RoutedMessageType, body: Record<string, unknown>): boolean {
   switch (type) {
+    case "SelectionTextRequest":
+    case "SelectionTextResult": {
+      if (
+        !isNonEmptyString(body.requestId) ||
+        body.requestId.length > 64 ||
+        !isNonEmptyString(body.sessionId) ||
+        body.sessionId.length > 256 ||
+        !isNonEmptyString(body.activationId) ||
+        body.activationId.length > 256 ||
+        !isCounter(body.leaseEpoch)
+      )
+        return false;
+      if (type === "SelectionTextResult")
+        return (
+          (typeof body.text === "string" && body.error === undefined) ||
+          (body.text === undefined && (body.error === "UNAVAILABLE" || body.error === "TOO_LARGE"))
+        );
+      return (
+        [body.startColumn, body.endColumn].every((value) => isCounter(value) && value <= 65_535) &&
+        [body.startRow, body.endRow].every((value) => isCounter(value) && value <= 4_294_967_295) &&
+        typeof body.selectAll === "boolean"
+      );
+    }
     case "ConnectionHello":
       return (
         isCounter(body.protocolMajor) &&

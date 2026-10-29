@@ -188,6 +188,7 @@ interface ViewRuntimeState {
   visible: boolean;
   inputSequence: number;
   resizeSequence: number;
+  copySequence?: number;
   controlEpoch: number | undefined;
   desiredCols: number | undefined;
   desiredRows: number | undefined;
@@ -3324,7 +3325,39 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   async copySelection(sessionId: string, viewId: string, selection: CellSelection, selectAll = false): Promise<string> {
     await this.connect();
-    if (this.#routedHost) return "";
+    if (this.#routedHost) {
+      const view = this.#views.get(viewId);
+      const entry = this.#routedBySession.get(sessionId);
+      if (!view || view.sessionId !== sessionId || !entry?.state.controlAttached || !entry.viewIds.has(viewId))
+        return "";
+      const activationId = entry.state.activationId;
+      const copySequence = (view.copySequence ?? 0) + 1;
+      view.copySequence = copySequence;
+      const text = await this.#routedControl!.selectionText(activationId, {
+        startColumn: selection.anchor.column,
+        startRow: selection.anchor.row,
+        endColumn: selection.focus.column,
+        endRow: selection.focus.row,
+        selectAll,
+      }).catch((error: unknown) => {
+        // A superseded refusal must not replace feedback from a newer copy.
+        if (view.copySequence !== copySequence) return "";
+        throw error;
+      });
+      // A delayed answer must not overwrite the clipboard after its pane was
+      // closed, moved, or attached to a replacement activation.
+      if (
+        this.#disposed ||
+        this.#views.get(viewId) !== view ||
+        view.copySequence !== copySequence ||
+        !entry.viewIds.has(viewId) ||
+        this.#routedBySession.get(sessionId) !== entry ||
+        entry.state.activationId !== activationId
+      )
+        return "";
+      if (text) this.#platform.writeClipboard(text);
+      return text;
+    }
     const view = this.#views.get(viewId);
     if (!view || view.sessionId !== sessionId) return "";
     // A frozen replica stays copyable: offline the daemon answers from the

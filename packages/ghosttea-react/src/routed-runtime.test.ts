@@ -157,16 +157,23 @@ interface RoutedSeatHarness {
 
 /** One routed session ("session-a", handle "11", client "window-1") with its control leg attached. */
 async function routedSeat(
-  options: { views?: string[]; rights?: string[]; attach?: boolean } = {},
+  options: {
+    views?: string[];
+    rights?: string[];
+    attach?: boolean;
+    capabilities?: string[];
+    copy?: (text: string) => void;
+  } = {},
 ): Promise<RoutedSeatHarness> {
   vi.stubGlobal("window", globalThis);
   const worker = new FakeWorker();
   const socket = new FakeSocket();
   const runtime = new GhostteaTerminalRuntime({
     transport: "routed",
+    capabilities: options.capabilities ?? ["resume"],
     host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
     platform: {
-      writeClipboard: () => undefined,
+      writeClipboard: options.copy ?? (() => undefined),
       forceCanvasFallback: () => false,
       setForceCanvasFallback: () => undefined,
       reload: () => undefined,
@@ -187,7 +194,7 @@ async function routedSeat(
       legGeneration: 1,
       heartbeatTtlMs: 15_000,
       protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
-      capabilities: ["resume"],
+      capabilities: options.capabilities ?? ["resume"],
     }),
   );
   const attach = JSON.parse(socket.sent.at(-1)!) as SentMessage & { activationId: string };
@@ -2097,5 +2104,82 @@ describe("focus and the routed geometry seat (TP-R4)", () => {
     } finally {
       seat.runtime.dispose();
     }
+  });
+});
+
+describe("routed selection clipboard ownership", () => {
+  it("discards an older refusal after a newer copy succeeds", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const selection = { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } };
+    const first = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request1 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    const second = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request2 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request2, type: "SelectionTextResult", text: "newest" }));
+    await expect(second).resolves.toBe("newest");
+    f.socket.receive(JSON.stringify({ ...request1, type: "SelectionTextResult", error: "UNAVAILABLE" }));
+    await expect(first).resolves.toBe("");
+    expect(copied).toEqual(["newest"]);
+    f.runtime.dispose();
+  });
+  it("keeps the newest copy and preserves the clipboard for empty selections", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const selection = { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } };
+    const first = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request1 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    const second = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request2 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request2, type: "SelectionTextResult", text: "newest" }));
+    await expect(second).resolves.toBe("newest");
+    f.socket.receive(JSON.stringify({ ...request1, type: "SelectionTextResult", text: "older" }));
+    await expect(first).resolves.toBe("");
+    const empty = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request3 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request3, type: "SelectionTextResult", text: "" }));
+    await expect(empty).resolves.toBe("");
+    expect(copied).toEqual(["newest"]);
+    f.runtime.dispose();
+  });
+  it("copies a read-only pane without acquiring input or geometry", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({
+      rights: ["read"],
+      capabilities: ["selection-text"],
+      copy: (text) => copied.push(text),
+    });
+    const pending = f.runtime.copySelection(
+      "session-a",
+      "view-a",
+      { anchor: { column: 0, row: 0 }, focus: { column: 79, row: 159 } },
+      true,
+    );
+    await flush();
+    const request = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    expect(request.type).toBe("SelectionTextRequest");
+    f.socket.receive(JSON.stringify({ ...request, type: "SelectionTextResult", text: "中 é 👩‍💻 🛙X" }));
+    await expect(pending).resolves.toBe("中 é 👩‍💻 🛙X");
+    expect(copied).toEqual(["中 é 👩‍💻 🛙X"]);
+    expect(f.verbs()).toEqual([]);
+    f.runtime.dispose();
+  });
+  it("does not overwrite the clipboard when the runtime closes before a response", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const pending = expect(
+      f.runtime.copySelection("session-a", "view-a", { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } }),
+    ).rejects.toThrow();
+    await flush();
+    const request = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.runtime.dispose();
+    f.socket.receive(JSON.stringify({ ...request, type: "SelectionTextResult", text: "late" }));
+    await pending;
+    expect(copied).toEqual([]);
   });
 });
