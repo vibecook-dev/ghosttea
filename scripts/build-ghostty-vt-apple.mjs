@@ -73,6 +73,8 @@ const args = [
   `-j${lock.builder.zigBuildJobs}`,
   "--cache-dir",
   join(output, "cache"),
+  "--pkg-dir",
+  join(output, lock.builder.zigPackageDirectory),
   "--prefix",
   install,
   "-Demit-lib-vt",

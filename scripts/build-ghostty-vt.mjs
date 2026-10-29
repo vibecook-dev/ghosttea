@@ -53,6 +53,8 @@ function zigArguments(resolve) {
     `-j${lock.builder.zigBuildJobs}`,
     "--cache-dir",
     resolve("cache"),
+    "--pkg-dir",
+    resolve(lock.builder.zigPackageDirectory),
     "--prefix",
     resolve("install"),
     "-Demit-lib-vt",
