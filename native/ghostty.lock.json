@@ -34,10 +34,16 @@
       "developerDirectory": "/Applications/Xcode_26.6.app/Contents/Developer",
       "xcodeVersion": "26.6",
       "xcodeBuild": "17F113",
-      "stripFlags": ["-S"]
+      "stripFlags": [
+        "-S"
+      ]
     },
     "zigOptimize": "fast",
-    "zigPackageDirectory": "packages"
+    "zigPackageDirectory": "packages",
+    "windowsPkgConfig": {
+      "package": "pkgconfiglite",
+      "version": "0.28"
+    }
   },
   "targets": {
     "aarch64-apple-darwin": {
