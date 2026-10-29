@@ -26,7 +26,7 @@ use crate::{
     FrameHub, ipc, mesh, session,
     session::{
         AutomationInputOperation, ExitCallback, KeyInput, MouseInput, Persistence, Session,
-        SpawnOptions, TerminationSource,
+        SessionMetadata, SpawnOptions, TerminationSource,
     },
     tunnel_protocol,
 };
@@ -43,7 +43,7 @@ const MAX_CLOSED_OWNER_TOMBSTONES: usize = 16_384;
 const CLOSED_OWNER_BLOOM_BITS: usize = 1 << 23;
 const CLOSED_OWNER_BLOOM_HASHES: u64 = 4;
 const CONTROL_PROTOCOL_MAJOR: u16 = 1;
-const CONTROL_PROTOCOL_MINOR: u16 = 16;
+const CONTROL_PROTOCOL_MINOR: u16 = 17;
 const ACTIVITY_EVENT_PROTOCOL_MINOR: u16 = 6;
 const EVENTS_LOST_PROTOCOL_MINOR: u16 = 8;
 const SESSION_CREATED_PROTOCOL_MINOR: u16 = 9;
@@ -77,6 +77,15 @@ const SESSION_OWNER_TRANSFER_PROTOCOL_MINOR: u16 = 14;
 const SESSION_SCROLLBACK_PROTOCOL_MINOR: u16 = 15;
 /// Structured control-error metadata. Reserved independently of landing order.
 const STRUCTURED_ERROR_PROTOCOL_MINOR: u16 = 16;
+/// `session-metadata-changed`: a session's working directory or title changed.
+///
+/// Before it, a reader learned of a shell's `cd` only at its next
+/// `list-sessions`, because an OSC 7 rewrote the summary silently. The event
+/// carries both fields every time, as absolute state, and fires only when one
+/// of them differs: never for a resize, and never for the identical OSC 7 most
+/// prompts send each time they draw. It is a hint; `list-sessions` stays the
+/// reconciliation path, as it is after `events-lost`.
+const METADATA_EVENT_PROTOCOL_MINOR: u16 = 17;
 // A gate above the advertised minor would be unreachable: no client could ever
 // negotiate high enough to receive the event it guards.
 const _: () = assert!(SESSION_CREATED_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
@@ -89,6 +98,7 @@ const _: () = assert!(CONTROL_REVISION_CAS_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MI
 const _: () = assert!(SESSION_OWNER_TRANSFER_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(SESSION_SCROLLBACK_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(STRUCTURED_ERROR_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
+const _: () = assert!(METADATA_EVENT_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const ACTIVITY_SAMPLE_INTERVAL: Duration = Duration::from_millis(200);
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// How long an accepted connection may take to present its token before the
@@ -104,12 +114,24 @@ fn client_accepts_event(event: &Value, protocol_minor: u16) -> bool {
     match event.get("type").and_then(Value::as_str) {
         Some("session-activity-changed") => protocol_minor >= ACTIVITY_EVENT_PROTOCOL_MINOR,
         Some("session-created") => protocol_minor >= SESSION_CREATED_PROTOCOL_MINOR,
+        Some("session-metadata-changed") => protocol_minor >= METADATA_EVENT_PROTOCOL_MINOR,
         Some("config-changed") => protocol_minor >= CONFIG_EVENT_PROTOCOL_MINOR,
         Some("remote-session-state-changed" | "view-state-changed" | "control-state") => {
             protocol_minor >= REMOTE_LIFECYCLE_PROTOCOL_MINOR
         }
         _ => true,
     }
+}
+
+/// The `session-metadata-changed` event for one session, local or replica.
+fn metadata_event(session_id: &str, metadata: &SessionMetadata) -> Value {
+    json!({
+        "requestId": 0,
+        "type": "session-metadata-changed",
+        "sessionId": session_id,
+        "cwd": metadata.cwd,
+        "title": metadata.title,
+    })
 }
 
 /// Rewrite a broadcast event into the form this client can actually read, or
@@ -1433,6 +1455,7 @@ impl TerminalService {
             .unwrap_or_else(|| Arc::new(mesh::NoRemoteRuntime));
         let mut remote_control_states = mesh_runtime.subscribe_control_state();
         let mut remote_activities = mesh_runtime.subscribe_activity();
+        let mut remote_metadata = mesh_runtime.subscribe_metadata();
         let mut remote_lifecycles = mesh_runtime.subscribe_lifecycle();
         let mut remote_view_states = mesh_runtime.subscribe_view_state();
         let remote_events = event_tx.clone();
@@ -1499,6 +1522,25 @@ impl TerminalService {
                             "activity": changed.activity,
                         }));
                     }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }));
+        let remote_metadata_events = event_tx.clone();
+        let _remote_metadata_task = TaskGuard(tokio::spawn(async move {
+            loop {
+                match remote_metadata.recv().await {
+                    Ok(changed) => {
+                        let metadata = SessionMetadata {
+                            cwd: changed.cwd,
+                            title: changed.title,
+                        };
+                        let _ = remote_metadata_events
+                            .send(metadata_event(&changed.session_id, &metadata));
+                    }
+                    // The runtime's per-replica relay re-reads on its own lag;
+                    // a lag here loses hints that list-sessions still answers.
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
@@ -2189,6 +2231,7 @@ async fn create_local_session(
     let lifecycle_on_exit = context.lifecycle_tx.clone();
     let (session_exit_tx, mut control_exit) = watch::channel(false);
     let mut activity_exit = session_exit_tx.subscribe();
+    let mut metadata_exit = session_exit_tx.subscribe();
     let on_exit: ExitCallback = Arc::new(move |session_id, exit| {
         session_exit_tx.send_replace(true);
         let removed = {
@@ -2266,12 +2309,16 @@ async fn create_local_session(
     let summary = session.summary();
     let mut controls = session.subscribe_control();
     let mut activities = session.subscribe_activity();
+    let mut metadata_changes = session.subscribe_metadata();
     let control_session_id = summary.id.clone();
     let activity_session_id = summary.id.clone();
+    let metadata_session_id = summary.id.clone();
     let control_events = context.event_tx.clone();
     let activity_events = context.event_tx.clone();
+    let metadata_events = context.event_tx.clone();
     let control_session = Arc::downgrade(&session);
     let activity_session = Arc::downgrade(&session);
+    let metadata_session = Arc::downgrade(&session);
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -2343,6 +2390,31 @@ async fn create_local_session(
                 "sessionId": activity_session_id,
                 "activity": activity,
             }));
+        }
+    });
+    tokio::spawn(async move {
+        loop {
+            let metadata = tokio::select! {
+                changed = metadata_exit.changed() => {
+                    if changed.is_err() || *metadata_exit.borrow() {
+                        break;
+                    }
+                    continue;
+                }
+                metadata = metadata_changes.recv() => match metadata {
+                    Ok(metadata) => metadata,
+                    // A lagged reader is owed the current state, not the
+                    // changes it missed: the event is absolute.
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        let Some(session) = metadata_session.upgrade() else {
+                            break;
+                        };
+                        session.metadata()
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                },
+            };
+            let _ = metadata_events.send(metadata_event(&metadata_session_id, &metadata));
         }
     });
 
@@ -5263,6 +5335,40 @@ mod protocol_tests {
             &created,
             SESSION_CREATED_PROTOCOL_MINOR
         ));
+    }
+
+    /// A client that fixed its expectations at minor 16 never hears of a directory
+    /// change; one that negotiated 17 does.
+    #[test]
+    fn metadata_events_reach_only_clients_that_negotiated_them() {
+        let changed = json!({ "type": "session-metadata-changed" });
+        assert_eq!(METADATA_EVENT_PROTOCOL_MINOR, 17);
+        assert!(!client_accepts_event(&changed, 16));
+        assert!(client_accepts_event(&changed, 17));
+        assert!(client_accepts_event(&changed, CONTROL_PROTOCOL_MINOR));
+    }
+
+    /// Both fields travel every time, so a reader replaces what it holds; an
+    /// absent value is an explicit null rather than a missing key.
+    #[test]
+    fn metadata_events_carry_the_directory_and_title_as_absolute_state() {
+        let event = metadata_event(
+            "session-1",
+            &SessionMetadata {
+                cwd: Some("file://localhost/tmp".into()),
+                title: None,
+            },
+        );
+        assert_eq!(
+            event,
+            json!({
+                "requestId": 0,
+                "type": "session-metadata-changed",
+                "sessionId": "session-1",
+                "cwd": "file://localhost/tmp",
+                "title": null,
+            })
+        );
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use fontdb::{Database, Family, ID, Query, Source as FontSource, Stretch, Style, Weight};
-use harfbuzz_rs::{Face, Font, UnicodeBuffer, shape};
+use harfrust::{Buffer, ShapeOptions, ShaperFont, shape};
 use swash::{
     FontRef,
     scale::{Render, ScaleContext, Source, StrikeWith, image::Content},
@@ -201,6 +201,18 @@ struct LoadedFace {
     id: u32,
     index: u32,
     data: Arc<dyn AsRef<[u8]> + Send + Sync>,
+    /// The face as harfrust reads it, parsed once per loaded face and shared by every run.
+    /// `None` when read-fonts rejects the bytes; see [`shape_glyphs`].
+    shaping: Option<harfrust::Font>,
+}
+
+/// One shaped glyph, positioned in 26.6 pixels.
+struct ShapedGlyph {
+    glyph_id: u32,
+    cluster: u32,
+    x_advance: i32,
+    x_offset: i32,
+    y_offset: i32,
 }
 
 #[derive(Clone, Copy)]
@@ -689,27 +701,15 @@ impl TextEngine {
         let byte_end = last.byte_start + last.text.len();
         let run_text = &full_text[first.byte_start..byte_end];
         let loaded = self.load_face(face_id)?;
-        let face = Face::from_bytes(loaded.data.as_ref().as_ref(), loaded.index);
-        let mut font = Font::new(face);
-        font.set_scale(
+        let shaped = shape_glyphs(
+            loaded.shaping.as_ref(),
+            run_text,
+            graphemes
+                .iter()
+                .map(|grapheme| (grapheme.byte_start - first.byte_start) as u32),
             (metrics.font_size_px * 64.0).round() as i32,
-            (metrics.font_size_px * 64.0).round() as i32,
-        );
-        font.set_ppem(
-            metrics.font_size_px.round() as u32,
-            metrics.font_size_px.round() as u32,
-        );
-        let buffer = UnicodeBuffer::new()
-            .add_str(run_text)
-            .guess_segment_properties();
-        let shaped = shape(&font, buffer, &[]);
-        let infos = shaped.get_glyph_infos();
-        let positions = shaped.get_glyph_positions();
-        let natural_width = positions
-            .iter()
-            .map(|position| position.x_advance)
-            .sum::<i32>() as f32
-            / 64.0;
+        )?;
+        let natural_width = shaped.iter().map(|glyph| glyph.x_advance).sum::<i32>() as f32 / 64.0;
         let target_cells = graphemes
             .iter()
             .map(|grapheme| grapheme.cell_span as u32)
@@ -722,11 +722,11 @@ impl TextEngine {
         };
         let mut pen_x = first.cell_start as f32 * metrics.cell_width_px;
 
-        let mut cluster_starts: Vec<u32> = infos.iter().map(|info| info.cluster).collect();
+        let mut cluster_starts: Vec<u32> = shaped.iter().map(|glyph| glyph.cluster).collect();
         cluster_starts.sort_unstable();
         cluster_starts.dedup();
-        for (info, position) in infos.iter().zip(positions) {
-            let cluster = info.cluster as usize;
+        for glyph in &shaped {
+            let cluster = glyph.cluster as usize;
             let grapheme_index = graphemes
                 .iter()
                 .rposition(|grapheme| grapheme.byte_start - first.byte_start <= cluster)
@@ -735,7 +735,7 @@ impl TextEngine {
             let next_cluster = cluster_starts
                 .iter()
                 .copied()
-                .find(|candidate| *candidate > info.cluster)
+                .find(|candidate| *candidate > glyph.cluster)
                 .map(|value| value as usize);
             let cluster_end_cell = next_cluster
                 .and_then(|byte| {
@@ -746,12 +746,12 @@ impl TextEngine {
                 .map(|grapheme| grapheme.cell_start)
                 .unwrap_or_else(|| last.cell_start.saturating_add(last.cell_span));
             let cluster_span = cluster_end_cell.saturating_sub(cluster_cell_start).max(1);
-            if let Some((glyph_id, definition)) = self.rasterize(&loaded, info.codepoint, style)? {
+            if let Some((glyph_id, definition)) = self.rasterize(&loaded, glyph.glyph_id, style)? {
                 let x = pen_x
-                    + position.x_offset as f32 / 64.0 * run_scale_x
+                    + glyph.x_offset as f32 / 64.0 * run_scale_x
                     + definition.bearing_x as f32 / raster_scale * run_scale_x;
                 let y = metrics.baseline_px
-                    - position.y_offset as f32 / 64.0
+                    - glyph.y_offset as f32 / 64.0
                     - definition.bearing_y as f32 / raster_scale;
                 output.push(GlyphInstance {
                     glyph_id,
@@ -765,7 +765,7 @@ impl TextEngine {
                 });
                 used_definitions.insert(glyph_id);
             }
-            pen_x += position.x_advance as f32 / 64.0 * run_scale_x;
+            pen_x += glyph.x_advance as f32 / 64.0 * run_scale_x;
         }
         Ok(())
     }
@@ -778,6 +778,7 @@ impl TextEngine {
             let face = LoadedFace {
                 id: self.next_face_id,
                 index,
+                shaping: harfrust::Font::new(Arc::clone(&data), index),
                 data,
             };
             self.next_face_id = self
@@ -794,6 +795,7 @@ impl TextEngine {
             id: face.id,
             index: face.index,
             data: Arc::clone(&face.data),
+            shaping: face.shaping.clone(),
         }))
     }
 
@@ -884,6 +886,47 @@ impl TextEngine {
         self.glyphs.insert(id, definition.clone());
         Ok(Some((id, definition)))
     }
+}
+
+/// Shapes one run with harfrust at `scale_26_6`.
+///
+/// A face read-fonts cannot read shapes the way HarfBuzz shaped an unreadable face: `.notdef`
+/// at half an em, here one per grapheme, which the caller fits to the run's cells like any
+/// other run.
+fn shape_glyphs(
+    font: Option<&harfrust::Font>,
+    text: &str,
+    grapheme_starts: impl Iterator<Item = u32>,
+    scale_26_6: i32,
+) -> Result<Vec<ShapedGlyph>> {
+    let Some(font) = font else {
+        return Ok(grapheme_starts
+            .map(|cluster| ShapedGlyph {
+                glyph_id: 0,
+                cluster,
+                x_advance: scale_26_6 / 2,
+                x_offset: 0,
+                y_offset: 0,
+            })
+            .collect());
+    };
+    let shaper = ShaperFont::new(font).with_scale(scale_26_6);
+    let mut buffer = Buffer::new();
+    buffer.push_str(text);
+    buffer.guess_segment_properties();
+    shape(&shaper, &mut buffer, ShapeOptions::new()).context("shape a text run")?;
+    Ok(buffer
+        .glyph_infos()
+        .iter()
+        .zip(buffer.glyph_positions())
+        .map(|(info, position)| ShapedGlyph {
+            glyph_id: info.glyph_id,
+            cluster: info.cluster,
+            x_advance: position.x_advance,
+            x_offset: position.x_offset,
+            y_offset: position.y_offset,
+        })
+        .collect())
 }
 
 fn validate_configuration(metrics: TextMetrics, raster_scale: f32) -> Result<()> {
@@ -1188,6 +1231,18 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.font_mode, "bundled");
         assert_eq!(first.faces.len(), 1);
+    }
+
+    #[test]
+    fn an_unreadable_face_shapes_one_notdef_per_grapheme() {
+        let glyphs = shape_glyphs(None, "e\u{301} 界", [0, 3, 4].into_iter(), 832).unwrap();
+        assert_eq!(
+            glyphs
+                .iter()
+                .map(|glyph| (glyph.glyph_id, glyph.cluster, glyph.x_advance))
+                .collect::<Vec<_>>(),
+            [(0, 0, 416), (0, 3, 416), (0, 4, 416)]
+        );
     }
 
     #[test]

@@ -37,6 +37,8 @@ export {
   resolveKeyEvent,
   routeBindingAction,
   routeConsumesInput,
+  bindingKeyDisposition,
+  type BindingKeyDisposition,
   type GhostteaBindingAction,
   type GhostteaExtensionAction,
   type GhosttyAction,

@@ -41,14 +41,15 @@ export {
 } from "./ghostty-triggers.js";
 
 export {
+  bindingKeyDisposition,
   platformEffectFromAction,
   resolveKeyEvent,
   routeBindingAction,
   routeConsumesInput,
   terminalEffectFromAction,
-  terminalEffectShouldConsume,
   workspaceEffectFromAction,
   workspaceEffectFromGhosttyAction,
+  type BindingKeyDisposition,
   type PlatformEffect,
   type ResolveKeyEventOptions,
   type RoutedAction,

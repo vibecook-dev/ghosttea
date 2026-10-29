@@ -61,7 +61,7 @@ npm run dev   # build:sdk, then the Electron demo (apps/desktop, workspace "ghos
 PTY
 → ghosttead session
 → libghostty-vt state
-→ damaged rows shaped natively (ghosttea-text: fontdb + harfbuzz + swash)
+→ damaged rows shaped natively (ghosttea-text: fontdb + harfrust + swash)
 → TRF1 frame
 → frame socket
 → Electron utility process (ghosttea-electron bridge)
@@ -94,7 +94,7 @@ On macOS and Linux they are Unix sockets. On Windows they are named pipes with a
   - It looks for the library in this order: `GHOSTTY_VT_PREFIX`, `GHOSTTEA_GHOSTTY_VT_BUNDLE`, `native/build/ghostty`, then a verified download. `GHOSTTEA_GHOSTTY_VT_OFFLINE=1` forbids the download.
   - Ghostty itself is pinned by `native/ghostty.lock.json` and `native/patches/`.
 - `ghosttea-config`: Ghostty configuration compatibility, checked against Ghostty v1.3.1's key schema (`native/ghostty-config.lock.json`). It adds one extension key, `ghosttea-light-adaptation`.
-- `ghosttea-truffle`: the mesh adapter. It uses QUIC port 9420 between desktops and the compact Apple-client port 9421. Every crate sharing the host's Truffle node must resolve exactly `truffle-core =0.7.19`.
+- `ghosttea-truffle`: the mesh adapter. It uses QUIC port 9420 between desktops and the compact Apple-client port 9421. Every crate sharing the host's Truffle node must resolve exactly `truffle-core =0.7.23`.
 - `ghosttea-ffi` (C ABI v1, `include/ghosttea.h`) and `ghosttea-font-fixture-ffi`: folded into the single static library `ghosttea-apple-ffi` for iOS.
 
 **TypeScript (`packages/`)**
@@ -149,8 +149,8 @@ Rules in the renderer:
 See `PUBLISHING.md`. In outline, on a `release/X.Y.Z` branch:
 
 1. Commit `release: X.Y.Z` and push the branch. The commit is a pure version bump across the manifests, `Cargo.lock`, `package-lock.json` and the regenerated iOS inventory, plus a dated `CHANGELOG.md` section.
-2. Wait for the pin. The bump moves the native source digest, so the push's run of `ghosttea-apple-native-artifact.yml` builds, publishes and pins the iOS artifact. It commits `release: pin X.Y.Z Apple native artifact` as github-actions[bot] and starts the desktop and iOS gates for that commit itself; a push made with `GITHUB_TOKEN` triggers no workflows.
-3. Merge the PR. Auto-merge is enabled for the repository (`gh pr merge --auto --merge`), but it waits only for the required `verify` and `windows` checks. Also confirm the dispatched iOS hardening run and the artifact workflow's `pin` job.
+2. Wait for the pin, then open the PR. The bump moves the native source digest, so the push's run of `ghosttea-apple-native-artifact.yml` builds, publishes and pins the iOS artifact, committing `release: pin X.Y.Z Apple native artifact` as github-actions[bot] (about 20 minutes). Open the release PR after that commit lands, and its checks run on it. GitHub holds a PR's workflow runs for a commit github-actions pushed until a maintainer approves them, so a PR opened before the pin needs "Approve and run workflows" on it; the `pin` job's summary says so.
+3. Merge the PR. Auto-merge is enabled for the repository (`gh pr merge --auto --merge`), but it waits only for the required `verify` and `windows` checks. Also confirm the PR's iOS hardening and `audit-published` runs.
 4. Push a signed `vX.Y.Z` tag on the merge commit.
 
 `publish-release.yml` then waits for main's push run of `desktop-release-gates.yml` on that commit instead of repeating it, while the validate jobs build the binaries. It publishes the crates and npm packages through OIDC trusted publishing and creates the GitHub release. `smoke-published.yml` then installs what shipped. A tag on an older line's branch, or on a commit main did not pass, runs the desktop gate in the release workflow itself.

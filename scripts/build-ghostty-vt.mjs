@@ -63,7 +63,22 @@ function zigArguments(resolve) {
     "-Doptimize=ReleaseFast",
     `-Dtarget=${config.zigTarget}`,
     `-Dcpu=${config.zigCpu}`,
+    ...msvcRuntimeArguments(),
   ];
+}
+
+/**
+ * The C runtime an MSVC target's C and C++ objects are compiled for. Every
+ * object in one link must agree, and a Rust consumer links the dynamic runtime
+ * unless its target enables `crt-static`, so each runtime is its own target:
+ * ghosttea-vt-sys picks the one its build links.
+ */
+function msvcRuntimeArguments() {
+  if (!config.zigTarget.endsWith("-msvc")) return [];
+  if (!["dll", "static"].includes(config.msvcRuntime)) {
+    throw new Error(`${target} must declare msvcRuntime "dll" or "static" in ghostty.lock.json`);
+  }
+  return [`-Dmsvc-runtime=${config.msvcRuntime}`];
 }
 
 /**

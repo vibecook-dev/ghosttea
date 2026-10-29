@@ -35,7 +35,7 @@ remaining product integration work are recorded in
 
 Phase 9 release inputs are tracked in a deterministic CycloneDX inventory.
 [`Compatibility/release-hardening.md`](Compatibility/release-hardening.md)
-defines its direct/static and 83-crate Apple-target scope, exact drift check,
+defines its direct/static and 89-crate Apple-target scope, exact drift check,
 reviewed compiler lock, independent CI schema validation, fail-closed SSH
 approval gate, and accepted release-only deferrals. Those deferrals keep their
 release gates active while implementation continues.
@@ -43,7 +43,7 @@ release gates active while implementation continues.
 maps the measured desktop/native rendering and Truffle optimizations onto the
 Swift retained-state, Metal, atlas, and Apple compact-stream paths. The
 production app bundles the byte-identical BOM and a
-94-component human-readable notice assembled from 93 exact license documents;
+105-component human-readable notice assembled from 94 exact license documents;
 its archive verifier checks both resources before accepting the artifact. It
 also emits deterministic source/lock, archive/app/dSYM, executable UUID,
 signature, and checksum evidence. The same validator safely extracts an

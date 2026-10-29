@@ -29,7 +29,7 @@ use ghosttea_config::DEFAULT_SCROLLBACK_BYTES;
 use ghosttea_core::{
     AttachRejection, ClipboardRequest, ControlChanged, ControlClaim, ControlSnapshot,
     ControllerState, InputOrderState, LogicalTerminalSnapshot, RenderRequest, ResumeEvidence,
-    StateStreamCancel, TakeOver, TakeOverRequest, TerminalEffect, TerminalModel,
+    StateStreamCancel, TakeOver, TakeOverRequest, TerminalEffect, TerminalMetadata, TerminalModel,
     TerminalModelOptions, TerminalRuntime, TerminalSelection, TerminalUpdate, ViewAccess,
     ViewAuthority,
 };
@@ -458,6 +458,28 @@ pub struct SessionSummary {
     pub activity: SessionActivity,
 }
 
+/// A session's working directory and title: what `session-metadata-changed`
+/// reports.
+///
+/// The two travel together as absolute state, so a reader replaces what it
+/// holds instead of merging partial updates. Geometry is left out: the terminal
+/// reports a resize in the same effect, and a reader of the working directory
+/// learns nothing from one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionMetadata {
+    pub cwd: Option<String>,
+    pub title: Option<String>,
+}
+
+impl SessionMetadata {
+    pub(crate) fn of(summary: &SessionSummary) -> Self {
+        Self {
+            cwd: summary.cwd.clone(),
+            title: summary.title.clone(),
+        }
+    }
+}
+
 /// Why a session ended, decided once — at the moment it left the registry.
 ///
 /// The distinction is only truthful if it is computed at a single choke point:
@@ -828,6 +850,7 @@ pub struct Session {
     control_tx: broadcast::Sender<ControlChanged>,
     control_state_tx: broadcast::Sender<ControlSnapshot>,
     activity_tx: broadcast::Sender<SessionActivity>,
+    metadata_tx: broadcast::Sender<SessionMetadata>,
     program_kind: ResolvedProgramKind,
 }
 
@@ -1441,6 +1464,7 @@ impl Session {
         let (control_tx, _) = broadcast::channel(16);
         let (control_state_tx, _) = broadcast::channel(16);
         let (activity_tx, _) = broadcast::channel(16);
+        let (metadata_tx, _) = broadcast::channel(16);
         let runtime = Arc::new(TerminalRuntime::from_shared_text_engine(text_engine));
         let mut model = TerminalModel::new(
             runtime,
@@ -1509,6 +1533,7 @@ impl Session {
             control_tx,
             control_state_tx,
             activity_tx,
+            metadata_tx,
             program_kind,
         });
         let _ = session.sample_activity();
@@ -1783,13 +1808,7 @@ impl Session {
                         replies.extend(bytes);
                     }
                 }
-                TerminalEffect::MetadataChanged(metadata) => {
-                    let mut summary = self.summary.lock().unwrap();
-                    summary.cols = metadata.cols;
-                    summary.rows = metadata.rows;
-                    summary.title = metadata.title;
-                    summary.cwd = metadata.cwd;
-                }
+                TerminalEffect::MetadataChanged(metadata) => self.apply_metadata(metadata),
                 TerminalEffect::Bell => {
                     let mut summary = self.summary.lock().unwrap();
                     summary.bell_count = summary.bell_count.saturating_add(1);
@@ -1874,6 +1893,39 @@ impl Session {
         let _ = self
             .activity_tx
             .send(self.summary.lock().unwrap().activity.clone());
+    }
+
+    /// Record the terminal's metadata in the summary, and announce the working
+    /// directory and title only when one of them changed.
+    ///
+    /// The core reports geometry in the same effect, and most prompts send an
+    /// identical OSC 7 every time they draw; neither is news to a reader. The
+    /// announcement leaves under `model_operation`, so it keeps the order of the
+    /// output that caused it.
+    fn apply_metadata(&self, metadata: TerminalMetadata) {
+        let changed = {
+            let mut summary = self.summary.lock().unwrap();
+            let previous = SessionMetadata::of(&summary);
+            summary.cols = metadata.cols;
+            summary.rows = metadata.rows;
+            summary.title = metadata.title;
+            summary.cwd = metadata.cwd;
+            let next = SessionMetadata::of(&summary);
+            (next != previous).then_some(next)
+        };
+        if let Some(next) = changed {
+            let _ = self.metadata_tx.send(next);
+        }
+    }
+
+    pub fn subscribe_metadata(&self) -> broadcast::Receiver<SessionMetadata> {
+        self.metadata_tx.subscribe()
+    }
+
+    /// The working directory and title as the summary holds them now: what a
+    /// subscriber that lagged re-reads.
+    pub fn metadata(&self) -> SessionMetadata {
+        SessionMetadata::of(&self.summary.lock().unwrap())
     }
 
     pub fn selection_text(
@@ -2981,6 +3033,163 @@ mod tests {
             session.has_exited(),
             "termination must bypass a blocked input actor"
         );
+    }
+
+    #[cfg(unix)]
+    fn shell_session(script: &str) -> Arc<Session> {
+        Session::spawn(
+            SpawnOptions {
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), script.into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap()
+    }
+
+    #[cfg(unix)]
+    fn next_metadata(changes: &mut broadcast::Receiver<SessionMetadata>) -> SessionMetadata {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match changes.try_recv() {
+                Ok(metadata) => return metadata,
+                Err(broadcast::error::TryRecvError::Empty) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("no metadata announcement: {error:?}"),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn stop(session: &Arc<Session>) {
+        session
+            .terminate_within(
+                TerminationSource::User,
+                Instant::now() + Duration::from_secs(1),
+            )
+            .unwrap();
+    }
+
+    /// The summary records everything the terminal reports, but a reader of
+    /// the working directory hears only about the directory and the title: a
+    /// resize and an identical repeat announce nothing.
+    #[cfg(unix)]
+    #[test]
+    fn metadata_is_announced_only_when_the_directory_or_title_changes() {
+        let session = shell_session("exec sleep 30");
+        let mut changes = session.subscribe_metadata();
+        // Hold the model so the reader thread cannot apply output in between.
+        let operation = session.model_operation.lock().unwrap();
+        let start = session.metadata();
+        let resized = TerminalMetadata {
+            cols: 100,
+            rows: 30,
+            title: start.title.clone(),
+            cwd: start.cwd.clone(),
+        };
+        session.apply_metadata(resized.clone());
+        session.apply_metadata(resized.clone());
+        assert!(
+            matches!(
+                changes.try_recv(),
+                Err(broadcast::error::TryRecvError::Empty)
+            ),
+            "a resize or a repeat is not a metadata change"
+        );
+        assert_eq!(
+            (session.summary().cols, session.summary().rows),
+            (100, 30),
+            "the summary still records the geometry"
+        );
+
+        let titled = TerminalMetadata {
+            title: Some("build".into()),
+            ..resized
+        };
+        session.apply_metadata(titled.clone());
+        assert_eq!(
+            changes.try_recv().unwrap(),
+            SessionMetadata {
+                cwd: start.cwd.clone(),
+                title: Some("build".into()),
+            },
+            "a title change alone carries the unchanged directory"
+        );
+
+        session.apply_metadata(TerminalMetadata {
+            cwd: Some("file://localhost/tmp/elsewhere".into()),
+            ..titled
+        });
+        assert_eq!(
+            changes.try_recv().unwrap(),
+            SessionMetadata {
+                cwd: Some("file://localhost/tmp/elsewhere".into()),
+                title: Some("build".into()),
+            }
+        );
+        assert!(matches!(
+            changes.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+        drop(operation);
+        stop(&session);
+    }
+
+    /// A shell's OSC 7 reaches a subscriber as one announcement, the same
+    /// directory reported again as none, and a title as one that keeps the
+    /// directory. The script waits for a line before each step, so nothing is
+    /// printed before the subscription exists.
+    #[cfg(unix)]
+    #[test]
+    fn a_printed_osc_7_announces_the_new_directory_once() {
+        let session = shell_session(concat!(
+            "stty -echo; ",
+            "read step; printf '\\033]7;file://localhost/tmp/ghosttea-metadata\\033\\\\'; ",
+            "read step; printf '\\033]7;file://localhost/tmp/ghosttea-metadata\\033\\\\'; ",
+            "read step; printf '\\033]2;ghosttea metadata\\033\\\\'; ",
+            "exec sleep 30",
+        ));
+        let mut changes = session.subscribe_metadata();
+        let step = || {
+            session
+                .input_tx
+                .try_send(InputOperation::Text("\r".into()))
+                .unwrap();
+        };
+
+        step();
+        let directory = next_metadata(&mut changes);
+        assert_eq!(
+            directory.cwd.as_deref(),
+            Some("file://localhost/tmp/ghosttea-metadata")
+        );
+
+        // Had the repeated OSC 7 announced anything, it would arrive here
+        // first, still without the title.
+        step();
+        step();
+        assert_eq!(
+            next_metadata(&mut changes),
+            SessionMetadata {
+                cwd: directory.cwd.clone(),
+                title: Some("ghosttea metadata".into()),
+            }
+        );
+        stop(&session);
     }
 
     /// The Windows integration fixtures create a session, then subscribe and

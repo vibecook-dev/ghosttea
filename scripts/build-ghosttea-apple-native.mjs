@@ -131,21 +131,29 @@ function requireUniqueMembers(library) {
   }
 }
 
-function requireDefinitions(library, symbols, description) {
-  const definitions = new Set(
-    execute("nm", ["-gjU", library], {
-      capture: true,
-      allowedStatuses: [1],
-    })
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean),
-  );
-  const missing = symbols.filter((symbol) => !definitions.has(symbol));
-  if (missing.length > 0) {
+// ghosttea-text shapes with harfrust, so HarfBuzz's C++ must not come back through a dependency:
+// a harfbuzz crate in the lock, or a HarfBuzz definition in a Rust slice, fails the build.
+function requireNoLockedHarfBuzz() {
+  const rows = readFileSync(join(root, "Cargo.lock"), "utf8")
+    .split("\n")
+    .filter((line) => /harfbuzz/i.test(line));
+  if (rows.length > 0) {
     throw new Error(
-      `${library} is missing ${description}: ${missing.join(", ")}. ` +
-        "The Apple native artifact must not depend on libraries discovered from the build host.",
+      `Cargo.lock names HarfBuzz (${rows[0].trim()}). ghosttea-text shapes with harfrust, ` +
+        "and no crate may bring HarfBuzz's C++ back into the Apple native artifact.",
+    );
+  }
+}
+
+function requireNoHarfBuzzDefinitions(library) {
+  const definitions = execute("nm", ["-gjU", library], { capture: true, allowedStatuses: [1] })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((symbol) => symbol.startsWith("_hb_"));
+  if (definitions.length > 0) {
+    throw new Error(
+      `${library} defines ${definitions.length} HarfBuzz symbol(s), such as ${definitions.slice(0, 3).join(", ")}. ` +
+        "ghosttea-text shapes with harfrust; a dependency brought HarfBuzz's C++ back.",
     );
   }
 }
@@ -156,6 +164,7 @@ if (process.platform !== "darwin" || process.arch !== "arm64") {
 if (!existsSync(join(developerDir, "usr/bin/xcodebuild"))) {
   throw new Error(`Full Xcode is required at ${developerDir}.`);
 }
+requireNoLockedHarfBuzz();
 for (const artifact of [ghosttyArtifact, sshArtifact]) {
   if (!existsSync(join(artifact, "Info.plist"))) {
     throw new Error(`Missing ${artifact}. Bootstrap the pinned Apple native inputs first.`);
@@ -225,7 +234,6 @@ for (const platform of platforms) {
   execute("cargo", ["build", "--locked", "--release", "-p", "ghosttea-apple-ffi", "--target", platform.target], {
     environment: {
       GHOSTTY_VT_PREFIX: prefix,
-      HARFBUZZ_SYS_NO_PKG_CONFIG: "1",
     },
   });
 }
@@ -273,8 +281,8 @@ for (const platform of platforms) {
   const rustLibrary = join(root, "target", platform.target, "release", "libghosttea_apple_ffi.a");
   if (!existsSync(rustLibrary)) throw new Error(`Missing unified Rust static library ${rustLibrary}.`);
   requireExactCAbi(rustLibrary);
-  requireDefinitions(rustLibrary, ["_hb_blob_create", "_hb_shape"], "embedded HarfBuzz definitions");
   requireUniqueMembers(rustLibrary);
+  requireNoHarfBuzzDefinitions(rustLibrary);
 
   const library = join(directory, "libghosttea-apple-native.a");
   execute("xcrun", ["libtool", "-static", "-o", library, rustLibrary, libraryPath(sshArtifact, sshSlice)]);

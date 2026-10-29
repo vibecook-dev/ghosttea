@@ -10,12 +10,13 @@ members = [
   "native/ghosttea/crates/ghosttea-font-fixture-ffi",
   "native/ghosttea/crates/ghosttea-vt",
   "native/ghosttea/crates/ghosttea-vt-sys",
+  "native/ghosttea/crates/ghosttea-vt-crt-witness",
   "native/ghosttea/crates/ghosttea-text",
   "native/ghosttea/crates/ghosttea-truffle",
 ]
 
 [workspace.package]
-version = "0.13.2"
+version = "0.13.7"
 edition = "2024"
 rust-version = "1.88"
 authors = ["James Yong"]
@@ -36,7 +37,7 @@ subtle = "2"
 tempfile = "3.20"
 tokio = { version = "1.45", features = ["full"] }
 uuid = { version = "1.16", features = ["v4"] }
-truffle-core = "=0.7.19"
+truffle-core = "=0.7.23"
 
 [patch.crates-io]
 # Keep a newly introduced workspace crate packageable before its first

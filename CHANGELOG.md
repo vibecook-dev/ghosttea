@@ -3,6 +3,193 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.7 - 2026-10-26
+
+### Fixed
+
+- On Windows, `ghosttea-vt-sys` links a Ghostty VT library built for the C
+  runtime its consumer links. The library used to be built for the static
+  runtime (`/MT`) only, while a Rust target links the dynamic runtime (`/MD`)
+  unless it enables `crt-static`, so a consumer that also linked C++ of its
+  own failed with LNK2038 ("mismatch detected for 'RuntimeLibrary'").
+  - The default `x86_64-pc-windows-msvc` build links a library built for
+    `/MD`. A build with `-C target-feature=+crt-static` links one built for
+    `/MT`.
+  - The `/MD` library adds no dependency on `msvcp140.dll`.
+  - The Ghostty VT artifacts are released as `ghostty-vt-1dceb4dd5089`. The
+    macOS library is byte-identical to the previous one.
+
+### Changed
+
+- **Rust consumers must move their `truffle-core` pin** to `=0.7.23`. Every
+  crate sharing an application-owned Truffle node must resolve the same
+  version. Swift consumers get Truffle 0.7.23 through Ghosttea's exact pin.
+  - Truffle 0.7.23 keeps a dying sidecar's last stderr lines, which its
+    stderr forwarder used to drop at shutdown. Its Swift package is otherwise
+    unchanged.
+- The Apple native artifact is rebuilt for this release.
+
+### Validation
+
+- A Windows-only workspace crate links a C++ object built for the Rust
+  target's C runtime beside the Ghostty VT library, so a library built for the
+  other runtime fails CI at link time.
+- Packaging refuses a Windows Ghostty VT library whose objects are stamped for
+  the other C runtime.
+- Neither changes what ships.
+
+## 0.13.6 - 2026-10-26
+
+### Fixed
+
+- Closing a terminal pane no longer leaves the render worker drawing on every
+  animation frame. An application that terminated a session before React
+  removed its pane released the view first, and the pane's blur, reported as
+  it unmounted, then rebuilt the released surface in the worker. That surface
+  had no canvas, so it stayed dirty and asked for a frame on every frame for
+  the life of the worker.
+  - `setFocused` ignores a view the runtime no longer holds.
+  - A render benchmark's measured iteration after a warmup reaches idle
+    again; it used to time out.
+- The render worker treats a dirty surface as work only while a frame can
+  draw it. A surface with no canvas, or with a zero-size canvas the worker
+  still counts as visible, waits without asking for frames or holding a
+  performance measurement's idle. Mounting it, sizing it or showing it draws
+  it, as before.
+- A remote control claim no longer reads the session's opening control frame
+  as its own refusal. A claim made while that frame was still in flight could
+  be rejected, because the claim settles on the first announcement after it.
+  The claim now waits for that frame first, for at most the handshake
+  timeout, when the client holds a streamed view of the session.
+
+### Changed
+
+- The Apple native artifact is rebuilt for this release.
+
+### Validation
+
+- Dispatched with `render_evidence`, the iOS release hardening workflow draws
+  the font-parity rows, the visual golden's text, box drawing and a stack of
+  combining marks through `GhostteaMetalRenderer`, and uploads the PNG with
+  its pixel hash. A change that moves glyph pixels can carry iOS pixels as
+  routine evidence. Pull request and push runs are unchanged, and nothing
+  that ships changes.
+
+## 0.13.5 - 2026-10-26
+
+### Fixed
+
+- Text is shaped by harfrust 0.15.0, the HarfBuzz project's own Rust port,
+  instead of HarfBuzz 2.6.8.
+  - ghosttea-text took HarfBuzz through `harfbuzz_rs` 2.0.1 and
+    `harfbuzz-sys` 0.5.0, whose embedded copy dates from 2020.
+  - That copy is inside CVE-2023-25193: time quadratic in a run of
+    consecutive combining marks, which any program can print into a
+    terminal.
+  - harfrust matches HarfBuzz 15.0.0 and contains no C or C++, so HarfBuzz's
+    C memory-safety bug class leaves with it.
+- A build on a Mac with Homebrew's harfbuzz no longer links
+  `/opt/homebrew/opt/harfbuzz`.
+  - `harfbuzz-sys` probed pkg-config before its embedded copy, so a consumer
+    that packaged ghosttea-text on such a Mac shipped that link.
+  - harfrust has no build script, and pkg-config has left the dependency
+    graph.
+  - `ghosttead` no longer links libc++, CoreText or CoreGraphics.
+- Every host shapes with the same code. CI and the published binaries used
+  the embedded 2.6.8, while a Homebrew Mac used its own HarfBuzz, so
+  `npm run check:font-parity` failed on such a Mac in three cases.
+
+### Changed
+
+- Glyph positions follow modern HarfBuzz, and harfrust renders
+  byte-identically to HarfBuzz 14.6.
+  - Glyph ids and glyph bitmaps are unchanged.
+  - Some advances move by sub-pixel amounts, at most 0.015 px in the locked
+    font fixture.
+  - Stacked combining marks sit where HarfBuzz 14.6 places them.
+  - The font-parity fixture and the Metal visual golden are re-blessed.
+- Builds that set `HARFBUZZ_SYS_NO_PKG_CONFIG` for Ghosttea can drop it,
+  because nothing reads it now. The release builds no longer set it.
+- The Apple native build fails if a harfbuzz crate reappears in
+  `Cargo.lock`, or if any Rust slice defines a HarfBuzz symbol.
+- The Apple native artifact is rebuilt for this release.
+
+## 0.13.4 - 2026-10-25
+
+### Added
+
+- `session-metadata-changed`, a control event at protocol minor 17, carries a
+  session's working directory and title together, as absolute state, when
+  either changes. A shell's `cd` reaches a client when its OSC 7 arrives
+  instead of at the client's next `list-sessions`. A resize or a repeated
+  OSC 7 sends nothing, and remote replicas send the same event. Clients that
+  negotiated an older minor never receive it.
+  - `@vibecook/ghosttea-protocol` validates the event and exports
+    `METADATA_EVENT_PROTOCOL_MINOR`.
+  - The Rust crates add `SessionMetadata`, `Session::subscribe_metadata`,
+    `RemoteReplica::subscribe_metadata` and
+    `RemoteTerminalRuntime::subscribe_metadata`, whose default never fires.
+
+### Changed
+
+- **Rust consumers must move their `truffle-core` pin** to `=0.7.22`. Every
+  crate sharing an application-owned Truffle node must resolve the same
+  version. Swift consumers get Truffle 0.7.22 through Ghosttea's exact pin.
+  - Truffle 0.7.20 adds app capabilities, tags and the user id to WhoIs
+    identity (protocol 9), and reports key expiry, the control server and a
+    sidecar exit as status events (protocol 10).
+  - Truffle 0.7.21 builds its sidecar with Go 1.27.3 for CVE-2026-111943, and
+    takes ctutils and tokio for RUSTSEC-2026-0385 and -0386 in its own lock.
+    Ghosttea's lock has carried both fixes since 0.13.2.
+  - Truffle 0.7.22 rebuilds TailscaleKit, which GhostteaKit links on iOS, with
+    Go 1.27.3.
+- The Apple native artifact is rebuilt for this release.
+
+## 0.13.3 - 2026-10-25
+
+### Added
+
+- `@vibecook/ghosttea-react/workspace` exports `bindingKeyDisposition` and its
+  `BindingKeyDisposition` type. Given a terminal binding's flags and whether
+  its effect was performed, it says whether the binding consumes its key.
+
+### Fixed
+
+- Text the platform inserts without a keydown reaches the terminal. The macOS
+  Character Viewer, the Windows emoji panel, touch keyboards, voice typing, a
+  soft keyboard's text, Enter and Backspace, and IME commits outside a
+  composition used to be dropped.
+- A keydown the IME processes is left to the text system, so its letter no
+  longer reaches the PTY ahead of the commit.
+- A binding that does not consume its key sends it to the terminal, as Ghostty
+  does. Shift+Arrow and Ctrl+Shift+C with no selection, `unconsumed:` binds,
+  and tab and split shortcuts that could not be performed no longer drop the
+  key.
+- Pressing a modifier alone no longer ends the selection, and only the exact
+  Ctrl+C sends the interrupt.
+
+### Changed
+
+- `ghosttea-text` builds against fontdb 0.24.0, which no longer depends on
+  ttf-parser, so RUSTSEC-2026-0192 no longer applies and `cargo audit` ignores
+  nothing. Its public API is unchanged.
+  - On iOS, fontdb's system font scan now reads the macOS font directories.
+    The library's own font path does not use that scan.
+- The Apple native artifact is rebuilt for this release. Its source digest now
+  also covers `ghosttea-config`, which the artifact links.
+
+### Validation
+
+- `check-apple-native-artifact.mjs` derives the crates compiled into the Apple
+  native artifact from their path dependencies, and fails when the source
+  digest's inputs miss one. `ghosttea-config` was missing from them through
+  0.13.2.
+- A release tag reuses main's desktop gate run for its commit instead of
+  repeating it.
+- A push to a release branch builds, publishes and pins the Apple native
+  artifact.
+- Neither of the last two changes what ships.
+
 ## 0.13.2 - 2026-10-23
 
 ### Fixed

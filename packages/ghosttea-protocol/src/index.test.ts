@@ -17,6 +17,24 @@ describe("isServerEvent forward compatibility", () => {
   });
 });
 
+describe("session-metadata-changed", () => {
+  it("accepts the directory and title as strings or explicit nulls, and nothing else", () => {
+    const event = {
+      requestId: 0,
+      type: "session-metadata-changed",
+      sessionId: "s",
+      cwd: "file://host/tmp",
+      title: null,
+    };
+    expect(isServerEvent(event)).toBe(true);
+    expect(isServerEvent({ ...event, cwd: null, title: "build" })).toBe(true);
+    expect(isServerEvent({ ...event, cwd: undefined })).toBe(false);
+    expect(isServerEvent({ ...event, title: 7 })).toBe(false);
+    expect(isServerEvent({ ...event, requestId: 3 })).toBe(false);
+    expect(isServerEvent({ ...event, sessionId: undefined })).toBe(false);
+  });
+});
+
 describe("isServerEvent", () => {
   it("allows reviewed renderer commands and rejects privileged or unknown commands", () => {
     expect(isRendererClientCommandAllowed({ requestId: 1, type: "get-config" })).toBe(true);

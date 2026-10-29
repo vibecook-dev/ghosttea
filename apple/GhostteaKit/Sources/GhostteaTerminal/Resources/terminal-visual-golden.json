@@ -13,7 +13,7 @@
     "width" : 787
   },
   "fixture" : "phase4-styled-unicode-v1",
-  "referencePixelHash" : "3f7623275f6bf056",
+  "referencePixelHash" : "6eda391be8a068fc",
   "schemaVersion" : 1,
   "tolerance" : {
     "maxEdgeHammingDistance" : 48,

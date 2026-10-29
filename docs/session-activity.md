@@ -72,10 +72,35 @@ Activity observations are deduplicated without using `observedAtMs` as part of
 the identity. Silent foreground jobs are detected by the independent sampler;
 the mechanism does not depend on output silence or screen-text parsing.
 
+## Working directory and title
+
+`session-metadata-changed` (local terminal protocol minor 1.17) reports a
+session's `cwd` and `title` when either changes:
+
+```ts
+{ requestId: 0; type: "session-metadata-changed"; sessionId: string; cwd: string | null; title: string | null }
+```
+
+- Both fields arrive every time, as absolute state, so a reader replaces what
+  it holds rather than merging partial updates.
+- It fires only when one of them differs from the session's summary. A resize
+  does not fire it, and neither does the identical OSC 7 most prompts send
+  each time they draw. The service does not otherwise coalesce, so a burst of
+  title changes arrives as a burst; readers coalesce as they need.
+- `cwd` is what the terminal reports: a `file://` URL once the shell sends
+  OSC 7, and the spawn directory before that.
+- Remote replicas send the same event when a snapshot changes their directory
+  or title.
+- Clients that negotiated a minor below 1.17 never receive it. It is a hint:
+  `list-sessions` stays the reconciliation path, as it is after `events-lost`.
+
 ## Remote compatibility
 
-The local terminal protocol minor version is 1.6 and the Truffle terminal
-protocol minor version is 1.4. Activity is included in advertisements,
+Activity arrived with local terminal protocol minor 1.6 and Truffle terminal
+protocol minor 1.4. (Corrected 2026-10-26: this sentence used to read as the
+current versions. They are the minors that introduced activity; the local
+protocol's current minor is `CONTROL_PROTOCOL_MINOR` in `service.rs`, 1.17 at
+this writing.) Activity is included in advertisements,
 session-list responses, and attached live-state streams. Remote replicas update
 their cached `SessionSummary` and relay the same local activity event.
 

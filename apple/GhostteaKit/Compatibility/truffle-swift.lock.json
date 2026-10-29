@@ -4,8 +4,8 @@
     "name": "Truffle",
     "repository": "https://github.com/vibecook-dev/truffle.git",
     "pinStyle": "exact-version",
-    "version": "0.7.19",
-    "revision": "1218b64ab9c471c46af8fdede2c8cd4c0d4b5bab",
+    "version": "0.7.23",
+    "revision": "0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
     "packagePath": "",
     "packageIdentity": "truffle",
     "license": "MIT",
@@ -14,7 +14,7 @@
   },
   "tailscaleKit": {
     "repository": "https://github.com/tailscale/libtailscale.git",
-    "revision": "59d4bb82744915815178e0f0776d60026a397ee7",
+    "revision": "d1dc45d039edb7759ecbee6ba2aea0c4bca884b8",
     "license": "BSD-3-Clause",
     "licenseSha256": "d6e14a92f27cd6c82f8914041c1bb43819fcf3167b827b9198c2c803d4dff5d3",
     "minimumIOS": "18.1",
@@ -24,14 +24,9 @@
     },
     "patches": [
       {
-        "path": "apple/patches/libtailscale-104-testcontrol.patch",
-        "sha256": "478c36c17e35a22455daaa75b4addb1d91db26ae17a875821f6c16a89a1a3cb6",
-        "purpose": "Adapt the upstream test server to Tailscale 1.104's typed DERP region IDs, so every Go package is tested."
-      },
-      {
-        "path": "apple/patches/libtailscale-remote-address-fd.patch",
-        "sha256": "6248c03f1d631c221d26a3f6cf7df19b29db78a2d060eac0ef75f9b938d27f94",
-        "purpose": "Remap accepted SCM_RIGHTS descriptors before authenticated remote-address lookup."
+        "path": "apple/patches/libtailscale-conn-cleanup.patch",
+        "sha256": "4b473188ad1c7149769b97d19347812802cf07d7a62f98e145b6cb99f2308ace",
+        "purpose": "Key connection cleanup by the Go-owned socket, so a reused C-side descriptor number cannot strand an earlier connection's net.Conn."
       },
       {
         "path": "apple/patches/libtailscale-peer-notifications.patch",
@@ -46,18 +41,18 @@
     ],
     "distribution": {
       "kind": "swiftpm-binary-target",
-      "url": "https://github.com/vibecook-dev/truffle/releases/download/tailscalekit-59d4bb82-ts1.104.1-go1.27.2/TailscaleKit.xcframework.zip",
-      "swiftPMChecksum": "f8a61a742e42cbf04983213ea28f8a2370802b17fe420ea9cac7f59249c3238f",
+      "url": "https://github.com/vibecook-dev/truffle/releases/download/tailscalekit-d1dc45d0-ts1.104.1-go1.27.3/TailscaleKit.xcframework.zip",
+      "swiftPMChecksum": "0895dc67fc6531b4b0183ae63648a8378aacd7a5a04aa35cacfdba5931fe71d3",
       "note": "Truffle declares this artifact as .binaryTarget(url:checksum:). SwiftPM verifies swiftPMChecksum against the downloaded zip before unpacking, so it — not the sibling materializer — is the integrity root. The per-slice hashes below stay in the BOM as the executable-level record."
     },
     "artifacts": {
       "iosArm64": {
         "path": "TailscaleKit.xcframework/ios-arm64/TailscaleKit.framework/TailscaleKit",
-        "sha256": "c9a7d20999b41889958f1c5c8dc3f9d3cc94d0ca82ad8409e114ac0a77bc0b55"
+        "sha256": "7c96a548b97689e86f66e7c24d8e85d80d62f971ff725ea9978ec985efb3fd74"
       },
       "iosSimulatorUniversal": {
         "path": "TailscaleKit.xcframework/ios-arm64_x86_64-simulator/TailscaleKit.framework/TailscaleKit",
-        "sha256": "4d6defab38abd26d6d60430efb59b17ad930edb9fe0a42dd524141ba49ce1d54"
+        "sha256": "ff71b9ca15e62565b864a0f00f96879f374f6cf3cf0310b24b756206fe03c8c4"
       }
     }
   },

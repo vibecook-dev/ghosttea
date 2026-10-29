@@ -11,8 +11,8 @@ readme = "README.md"
 
 [dependencies]
 anyhow.workspace = true
-ghosttea-text = { version = "0.13.2", path = "../ghosttea-text" }
-ghosttea-vt = { version = "0.13.2", path = "../ghosttea-vt" }
+ghosttea-text = { version = "0.13.7", path = "../ghosttea-text" }
+ghosttea-vt = { version = "0.13.7", path = "../ghosttea-vt" }
 serde.workspace = true
 smallvec.workspace = true
 

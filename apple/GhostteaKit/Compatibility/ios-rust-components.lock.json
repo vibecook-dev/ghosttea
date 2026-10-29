@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "target": "aarch64-apple-ios",
   "root": {
-    "ref": "pkg:cargo/ghosttea-apple-ffi@0.13.2",
+    "ref": "pkg:cargo/ghosttea-apple-ffi@0.13.7",
     "name": "ghosttea-apple-ffi",
-    "version": "0.13.2",
+    "version": "0.13.7",
     "dependencies": [
-      "pkg:cargo/ghosttea-ffi@0.13.2",
-      "pkg:cargo/ghosttea-font-fixture-ffi@0.13.2"
+      "pkg:cargo/ghosttea-ffi@0.13.7",
+      "pkg:cargo/ghosttea-font-fixture-ffi@0.13.7"
     ]
   },
-  "cargoLockSha256": "76965870d7bd9d3b3ba3bbbc982aa68d0d26dd2db1e20ec5c4583a40e112d022",
+  "cargoLockSha256": "6351d7ce22c806bcfc68fec90f1328769a7f604e5cb8e6b7819eec8645543ea9",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
@@ -28,15 +28,6 @@
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT OR Apache-2.0",
       "checksum": "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
-      "dependencies": []
-    },
-    {
-      "ref": "pkg:cargo/bitflags@1.3.2",
-      "name": "bitflags",
-      "version": "1.3.2",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT/Apache-2.0",
-      "checksum": "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a",
       "dependencies": []
     },
     {
@@ -112,80 +103,6 @@
       "license": "MIT OR Apache-2.0",
       "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801",
       "dependencies": []
-    },
-    {
-      "ref": "pkg:cargo/core_maths@0.1.1",
-      "name": "core_maths",
-      "version": "0.1.1",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT",
-      "checksum": "77745e017f5edba1a9c1d854f6f3a52dac8a12dd5af5d2f54aecf61e43d80d30",
-      "dependencies": [
-        "pkg:cargo/libm@0.2.16"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-foundation-sys@0.8.7",
-      "name": "core-foundation-sys",
-      "version": "0.8.7",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT OR Apache-2.0",
-      "checksum": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b",
-      "dependencies": []
-    },
-    {
-      "ref": "pkg:cargo/core-foundation@0.9.4",
-      "name": "core-foundation",
-      "version": "0.9.4",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT OR Apache-2.0",
-      "checksum": "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f",
-      "dependencies": [
-        "pkg:cargo/core-foundation-sys@0.8.7",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-graphics-types@0.1.3",
-      "name": "core-graphics-types",
-      "version": "0.1.3",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT OR Apache-2.0",
-      "checksum": "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf",
-      "dependencies": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-graphics@0.22.3",
-      "name": "core-graphics",
-      "version": "0.22.3",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT / Apache-2.0",
-      "checksum": "2581bbab3b8ffc6fcbd550bf46c355135d16e9ff2a6ea032ad6b9bf1d7efe4fb",
-      "dependencies": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/core-graphics-types@0.1.3",
-        "pkg:cargo/foreign-types@0.3.2",
-        "pkg:cargo/libc@0.2.186"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/core-text@19.2.0",
-      "name": "core-text",
-      "version": "19.2.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT/Apache-2.0",
-      "checksum": "99d74ada66e07c1cefa18f8abfba765b486f250de2e4a999e5727fc0dd4b4a25",
-      "dependencies": [
-        "pkg:cargo/core-foundation@0.9.4",
-        "pkg:cargo/core-graphics@0.22.3",
-        "pkg:cargo/foreign-types@0.3.2",
-        "pkg:cargo/libc@0.2.186"
-      ]
     },
     {
       "ref": "pkg:cargo/cpufeatures@0.2.17",
@@ -264,12 +181,32 @@
       "dependencies": []
     },
     {
+      "ref": "pkg:cargo/foldhash@0.2.0",
+      "name": "foldhash",
+      "version": "0.2.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Zlib",
+      "checksum": "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb",
+      "dependencies": []
+    },
+    {
       "ref": "pkg:cargo/font-types@0.11.3",
       "name": "font-types",
       "version": "0.11.3",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT OR Apache-2.0",
       "checksum": "5b38ad915f6dadd993ced50848a8291a543bd41ca62bc10740d5e64e2ab4cfd7",
+      "dependencies": [
+        "pkg:cargo/bytemuck@1.25.1"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/font-types@0.12.7",
+      "name": "font-types",
+      "version": "0.12.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "835ae9d781464a79026cde387f9cbc650c9a4909d7cf7e658b127e3c35d2f35d",
       "dependencies": [
         "pkg:cargo/bytemuck@1.25.1"
       ]
@@ -286,39 +223,18 @@
       ]
     },
     {
-      "ref": "pkg:cargo/fontdb@0.23.0",
+      "ref": "pkg:cargo/fontdb@0.24.0",
       "name": "fontdb",
-      "version": "0.23.0",
+      "version": "0.24.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT",
-      "checksum": "457e789b3d1202543297a350643cf459f836cade38934e7a4cf6a39e7cde2905",
+      "checksum": "2660c5e9157bf76d2db1294e4a9feba604ef610819a3b591088d0d8392a3290f",
       "dependencies": [
         "pkg:cargo/fontconfig-parser@0.5.8",
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/memmap2@0.9.11",
         "pkg:cargo/slotmap@1.1.1",
-        "pkg:cargo/tinyvec@1.12.0",
-        "pkg:cargo/ttf-parser@0.25.1"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/foreign-types-shared@0.1.1",
-      "name": "foreign-types-shared",
-      "version": "0.1.1",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT/Apache-2.0",
-      "checksum": "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b",
-      "dependencies": []
-    },
-    {
-      "ref": "pkg:cargo/foreign-types@0.3.2",
-      "name": "foreign-types",
-      "version": "0.3.2",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT/Apache-2.0",
-      "checksum": "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1",
-      "dependencies": [
-        "pkg:cargo/foreign-types-shared@0.1.1"
+        "pkg:cargo/tinyvec@1.12.0"
       ]
     },
     {
@@ -346,21 +262,22 @@
       ]
     },
     {
-      "ref": "pkg:cargo/getrandom@0.3.4",
+      "ref": "pkg:cargo/getrandom@0.4.3",
       "name": "getrandom",
-      "version": "0.3.4",
+      "version": "0.4.3",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT OR Apache-2.0",
-      "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+      "checksum": "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099",
       "dependencies": [
         "pkg:cargo/cfg-if@1.0.4",
-        "pkg:cargo/libc@0.2.186"
+        "pkg:cargo/libc@0.2.186",
+        "pkg:cargo/rand_core@0.10.1"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-config@0.13.2",
+      "ref": "pkg:cargo/ghosttea-config@0.13.7",
       "name": "ghosttea-config",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -372,53 +289,53 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-core@0.13.2",
+      "ref": "pkg:cargo/ghosttea-core@0.13.7",
       "name": "ghosttea-core",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/ghosttea-text@0.13.2",
-        "pkg:cargo/ghosttea-vt@0.13.2",
+        "pkg:cargo/ghosttea-text@0.13.7",
+        "pkg:cargo/ghosttea-vt@0.13.7",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/smallvec@1.15.2"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-ffi@0.13.2",
+      "ref": "pkg:cargo/ghosttea-ffi@0.13.7",
       "name": "ghosttea-ffi",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-config@0.13.2",
-        "pkg:cargo/ghosttea-core@0.13.2",
-        "pkg:cargo/ghosttea-text@0.13.2",
+        "pkg:cargo/ghosttea-config@0.13.7",
+        "pkg:cargo/ghosttea-core@0.13.7",
+        "pkg:cargo/ghosttea-text@0.13.7",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.13.2",
+      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.13.7",
       "name": "ghosttea-font-fixture-ffi",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-text@0.13.2",
+        "pkg:cargo/ghosttea-text@0.13.7",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-text@0.13.2",
+      "ref": "pkg:cargo/ghosttea-text@0.13.7",
       "name": "ghosttea-text",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/fontdb@0.23.0",
-        "pkg:cargo/harfbuzz_rs@2.0.1",
+        "pkg:cargo/fontdb@0.24.0",
+        "pkg:cargo/harfrust@0.15.0",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/serde_json@1.0.150",
         "pkg:cargo/sha2@0.10.9",
@@ -428,9 +345,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt-sys@0.13.2",
+      "ref": "pkg:cargo/ghosttea-vt-sys@0.13.7",
       "name": "ghosttea-vt-sys",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -443,40 +360,28 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt@0.13.2",
+      "ref": "pkg:cargo/ghosttea-vt@0.13.7",
       "name": "ghosttea-vt",
-      "version": "0.13.2",
+      "version": "0.13.7",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-vt-sys@0.13.2"
+        "pkg:cargo/ghosttea-vt-sys@0.13.7"
       ]
     },
     {
-      "ref": "pkg:cargo/harfbuzz_rs@2.0.1",
-      "name": "harfbuzz_rs",
-      "version": "2.0.1",
+      "ref": "pkg:cargo/harfrust@0.15.0",
+      "name": "harfrust",
+      "version": "0.15.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT",
-      "checksum": "58c18cfc23920d010f7637b86240a5f8892dfdbcb4f0e60828f8a9dc6ff5521d",
+      "checksum": "865dcc4105d51c323d8fedbb2d75b5e9c8ecddf5613f74c82f851d0afbc97114",
       "dependencies": [
-        "pkg:cargo/bitflags@1.3.2",
-        "pkg:cargo/harfbuzz-sys@0.5.0"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/harfbuzz-sys@0.5.0",
-      "name": "harfbuzz-sys",
-      "version": "0.5.0",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT",
-      "checksum": "bf8c27ca13930dc4ffe474880040fe9e0f03c2121600dc9c95423624cab3e467",
-      "dependencies": [
-        "pkg:cargo/cc@1.2.67",
-        "pkg:cargo/core-graphics@0.22.3",
-        "pkg:cargo/core-text@19.2.0",
-        "pkg:cargo/foreign-types@0.3.2",
-        "pkg:cargo/pkg-config@0.3.33"
+        "pkg:cargo/bitflags@2.13.1",
+        "pkg:cargo/bytemuck@1.25.1",
+        "pkg:cargo/read-fonts@0.46.0",
+        "pkg:cargo/smallvec@1.15.2",
+        "pkg:cargo/yoke@0.8.4"
       ]
     },
     {
@@ -516,15 +421,6 @@
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "license": "MIT OR Apache-2.0",
       "checksum": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66",
-      "dependencies": []
-    },
-    {
-      "ref": "pkg:cargo/libm@0.2.16",
-      "name": "libm",
-      "version": "0.2.16",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT",
-      "checksum": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981",
       "dependencies": []
     },
     {
@@ -575,15 +471,6 @@
       "dependencies": []
     },
     {
-      "ref": "pkg:cargo/pkg-config@0.3.33",
-      "name": "pkg-config",
-      "version": "0.3.33",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT OR Apache-2.0",
-      "checksum": "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e",
-      "dependencies": []
-    },
-    {
       "ref": "pkg:cargo/proc-macro2@1.0.106",
       "name": "proc-macro2",
       "version": "1.0.106",
@@ -606,6 +493,15 @@
       ]
     },
     {
+      "ref": "pkg:cargo/rand_core@0.10.1",
+      "name": "rand_core",
+      "version": "0.10.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69",
+      "dependencies": []
+    },
+    {
       "ref": "pkg:cargo/read-fonts@0.39.2",
       "name": "read-fonts",
       "version": "0.39.2",
@@ -615,6 +511,22 @@
       "dependencies": [
         "pkg:cargo/bytemuck@1.25.1",
         "pkg:cargo/font-types@0.11.3"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/read-fonts@0.46.0",
+      "name": "read-fonts",
+      "version": "0.46.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "bdaa4fffe9ff3ca2c353fa9729792805b9b3e324695ff5a081f860612e81b330",
+      "dependencies": [
+        "pkg:cargo/bytemuck@1.25.1",
+        "pkg:cargo/foldhash@0.2.0",
+        "pkg:cargo/font-types@0.12.7",
+        "pkg:cargo/once_cell@1.21.4",
+        "pkg:cargo/smallvec@1.15.2",
+        "pkg:cargo/yoke@0.8.4"
       ]
     },
     {
@@ -798,6 +710,15 @@
       "dependencies": []
     },
     {
+      "ref": "pkg:cargo/stable_deref_trait@1.2.1",
+      "name": "stable_deref_trait",
+      "version": "1.2.1",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596",
+      "dependencies": []
+    },
+    {
       "ref": "pkg:cargo/subtle@2.6.1",
       "name": "subtle",
       "version": "2.6.1",
@@ -833,6 +754,32 @@
       ]
     },
     {
+      "ref": "pkg:cargo/syn@3.0.6",
+      "name": "syn",
+      "version": "3.0.6",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT OR Apache-2.0",
+      "checksum": "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee",
+      "dependencies": [
+        "pkg:cargo/proc-macro2@1.0.106",
+        "pkg:cargo/quote@1.0.46",
+        "pkg:cargo/unicode-ident@1.0.24"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/synstructure@0.14.0",
+      "name": "synstructure",
+      "version": "0.14.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "MIT",
+      "checksum": "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02",
+      "dependencies": [
+        "pkg:cargo/proc-macro2@1.0.106",
+        "pkg:cargo/quote@1.0.46",
+        "pkg:cargo/syn@3.0.6"
+      ]
+    },
+    {
       "ref": "pkg:cargo/tar@0.4.45",
       "name": "tar",
       "version": "0.4.45",
@@ -854,7 +801,7 @@
       "checksum": "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
       "dependencies": [
         "pkg:cargo/fastrand@2.4.1",
-        "pkg:cargo/getrandom@0.3.4",
+        "pkg:cargo/getrandom@0.4.3",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/rustix@1.1.4"
       ]
@@ -877,17 +824,6 @@
       "checksum": "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f",
       "dependencies": [
         "pkg:cargo/tinyvec_macros@0.1.1"
-      ]
-    },
-    {
-      "ref": "pkg:cargo/ttf-parser@0.25.1",
-      "name": "ttf-parser",
-      "version": "0.25.1",
-      "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "license": "MIT OR Apache-2.0",
-      "checksum": "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31",
-      "dependencies": [
-        "pkg:cargo/core_maths@0.1.1"
       ]
     },
     {
@@ -1015,6 +951,33 @@
       "dependencies": []
     },
     {
+      "ref": "pkg:cargo/yoke-derive@0.8.4",
+      "name": "yoke-derive",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Unicode-3.0",
+      "checksum": "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71",
+      "dependencies": [
+        "pkg:cargo/proc-macro2@1.0.106",
+        "pkg:cargo/quote@1.0.46",
+        "pkg:cargo/syn@3.0.6",
+        "pkg:cargo/synstructure@0.14.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/yoke@0.8.4",
+      "name": "yoke",
+      "version": "0.8.4",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Unicode-3.0",
+      "checksum": "417ef3fcf6c300b7dbd25c85531a746931c02ad536f3cf4786ed1e88223340b3",
+      "dependencies": [
+        "pkg:cargo/stable_deref_trait@1.2.1",
+        "pkg:cargo/yoke-derive@0.8.4",
+        "pkg:cargo/zerofrom@0.1.8"
+      ]
+    },
+    {
       "ref": "pkg:cargo/zeno@0.3.3",
       "name": "zeno",
       "version": "0.3.3",
@@ -1022,6 +985,31 @@
       "license": "Apache-2.0 OR MIT",
       "checksum": "6df3dc4292935e51816d896edcd52aa30bc297907c26167fec31e2b0c6a32524",
       "dependencies": []
+    },
+    {
+      "ref": "pkg:cargo/zerofrom-derive@0.1.8",
+      "name": "zerofrom-derive",
+      "version": "0.1.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Unicode-3.0",
+      "checksum": "f75b4683f6c7f45248d4d64056a24298c6281e0993356d7d1b4a1a962ef10d4a",
+      "dependencies": [
+        "pkg:cargo/proc-macro2@1.0.106",
+        "pkg:cargo/quote@1.0.46",
+        "pkg:cargo/syn@3.0.6",
+        "pkg:cargo/synstructure@0.14.0"
+      ]
+    },
+    {
+      "ref": "pkg:cargo/zerofrom@0.1.8",
+      "name": "zerofrom",
+      "version": "0.1.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "license": "Unicode-3.0",
+      "checksum": "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272",
+      "dependencies": [
+        "pkg:cargo/zerofrom-derive@0.1.8"
+      ]
     },
     {
       "ref": "pkg:cargo/zeroize@1.9.0",

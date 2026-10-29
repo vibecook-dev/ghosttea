@@ -10,6 +10,7 @@ import {
   restoreNode,
   removePane,
   replaceSessionInPanes,
+  resizeForPane,
   updateSplit,
   type PaneNode,
   type SplitAxis,
@@ -311,5 +312,17 @@ describe("conditional session replacement", () => {
   it("does not overwrite a pane reassigned while the replacement was being born", () => {
     const root = pane("same-pane", session("newly-selected-agent"));
     expect(replaceSessionInPanes(root, "ended", session("fresh"))).toBe(root);
+  });
+});
+
+describe("resizeForPane", () => {
+  it("moves the nearest split on the axis that holds the pane, and changes nothing without one", () => {
+    const layout = insertPane(pane("a", session("a")), pane("b", session("b")), "a", "horizontal", "split-1");
+    const [wider, moved] = resizeForPane(layout, "a", "horizontal", 0.05);
+    expect(moved).toBe(true);
+    if (wider.kind !== "split") throw new Error("lost the split");
+    expect(wider.ratio).toBeCloseTo(0.55);
+    expect(resizeForPane(layout, "a", "vertical", 0.05)).toEqual([layout, false]);
+    expect(resizeForPane(pane("a", session("a")), "a", "horizontal", 0.05)[1]).toBe(false);
   });
 });

@@ -48,10 +48,11 @@ than an archive tool, unifies their shared dependencies and runtime.
 arm64, iOS arm64, and iOS arm64-simulator slices. It requires each core and font
 fixture C export exactly once and refuses duplicate archive members.
 
-The build disables `pkg-config` discovery for HarfBuzz and verifies that its
-required C definitions are embedded in every Rust slice. Release bytes must not
-depend on libraries that happen to be installed on a CI runner or developer
-machine.
+ghosttea-text shapes with harfrust, HarfBuzz's own Rust port, so no HarfBuzz C or
+C++ code enters any Rust slice. The build fails if `Cargo.lock` names a harfbuzz
+crate or if any slice defines a HarfBuzz (`_hb_`) symbol, so the C shaper cannot
+come back through a dependency unnoticed. Release bytes must not depend on
+libraries that happen to be installed on a CI runner or developer machine.
 
 ## Two manifests, one intended difference
 
@@ -209,9 +210,13 @@ On a `release/*` branch the workflow's `pin` job writes this commit. It:
 1. runs `scripts/pin-ghosttea-apple-native.mjs` on the candidate it just
    published, which refuses a candidate not built from the branch's tree;
 2. audits the result with the two commands below;
-3. pushes `release: pin X.Y.Z Apple native artifact`;
-4. dispatches `desktop-release-gates.yml` and `ios-release-hardening.yml` for
-   the new head, because a push made with `GITHUB_TOKEN` starts no workflows.
+3. pushes `release: pin X.Y.Z Apple native artifact`.
+
+It starts no gates. Open the release PR after the pin commit lands, and the PR's
+checks, `audit-published` included, run on it. GitHub holds a pull request's
+workflow runs for a commit that github-actions pushed until a maintainer
+approves them. A PR opened before the pin therefore needs "Approve and run
+workflows" on it, and the job's summary and a warning say so.
 
 If the branch moved while the run built, it leaves the pin to the run for the
 newer push. The script edits values in place, so its commit changes the same

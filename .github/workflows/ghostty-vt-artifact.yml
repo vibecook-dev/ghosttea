@@ -151,6 +151,16 @@ jobs:
   windows:
     needs: package
     runs-on: windows-2022
+    # One candidate per C runtime. Every object in an MSVC link must be compiled
+    # for the same runtime, a Rust consumer links the dynamic one unless its
+    # target enables crt-static, and ghosttea-vt-sys picks the library built for
+    # the runtime its build links.
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-msvc, x86_64-pc-windows-msvc-crt-static]
+    env:
+      TARGET: ${{ matrix.target }}
     defaults:
       run:
         shell: bash
@@ -167,22 +177,22 @@ jobs:
       - name: Build native Windows candidate
         if: github.ref_type != 'tag'
         run: |
-          npm run bootstrap:ghostty-vt -- --target=x86_64-pc-windows-msvc
-          npm run build:ghostty-vt -- --target=x86_64-pc-windows-msvc
-          npm run package:ghostty-vt -- --target=x86_64-pc-windows-msvc --allow-mismatch
+          npm run bootstrap:ghostty-vt -- --target="$TARGET"
+          npm run build:ghostty-vt -- --target="$TARGET"
+          npm run package:ghostty-vt -- --target="$TARGET" --allow-mismatch
 
       - name: Resolve locked Windows candidate run
         if: github.ref_type == 'tag'
         id: windows_candidate
         run: |
-          run_id="$(node -p "const value = require('./native/ghosttea/crates/ghosttea-vt-sys/artifacts.json').targets['x86_64-pc-windows-msvc'].candidateRunId; if (!Number.isSafeInteger(value) || value <= 0) throw new Error('candidateRunId must be a positive integer'); value")"
+          run_id="$(node -p "const value = require('./native/ghosttea/crates/ghosttea-vt-sys/artifacts.json').targets[process.env.TARGET].candidateRunId; if (!Number.isSafeInteger(value) || value <= 0) throw new Error('candidateRunId must be a positive integer'); value")"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
       - name: Download locked Windows candidate
         if: github.ref_type == 'tag'
         uses: actions/download-artifact@v8
         with:
-          name: ghostty-vt-x86_64-pc-windows-msvc
+          name: ghostty-vt-${{ matrix.target }}
           path: artifacts/ghostty-vt/
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -190,12 +200,12 @@ jobs:
 
       - name: Verify locked Windows candidate
         if: github.ref_type == 'tag'
-        run: node scripts/verify-ghostty-vt-candidate.mjs --target=x86_64-pc-windows-msvc --directory=artifacts/ghostty-vt
+        run: node scripts/verify-ghostty-vt-candidate.mjs --target="$TARGET" --directory=artifacts/ghostty-vt
 
       - name: Resolve produced artifact paths
         id: ghostty_artifact
         run: |
-          filename="$(node scripts/ghostty-vt-artifact-name.mjs --target=x86_64-pc-windows-msvc)"
+          filename="$(node scripts/ghostty-vt-artifact-name.mjs --target="$TARGET")"
           echo "path=artifacts/ghostty-vt/$filename" >> "$GITHUB_OUTPUT"
           echo "sbom=artifacts/ghostty-vt/$filename.spdx.json" >> "$GITHUB_OUTPUT"
 
@@ -204,12 +214,11 @@ jobs:
         env:
           CANDIDATE_RUN_ID: ${{ github.run_id }}
         run: |
-          filename="$(node scripts/ghostty-vt-artifact-name.mjs --target=x86_64-pc-windows-msvc)"
+          filename="$(node scripts/ghostty-vt-artifact-name.mjs --target="$TARGET")"
           {
             echo '### Windows artifact produced by this run'
             echo
-            # shellcheck disable=SC2016
-            echo 'Copy into `targets["x86_64-pc-windows-msvc"]` of artifacts.json:'
+            echo "Copy into \`targets[\"$TARGET\"]\` of artifacts.json:"
             echo '```json'
             node -e "const fs = require('node:fs'); const value = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); value.candidateRunId = Number(process.env.CANDIDATE_RUN_ID); console.log(JSON.stringify(value, null, 2));" "artifacts/ghostty-vt/$filename.json"
             echo '```'
@@ -229,7 +238,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ghostty-vt-x86_64-pc-windows-msvc
+          name: ghostty-vt-${{ matrix.target }}
           path: artifacts/ghostty-vt/
           if-no-files-found: error
 
@@ -244,20 +253,27 @@ jobs:
           name: ghostty-vt-aarch64-apple-darwin
           path: release/aarch64-apple-darwin/
 
-      - name: Download promoted Windows bundle
+      - name: Download promoted Windows bundle (dynamic C runtime)
         uses: actions/download-artifact@v8
         with:
           name: ghostty-vt-x86_64-pc-windows-msvc
           path: release/x86_64-pc-windows-msvc/
 
-      # Deliberately no --clobber. Both target bundles are checksum-locked, so a
-      # release is immutable and is created only after both platform jobs pass.
+      - name: Download promoted Windows bundle (static C runtime)
+        uses: actions/download-artifact@v8
+        with:
+          name: ghostty-vt-x86_64-pc-windows-msvc-crt-static
+          path: release/x86_64-pc-windows-msvc-crt-static/
+
+      # Deliberately no --clobber. Every target bundle is checksum-locked, so a
+      # release is immutable and is created only after every platform job passes.
       - name: Create complete release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" release/aarch64-apple-darwin/* release/x86_64-pc-windows-msvc/* \
+            release/x86_64-pc-windows-msvc-crt-static/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \

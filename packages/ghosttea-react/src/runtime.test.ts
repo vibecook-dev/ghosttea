@@ -1068,6 +1068,49 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     runtime.dispose();
   });
 
+  it("forgets a released view's focus instead of rebuilding its pane in the worker", async () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    await runtime.connect();
+    runtime.registerSession(session);
+    runtime.mount(session.id, session.handle, "view-closing", canvas());
+    await flushMicrotasks();
+    runtime.setFocused(session.handle, "view-closing", true, 80, 24);
+    expect(worker.messages).toContainEqual({
+      type: "focus",
+      surfaceId: "view-closing",
+      sessionHandle: session.handle,
+      focused: true,
+    });
+
+    // An app closing a pane terminates its session first, and the pane reports
+    // its blur as it unmounts. terminate() released the view at once (unmount,
+    // drop-session), so that blur must reach neither the worker, which would
+    // rebuild the surface with no canvas and keep it dirty, nor the host.
+    runtime.terminate(session.id, "application");
+    await flushMicrotasks();
+    expect(worker.messages).toContainEqual({ type: "unmount", surfaceId: "view-closing" });
+    expect(worker.messages).toContainEqual({ type: "drop-session", sessionHandle: session.handle });
+    const workerSeen = worker.messages.length;
+    const controlSeen = control.messages.length;
+    runtime.setFocused(session.handle, "view-closing", false, 80, 24);
+    await flushMicrotasks();
+    expect(worker.messages.slice(workerSeen)).toEqual([]);
+    expect(control.messages.slice(controlSeen)).toEqual([]);
+    runtime.dispose();
+  });
+
   it("applies unsolicited activity changes without waiting for a terminal frame", async () => {
     vi.stubGlobal("window", globalThis);
     const control = new FakePort();

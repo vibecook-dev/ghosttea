@@ -1,7 +1,8 @@
 export const PROTOCOL_MAJOR = 1;
-export const PROTOCOL_MINOR = 16;
+export const PROTOCOL_MINOR = 17;
 export const SESSION_SCROLLBACK_PROTOCOL_MINOR = 15;
 export const STRUCTURED_ERROR_PROTOCOL_MINOR = 16;
+export const METADATA_EVENT_PROTOCOL_MINOR = 17;
 export const CONFIG_SCHEMA_VERSION = 1;
 export const CONFIG_DOCUMENT_SCHEMA_VERSION = 1;
 
@@ -643,6 +644,12 @@ export type ServerEvent =
       layoutEpoch: number;
     }
   | { requestId: 0; type: "session-activity-changed"; sessionId: string; activity: SessionActivity }
+  /**
+   * A session's working directory or title changed (minor 17). Both fields are
+   * absolute state, sent together every time; neither a resize nor a repeated
+   * OSC 7 sends one. A hint: `list-sessions` stays the reconciliation path.
+   */
+  | { requestId: 0; type: "session-metadata-changed"; sessionId: string; cwd: string | null; title: string | null }
   | { requestId: 0; type: "config-changed"; config: ConfigSnapshot }
   /**
    * The daemon produced events faster than this client drained them and the
@@ -1104,6 +1111,13 @@ export function isServerEvent(value: unknown): value is ServerEvent {
       );
     case "session-activity-changed":
       return candidate.requestId === 0 && typeof candidate.sessionId === "string" && validActivity(candidate.activity);
+    case "session-metadata-changed":
+      return (
+        candidate.requestId === 0 &&
+        typeof candidate.sessionId === "string" &&
+        (candidate.cwd === null || typeof candidate.cwd === "string") &&
+        (candidate.title === null || typeof candidate.title === "string")
+      );
     case "config-changed":
       return candidate.requestId === 0 && validConfig(candidate.config);
     case "events-lost":

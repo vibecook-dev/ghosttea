@@ -267,6 +267,8 @@ try {
     "ghosttea-ffi",
     "--exclude",
     "ghosttea-font-fixture-ffi",
+    "--exclude",
+    "ghosttea-vt-crt-witness",
     "--allow-dirty",
     "--no-verify",
   ]);
