@@ -1,6 +1,12 @@
 /// <reference types="@webgpu/types" />
 
-import { CursorStyle, GlyphFormat, type GlyphDefinition, type StyleDefinition } from "@vibecook/ghosttea-frame";
+import {
+  CursorStyle,
+  GlyphFormat,
+  type GlyphDefinition,
+  type GlyphInstance,
+  type StyleDefinition,
+} from "@vibecook/ghosttea-frame";
 import { emptyRenderMetrics, type TerminalRenderMetrics } from "../performance.js";
 
 import {
@@ -562,6 +568,19 @@ function cellLength(text: string): number {
   return splitGraphemes(text).reduce((total, grapheme) => total + graphemeCellWidth(grapheme), 0);
 }
 
+type NativeCellSpan = Pick<GlyphInstance, "cellStart" | "cellSpan">;
+
+function nativeCellEnd(glyphs: readonly NativeCellSpan[]): number {
+  return glyphs.reduce((end, glyph) => Math.max(end, glyph.cellStart + glyph.cellSpan), 0);
+}
+
+/** Every selected native glyph needs a selection backdrop, even when the host
+ * uses a different Unicode version or legacy ZWJ width. Keep trailing spaces. */
+export function selectionRowCellLength(text: string, glyphs: readonly NativeCellSpan[]): number {
+  const trailing = text.slice(text.trimEnd().length);
+  return Math.max(cellLength(text), nativeCellEnd(glyphs) + cellLength(trailing));
+}
+
 const BOX_DIRECTIONS = new Map<string, string>([
   ["─", "lr"],
   ["━", "lr"],
@@ -629,7 +648,7 @@ export interface SpecialDrawingCells {
   block: Map<number, string>;
 }
 
-export function specialDrawingCells(text: string): SpecialDrawingCells {
+export function specialDrawingCells(text: string, glyphs?: readonly NativeCellSpan[]): SpecialDrawingCells {
   const box = new Map<number, string>();
   const block = new Map<number, string>();
   let column = 0;
@@ -650,6 +669,13 @@ export function specialDrawingCells(text: string): SpecialDrawingCells {
     }
   }
   if (simple) return { box, block };
+
+  // TRF1 provides glyph grid positions but no text-to-cell mapping. When widths
+  // disagree, or a ZWJ makes that mapping ambiguous, draw the host's actual
+  // glyphs. Guessing a column can turn an unrelated letter into a block.
+  if (glyphs?.length && (text.includes("\u200d") || nativeCellEnd(glyphs) !== cellLength(text.trimEnd()))) {
+    return { box, block };
+  }
 
   box.clear();
   block.clear();
@@ -1648,7 +1674,10 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       for (const row of renderRows) {
         if (row < start.row || row > end.row) continue;
         const first = row === start.row ? start.column : 0;
-        const last = row === end.row ? end.column : Math.max(0, cellLength(view.rows[row] ?? "") - 1);
+        const last =
+          row === end.row
+            ? end.column
+            : Math.max(0, selectionRowCellLength(view.rows[row] ?? "", view.nativeRows[row] ?? []) - 1);
         pushRectangle(
           rectangleVertices,
           (ORIGIN_X + first * CELL_WIDTH) * scale,
@@ -1666,7 +1695,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
 
     if (hasNativeRows) {
       for (const row of renderRows) {
-        const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "");
+        const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "", view.nativeRows[row]);
         for (const instance of view.nativeRows[row] ?? []) {
           const definition = view.glyphDefinitions.get(instance.glyphId);
           if (!definition) continue;
@@ -1885,7 +1914,10 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
       for (const row of renderRows) {
         if (row < start.row || row > end.row) continue;
         const first = row === start.row ? start.column : 0;
-        const last = row === end.row ? end.column : Math.max(0, cellLength(view.rows[row] ?? "") - 1);
+        const last =
+          row === end.row
+            ? end.column
+            : Math.max(0, selectionRowCellLength(view.rows[row] ?? "", view.nativeRows[row] ?? []) - 1);
         pushRectangle(
           rectangleVertices,
           (ORIGIN_X + first * CELL_WIDTH) * scale,
@@ -1904,7 +1936,7 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     const hasNativeRows = view.nativeRows.some((row) => row.length > 0);
     if (hasNativeRows) {
       for (const row of renderRows) {
-        const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "");
+        const { box: boxCells, block: blockCells } = specialDrawingCells(view.rows[row] ?? "", view.nativeRows[row]);
         for (const instance of view.nativeRows[row] ?? []) {
           const definition = view.glyphDefinitions.get(instance.glyphId);
           if (!definition) continue;

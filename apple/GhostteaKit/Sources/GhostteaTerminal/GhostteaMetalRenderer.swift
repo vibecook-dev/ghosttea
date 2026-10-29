@@ -1071,7 +1071,12 @@ final class GhostteaMetalRenderer {
     // are areas, so light adaptation maps them as surfaces. Only computed
     // when those colors can differ.
     let graphics =
-      styles.distinguishesGraphics ? GhostteaMetalGraphicCells.cells(in: row.text) : [:]
+      styles.distinguishesGraphics
+      ? GhostteaMetalGraphicCells.cells(
+        in: row.text,
+        nativeCellEnd: row.glyphs.reduce(0) {
+          max($0, Int($1.cellStart) + Int($1.cellSpan))
+        }) : [:]
     for run in row.styles {
       let style = styles[run.styleID]
       if let background = style.background {
@@ -2010,7 +2015,7 @@ private final class GhostteaMetalStyleResolver {
   }
 }
 
-private enum GhostteaMetalGraphicCell {
+enum GhostteaMetalGraphicCell {
   case box
   case block
 }
@@ -2018,8 +2023,16 @@ private enum GhostteaMetalGraphicCell {
 enum GhostteaMetalGraphicCells {
   /// Columns holding box-drawing (U+2500–257F) or block-element (U+2580–259F)
   /// characters, found by walking the row text with the desktop's cell widths.
-  fileprivate static func cells(in text: String) -> [Int: GhostteaMetalGraphicCell] {
+  static func cells(in text: String, nativeCellEnd: Int? = nil) -> [Int: GhostteaMetalGraphicCell] {
     if text.utf8.allSatisfy({ $0 < 0x80 }) { return [:] }
+    // The host grid owns placement. TRF1 has no text-to-cell mapping, so do
+    // not assign graphics colors to an unrelated letter after a ZWJ or when
+    // the host's Unicode widths differ. The native glyph's own style remains.
+    if let nativeCellEnd {
+      let measured = text.reversed().drop(while: { $0.isWhitespace })
+        .reduce(0) { $0 + cellWidth($1) }
+      guard !text.contains("\u{200d}"), measured == nativeCellEnd else { return [:] }
+    }
     var cells: [Int: GhostteaMetalGraphicCell] = [:]
     var column = 0
     for character in text {
