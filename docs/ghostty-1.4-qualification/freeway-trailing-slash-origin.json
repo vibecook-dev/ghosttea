@@ -1,0 +1,15 @@
+{
+  "baselineCommit": "e259f1fe31d9b3a01dca70dc33a5dad99841f6f3",
+  "observedSidecarVersion": "0.7.24",
+  "observedRoute": "exact=false trailing_slash=true",
+  "files": [
+    {
+      "flavor": "baseline",
+      "originalDoorSha256": "56c1671a4260fac4705da8bfd47785208784f15a6d1f8c8c835002a9dda0ee40"
+    },
+    {
+      "flavor": "candidate",
+      "originalDoorSha256": "56c1671a4260fac4705da8bfd47785208784f15a6d1f8c8c835002a9dda0ee40"
+    }
+  ]
+}

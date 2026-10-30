@@ -1,0 +1,40 @@
+[
+  {
+    "check": "check:ghostty-upgrade",
+    "exitCode": 0
+  },
+  {
+    "check": "check:bundled-fonts",
+    "exitCode": 0
+  },
+  {
+    "check": "check:font-parity",
+    "exitCode": 1
+  },
+  {
+    "check": "check:ios-release-bom",
+    "exitCode": 0
+  },
+  {
+    "check": "check:ios-release-resources",
+    "exitCode": 0
+  },
+  {
+    "check": "check:swiftpm:manifests",
+    "exitCode": 0
+  },
+  {
+    "check": "check:ios-app-store",
+    "exitCode": 0
+  },
+  {
+    "check": "check:ios-beta-matrix",
+    "exitCode": 0
+  },
+  {
+    "check": "check:font-parity",
+    "exitCode": 0,
+    "recheck": "final-ssd-check-font-parity-permitted.log",
+    "reason": "Original sandboxed invocation could not access the external Cargo target; permitted invocation explicitly used the isolated candidate target."
+  }
+]
