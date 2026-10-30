@@ -1,0 +1,6 @@
+{
+  "command": "pnpm bundle:assert",
+  "exitCode": 0,
+  "elapsedSeconds": 4.03,
+  "log": "vibefield-bundle-link-recheck-20261030.log"
+}

@@ -1,0 +1,110 @@
+[
+  {
+    "label": "baseline",
+    "repetition": 1,
+    "exitCode": 0,
+    "elapsedSeconds": 13.59,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-baseline-1-20261030.log",
+    "binaries": {
+      "field-native": "79d9f93b73bfb27c09ebff104fb0bef8392499f8fc66b53403e63d0cb9f2148f",
+      "field-terminal-host": "938dd252b26a6783eb5205b56ee689ec0b0250667ce075199655a54ab37b48c6",
+      "field-freeway-host": "e54860095ae7ba929f5a502ed0d92e6bb8e354ffbdc4cf1b3f20adf57ff6f217"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  },
+  {
+    "label": "candidate",
+    "repetition": 1,
+    "exitCode": 0,
+    "elapsedSeconds": 12.13,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-candidate-1-20261030.log",
+    "binaries": {
+      "field-native": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "field-terminal-host": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+      "field-freeway-host": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  },
+  {
+    "label": "baseline",
+    "repetition": 2,
+    "exitCode": 0,
+    "elapsedSeconds": 12.14,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-baseline-2-20261030.log",
+    "binaries": {
+      "field-native": "79d9f93b73bfb27c09ebff104fb0bef8392499f8fc66b53403e63d0cb9f2148f",
+      "field-terminal-host": "938dd252b26a6783eb5205b56ee689ec0b0250667ce075199655a54ab37b48c6",
+      "field-freeway-host": "e54860095ae7ba929f5a502ed0d92e6bb8e354ffbdc4cf1b3f20adf57ff6f217"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  },
+  {
+    "label": "candidate",
+    "repetition": 2,
+    "exitCode": 0,
+    "elapsedSeconds": 12.03,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-candidate-2-20261030.log",
+    "binaries": {
+      "field-native": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "field-terminal-host": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+      "field-freeway-host": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  },
+  {
+    "label": "baseline",
+    "repetition": 3,
+    "exitCode": 0,
+    "elapsedSeconds": 11.68,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-baseline-3-20261030.log",
+    "binaries": {
+      "field-native": "79d9f93b73bfb27c09ebff104fb0bef8392499f8fc66b53403e63d0cb9f2148f",
+      "field-terminal-host": "938dd252b26a6783eb5205b56ee689ec0b0250667ce075199655a54ab37b48c6",
+      "field-freeway-host": "e54860095ae7ba929f5a502ed0d92e6bb8e354ffbdc4cf1b3f20adf57ff6f217"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  },
+  {
+    "label": "candidate",
+    "repetition": 3,
+    "exitCode": 0,
+    "elapsedSeconds": 12.46,
+    "summary": "Tests  2 passed | 54 skipped (56)",
+    "log": "agent-timing-candidate-3-20261030.log",
+    "binaries": {
+      "field-native": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "field-terminal-host": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+      "field-freeway-host": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6"
+    },
+    "setupChange": "reuse already-qualified retained binaries instead of rebuilding them",
+    "testSourceChanged": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "plannedPairedRepetitions": 3
+  }
+]

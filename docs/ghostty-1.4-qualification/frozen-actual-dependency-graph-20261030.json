@@ -1,0 +1,131 @@
+{
+  "lockedGraphByteIdentical": true,
+  "lockSha256": "8201e7c39ee67791cc88c5ddb10aecabd2f205a5855b3103aff2184f12dda6c4",
+  "actualCriticalDependenciesMatchBaseline": true,
+  "packages": [
+    {
+      "importer": "packages/fieldd",
+      "package": "loro-crdt",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "1.13.8",
+        "manifestSha256": "4fedb3ddfa41e34508b3d1856fbf92baad41833e897cfeb0d5ed6e62b6de3a2b",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/loro-crdt@1.13.8/node_modules/loro-crdt",
+        "wasmSha256": "44c208ef73a2b26f8adf541677ea644ece0a41229976ce5bedc81aa466da98a6"
+      },
+      "candidate": {
+        "version": "1.13.8",
+        "manifestSha256": "4fedb3ddfa41e34508b3d1856fbf92baad41833e897cfeb0d5ed6e62b6de3a2b",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/loro-crdt@1.13.8/node_modules/loro-crdt",
+        "wasmSha256": "44c208ef73a2b26f8adf541677ea644ece0a41229976ce5bedc81aa466da98a6"
+      }
+    },
+    {
+      "importer": "packages/field-app",
+      "package": "react",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "19.2.7",
+        "manifestSha256": "51966ae9c8c377ff592b5d69c980966992101bc6791bf83a1e5c7ad9bcefa7f4",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/react@19.2.7/node_modules/react"
+      },
+      "candidate": {
+        "version": "19.2.7",
+        "manifestSha256": "51966ae9c8c377ff592b5d69c980966992101bc6791bf83a1e5c7ad9bcefa7f4",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.2.7/node_modules/react"
+      }
+    },
+    {
+      "importer": "packages/field-app",
+      "package": "react-dom",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "19.2.7",
+        "manifestSha256": "447acd72cdb6a966d9db967729e286e7cbb4a09ea61fddd45e12c2a97fd4cfb6",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/react-dom@19.2.7_react@19.2.7/node_modules/react-dom"
+      },
+      "candidate": {
+        "version": "19.2.7",
+        "manifestSha256": "447acd72cdb6a966d9db967729e286e7cbb4a09ea61fddd45e12c2a97fd4cfb6",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react-dom@19.2.7_react@19.2.7/node_modules/react-dom"
+      }
+    },
+    {
+      "importer": "packages/field-app",
+      "package": "@types/react",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "19.2.17",
+        "manifestSha256": "36496fc09a9dcf31b0ca969ce5677c9ce9ebb5c89da9bd6212e0c89b6fae3f88",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react"
+      },
+      "candidate": {
+        "version": "19.2.17",
+        "manifestSha256": "36496fc09a9dcf31b0ca969ce5677c9ce9ebb5c89da9bd6212e0c89b6fae3f88",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react@19.2.17/node_modules/@types/react"
+      }
+    },
+    {
+      "importer": "packages/field-app",
+      "package": "@types/react-dom",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "19.2.3",
+        "manifestSha256": "bf90986beaec5f757c164bf1d374f3038dc41b0b06673de4a55fd975d1e5deca",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/@types+react-dom@19.2.3_@types+react@19.2.17/node_modules/@types/react-dom"
+      },
+      "candidate": {
+        "version": "19.2.3",
+        "manifestSha256": "bf90986beaec5f757c164bf1d374f3038dc41b0b06673de4a55fd975d1e5deca",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react-dom@19.2.3_@types+react@19.2.17/node_modules/@types/react-dom"
+      }
+    },
+    {
+      "importer": "packages/field-app",
+      "package": "@vibecook/ice",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "0.16.0",
+        "manifestSha256": "7c9f10c6d8ba4d74eeb189328baa390b1c01bb6c89910e0780325b49504cf43b",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/@vibecook+ice@0.16.0_react-dom@19.2.7_react@19.2.7__react@19.2.7/node_modules/@vibecook/ice"
+      },
+      "candidate": {
+        "version": "0.16.0",
+        "manifestSha256": "7c9f10c6d8ba4d74eeb189328baa390b1c01bb6c89910e0780325b49504cf43b",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@vibecook+ice@0.16.0_react-dom@19.2.7_react@19.2.7__react@19.2.7/node_modules/@vibecook/ice"
+      }
+    },
+    {
+      "importer": "packages/fieldd",
+      "package": "vitest",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "3.2.7",
+        "manifestSha256": "3f3dc1ef7acc6ffac8d0a7f10c4460f98e36026837b57f774426d962d546d740",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/vitest@3.2.7_@types+debug@4.1.13_@types+node@24.13.3_happy-dom@20.11.0_jiti@2.7.0_light_7a6200b28a02c3610313c1c816f82b7a/node_modules/vitest"
+      },
+      "candidate": {
+        "version": "3.2.7",
+        "manifestSha256": "3f3dc1ef7acc6ffac8d0a7f10c4460f98e36026837b57f774426d962d546d740",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/vitest@3.2.7_@types+debug@4.1.13_@types+node@24.13.3_happy-dom@20.11.0_jiti@2.7.0_light_7a6200b28a02c3610313c1c816f82b7a/node_modules/vitest"
+      }
+    },
+    {
+      "importer": "apps/desktop",
+      "package": "electron",
+      "matchesBaseline": true,
+      "baseline": {
+        "version": "43.1.1",
+        "manifestSha256": "b27a9ed2dd26e96b0eb3e8cf0efa46992dfb0e9e9c7d4a10ae26dfcdf4c82aaa",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/baseline/vibe-field/node_modules/.pnpm/electron@43.1.1_supports-color@7.2.0/node_modules/electron"
+      },
+      "candidate": {
+        "version": "43.1.1",
+        "manifestSha256": "b27a9ed2dd26e96b0eb3e8cf0efa46992dfb0e9e9c7d4a10ae26dfcdf4c82aaa",
+        "path": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/electron@43.1.1_supports-color@7.2.0/node_modules/electron"
+      }
+    }
+  ],
+  "automaticReinstallDisabledBy": "pnpm_config_verify_deps_before_run=false",
+  "sourceAndProductionPinsChanged": false
+}

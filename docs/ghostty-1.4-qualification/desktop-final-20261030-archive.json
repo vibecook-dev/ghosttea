@@ -1,0 +1,9 @@
+{
+  "archive": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/qualification-evidence/desktop-final-20261030/desktop-results.tar.gz",
+  "sha256": "c8f770c7480e130578243bf4260f834eebd65a3b28344bbf508b4a46caaa6d7c",
+  "bytes": 7691046,
+  "files": 69,
+  "everyFileVerifiedAgainstOriginal": true,
+  "approvedTestKeyAbsent": true,
+  "manifest": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/qualification-evidence/desktop-final-20261030/manifest.json"
+}

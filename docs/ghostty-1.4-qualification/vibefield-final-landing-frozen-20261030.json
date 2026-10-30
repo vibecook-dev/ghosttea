@@ -1,0 +1,226 @@
+{
+  "sourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+  "ghostteaSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+  "command": [
+    "node",
+    "scripts/gate-landing.mjs",
+    "--logs",
+    "/private/tmp/vibefield-libghostty-migration-2026-10-29/evidence/landing-frozen-20261030"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 1742.53,
+  "log": "vibefield-final-landing-frozen-20261030.log",
+  "projectsSerial": true,
+  "maxVitestWorkers": 2,
+  "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+  "automaticDependencyReinstallDisabled": true,
+  "buildOnlyOfflineFlagAbsent": true,
+  "timeoutsChanged": false,
+  "assertionsChanged": false,
+  "gates": [
+    {
+      "gate": "still",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 40,
+      "log": "01-still.log",
+      "processCensuses": []
+    },
+    {
+      "gate": "smoke",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 41,
+      "log": "02-smoke.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-t9SHaL",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:canvas",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 933,
+      "log": "03-smoke_canvas.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-hyz0zz",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:canvas:no-gpu",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 32,
+      "log": "04-smoke_canvas_no-gpu.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-ZyWDcm",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:canvas:no-webgpu",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 29,
+      "log": "05-smoke_canvas_no-webgpu.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-iJeAKW",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:kind-faults",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 89,
+      "log": "06-smoke_kind-faults.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-ja6W40",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:plugin-restart",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 82,
+      "log": "07-smoke_plugin-restart.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-ZIfeTv",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:plugin",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 64,
+      "log": "08-smoke_plugin.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-tTk02c",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ],
+      "visualReview": "Clock and complete board reviewed in both themes; clock geometry intact; dark styling is markedly dimmer. No theme changes made.",
+      "supplementalEvidence": "landing-frozen-20261030/plugin-author"
+    },
+    {
+      "gate": "smoke:godview",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 158,
+      "log": "09-smoke_godview.log",
+      "processCensuses": [
+        {
+          "mark": "vf-godview-profile-Vpuph7",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:terminal-door",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 41,
+      "log": "10-smoke_terminal-door.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-KV3WYH",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:terminal-direct",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 44,
+      "log": "11-smoke_terminal-direct.log",
+      "processCensuses": [
+        {
+          "mark": "vf-godview-profile-iGhlGr",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:studio",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 77,
+      "log": "12-smoke_studio.log",
+      "processCensuses": [
+        {
+          "mark": "vf-studio-nVHLKH",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    },
+    {
+      "gate": "smoke:bundled",
+      "verdict": "ok",
+      "exitCode": 0,
+      "elapsedSeconds": 112,
+      "log": "13-smoke_bundled.log",
+      "processCensuses": [
+        {
+          "mark": "vf-smoke-profile-hOsSEr",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        },
+        {
+          "mark": "vf-smoke-profile-vzsrxn",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        },
+        {
+          "mark": "vf-smoke-profile-sely6x",
+          "left": [],
+          "reaped": [],
+          "helpersSettledMs": 0
+        }
+      ]
+    }
+  ],
+  "gatesPassed": 13,
+  "gatesFailed": 0
+}

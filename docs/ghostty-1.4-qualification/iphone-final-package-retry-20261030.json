@@ -1,0 +1,133 @@
+{
+  "ghostteaTestedSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+  "vibefieldTestedSourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+  "pairedCases": 4,
+  "passedCases": 4,
+  "passedTests": 8,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "matrix": [
+    {
+      "client": "candidate",
+      "host": "candidate",
+      "runnerExitCode": 0,
+      "elapsedSeconds": 33.6,
+      "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+      "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+      "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+      "resultBundle": "iphone-final-candidate-client-candidate-host-retry-20261030.xcresult",
+      "selectionTextSupported": true,
+      "copyChecksEnabled": true,
+      "copyExercised": true,
+      "mirroringExercised": true,
+      "remoteProbeCompleted": true,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Passed",
+        "totalTestCount": 2,
+        "passedTests": 2,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "qaAppUninstalled": true,
+      "nativeFontGoldenPassed": true,
+      "copyVerdict": "exact Unicode/live-PTY text returned by both production attachments"
+    },
+    {
+      "client": "candidate",
+      "host": "baseline",
+      "runnerExitCode": 0,
+      "elapsedSeconds": 35.19,
+      "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+      "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+      "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+      "resultBundle": "iphone-final-candidate-client-baseline-host-retry-20261030.xcresult",
+      "selectionTextSupported": false,
+      "copyChecksEnabled": true,
+      "copyExercised": true,
+      "mirroringExercised": true,
+      "remoteProbeCompleted": true,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Passed",
+        "totalTestCount": 2,
+        "passedTests": 2,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "qaAppUninstalled": true,
+      "nativeFontGoldenPassed": true,
+      "copyVerdict": "explicit unsupported result; stream and reconnect passed"
+    },
+    {
+      "client": "baseline",
+      "host": "candidate",
+      "runnerExitCode": 0,
+      "elapsedSeconds": 35.53,
+      "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+      "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+      "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+      "resultBundle": "iphone-final-baseline-client-candidate-host-retry-20261030.xcresult",
+      "selectionTextSupported": true,
+      "copyChecksEnabled": false,
+      "copyExercised": false,
+      "mirroringExercised": true,
+      "remoteProbeCompleted": true,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Passed",
+        "totalTestCount": 2,
+        "passedTests": 2,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "qaAppUninstalled": true,
+      "nativeFontGoldenPassed": true,
+      "copyVerdict": "older client; optional capability not requested"
+    },
+    {
+      "client": "baseline",
+      "host": "baseline",
+      "runnerExitCode": 0,
+      "elapsedSeconds": 40.54,
+      "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+      "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+      "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+      "resultBundle": "iphone-final-baseline-client-baseline-host-retry-20261030.xcresult",
+      "selectionTextSupported": false,
+      "copyChecksEnabled": false,
+      "copyExercised": false,
+      "mirroringExercised": true,
+      "remoteProbeCompleted": true,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Passed",
+        "totalTestCount": 2,
+        "passedTests": 2,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "qaAppUninstalled": true,
+      "nativeFontGoldenPassed": true,
+      "copyVerdict": "older client; optional capability not requested"
+    }
+  ],
+  "candidateAppMatchesPreviouslyPassed833TestSuite": true,
+  "productCodeChangedForRetry": false,
+  "timeoutsChanged": false,
+  "assertionsChanged": false,
+  "previousTailnetJoinFailuresPreserved": true,
+  "previousJoinFailureCause": "not established; all pairings passed on the user-requested retry with unchanged binaries and test timeouts",
+  "visualReview": {
+    "newClientNewHost": "two matching Metal surfaces; CJK and combining text readable; joined emoji at natural artwork width; Unicode 18 missing-glyph box and following X preserve the host grid",
+    "newClientOldHost": "matching Metal mirrors; legacy host missing-glyph width preserved; following X remains aligned",
+    "imageEditingApplied": false
+  },
+  "cleanup": {
+    "baselineFixtureExitCode": 0,
+    "candidateFixtureExitCode": 0,
+    "allFourQAAppsUninstalled": true,
+    "phoneConfigurationDeleted": true
+  },
+  "latencyQualification": "unchanged: explicitly unqualified"
+}

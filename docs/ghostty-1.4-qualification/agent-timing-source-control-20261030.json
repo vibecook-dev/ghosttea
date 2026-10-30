@@ -1,0 +1,12 @@
+[
+  {
+    "path": "packages/fieldd/src/agent-runtime.ts",
+    "identicalToBaseline": true,
+    "sha256": "7cca2cdd5377182132a3d4ba8ecfcc3cf1238eae1e9fa2ec7cbff2e732b3a547"
+  },
+  {
+    "path": "packages/fieldd/test/agent-session.test.ts",
+    "identicalToBaseline": true,
+    "sha256": "d197550af6a87d4c3f8febc009a1c06f0727fc87022a2ef29d8dbc3477d43c39"
+  }
+]

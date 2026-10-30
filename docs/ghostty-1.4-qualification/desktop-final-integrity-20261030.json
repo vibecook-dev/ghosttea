@@ -1,0 +1,39 @@
+{
+  "revisions": {
+    "ghosttea-0.11.2": {
+      "head": "f535d6f679affe274aa49997f63125c5ce9c5213",
+      "status": []
+    },
+    "vibe-field": {
+      "head": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+      "status": [
+        " M apps/ios/VibeFieldKit/Package.swift"
+      ]
+    }
+  },
+  "nativeHelpers": [
+    {
+      "binary": "field-native",
+      "sha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "matchesFinalDeviceAndDesktopTestedBinary": true
+    },
+    {
+      "binary": "field-terminal-host",
+      "sha256": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+      "matchesFinalDeviceAndDesktopTestedBinary": true
+    },
+    {
+      "binary": "field-freeway-host",
+      "sha256": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6",
+      "matchesFinalDeviceAndDesktopTestedBinary": true
+    }
+  ],
+  "correctedCIArchiveSha256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd",
+  "ownedPathProcessCensus": [],
+  "smokeProcessCensuses": 14,
+  "nonemptySmokeProcessCensuses": 0,
+  "productionPinsPromoted": false,
+  "temporarySwiftOverlayKeptLocal": true,
+  "runtimeOutputRestorationEvidence": "restore-qualified-runtime-binaries-20261030.json",
+  "fullVerifyExitCodeUnchanged": 1
+}
