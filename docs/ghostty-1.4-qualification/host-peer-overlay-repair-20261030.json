@@ -1,0 +1,182 @@
+{
+  "changedOnly": "generated node_modules links in isolated checkouts",
+  "sourceAndLocksChanged": false,
+  "before": [
+    {
+      "folder": "../mille-pin",
+      "packages": {
+        "react": null,
+        "react-dom": null,
+        "@types/react": null,
+        "@types/react-dom": null
+      }
+    },
+    {
+      "folder": "../mille-pin/packages/mille",
+      "packages": {
+        "react": null,
+        "react-dom": null,
+        "@types/react": null,
+        "@types/react-dom": null
+      }
+    },
+    {
+      "folder": "../mille-pin/packages/mille-ui",
+      "packages": {
+        "react": null,
+        "react-dom": null,
+        "@types/react": null,
+        "@types/react-dom": null
+      }
+    },
+    {
+      "folder": "../ghosttea-0.11.2",
+      "packages": {
+        "react": {
+          "version": "19.2.7",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.2.7",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.2.17",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.2.3",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react-dom/package.json"
+        }
+      }
+    },
+    {
+      "folder": "../ghosttea-0.11.2/packages/ghosttea-react",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.3.1/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.2.7",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.2.17",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.2.3",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react-dom/package.json"
+        }
+      }
+    }
+  ],
+  "after": [
+    {
+      "folder": "../mille-pin",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.3.1/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react-dom@19.3.0_@types+react@19.3.0/node_modules/@types/react-dom/package.json"
+        }
+      }
+    },
+    {
+      "folder": "../mille-pin/packages/mille",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.3.1/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react-dom@19.3.0_@types+react@19.3.0/node_modules/@types/react-dom/package.json"
+        }
+      }
+    },
+    {
+      "folder": "../mille-pin/packages/mille-ui",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.3.1/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react-dom@19.3.0_@types+react@19.3.0/node_modules/@types/react-dom/package.json"
+        }
+      }
+    },
+    {
+      "folder": "../ghosttea-0.11.2",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/node_modules/@types/react-dom/package.json"
+        }
+      }
+    },
+    {
+      "folder": "../ghosttea-0.11.2/packages/ghosttea-react",
+      "packages": {
+        "react": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react@19.3.1/node_modules/react/package.json"
+        },
+        "react-dom": {
+          "version": "19.3.1",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/package.json"
+        },
+        "@types/react": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react@19.3.0/node_modules/@types/react/package.json"
+        },
+        "@types/react-dom": {
+          "version": "19.3.0",
+          "file": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@types+react-dom@19.3.0_@types+react@19.3.0/node_modules/@types/react-dom/package.json"
+        }
+      }
+    }
+  ]
+}

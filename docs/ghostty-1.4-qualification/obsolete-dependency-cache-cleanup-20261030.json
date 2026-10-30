@@ -1,0 +1,7 @@
+{
+  "removed": "/private/tmp/vibefield-libghostty-migration-2026-10-29/dependency-drift-node-modules-20261030",
+  "kind": "obsolete generated node_modules moved aside during frozen dependency repair",
+  "sourceFilesRemoved": false,
+  "diagnosticLocksAndLogsRetained": true,
+  "internalFreeGiBAfter": 66.23
+}

@@ -1,0 +1,11 @@
+{
+  "command": "pnpm verify",
+  "status": "interrupted after dependency drift was discovered; invalid as a pinned qualification run",
+  "observedFielddFailures": 5,
+  "lockedLoroVersion": "1.13.8",
+  "installedLoroVersion": "1.17.1",
+  "priorPassedStaticStages": true,
+  "landingGatesStarted": false,
+  "timeoutsChanged": false,
+  "assertionsChanged": false
+}

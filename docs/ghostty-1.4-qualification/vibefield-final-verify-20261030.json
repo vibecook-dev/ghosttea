@@ -1,0 +1,11 @@
+{
+  "command": "pnpm verify",
+  "exitCode": 1,
+  "elapsedSeconds": 13.67,
+  "log": "vibefield-final-verify-20261030.log",
+  "sourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+  "ghostteaSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+  "projectsSerial": true,
+  "timeoutsChanged": false,
+  "assertionsChanged": false
+}

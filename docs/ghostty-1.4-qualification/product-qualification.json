@@ -1,5 +1,5 @@
 {
-  "status": "qualification in progress; not promoted",
+  "status": "qualification recorded with open gates; not promoted",
   "ghostteaBaseline": "3eee581c14b05850c90bea09536d4bc6b856223b",
   "vibefieldBaseline": "e259f1fe31d9b3a01dca70dc33a5dad99841f6f3",
   "physicalDevice": {
@@ -15,9 +15,14 @@
       "failed": 0
     },
     "finalRebuiltArtifactProbe": {
-      "status": "pending",
-      "reason": "iPhone unavailable after storage move; user explicitly chose to continue and leave the final device check pending",
-      "priorProductionAndMixedMatrixEvidence": "retained; does not claim the final package was re-run on device"
+      "status": "passed",
+      "productionTestsPassed": 833,
+      "mixedPairingsPassed": 4,
+      "mixedTestsPassed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "exactSameFinalPackage": true,
+      "evidence": "iphone-final-package-retry-20261030.json"
     }
   },
   "baselineAdjustments": [
@@ -86,9 +91,11 @@
   },
   "limits": [
     "No release or product dependency version promotion.",
-    "Final rebuilt-package iPhone production tests passed 833/833 with no skips. Final real-Truffle matrix timed out joining the tailnet on both baseline and candidate phone apps, before terminal connections. Full verify retained six helper-process timeouts and the intermittent terminal-door shutdown failure; unchanged focused controls passed. Full landing gates remain open.",
+    "The final package passed 833 production iPhone tests and all four real-Truffle pairings; all 13 desktop landing gates and separate Rust/generated-file stages passed. Full pnpm verify remains red at one unchanged 1999 ms versus 2000 ms agent-cleanup assertion; all 12 selected baseline/candidate control executions passed without changing assertions or timeouts.",
     "Latency is explicitly unqualified by user choice.",
-    "Pre-existing SSH production-readiness blockers remain separately recorded."
+    "Physical Windows GPU/product UI was not tested; native Windows CI consumers passed.",
+    "The physical-phone probe exercises the production selection API; a tap on the Swift home copy menu was not separately exercised. Real Wi-Fi/cellular handoff and long suspension are not claimed.",
+    "Pre-existing SSH production-readiness blockers remain separately recorded and unwaived."
   ],
   "metalRenderer": {
     "passed": 80,
@@ -164,6 +171,326 @@
       "testTimeoutChanged": false,
       "assertionsChanged": false,
       "oneTestFileAtATime": true
+    },
+    "dependencyDriftAttempt": {
+      "status": "interrupted; invalid as a pinned comparison",
+      "loroLocked": "1.13.8",
+      "loroDrifted": "1.17.1",
+      "reactLocked": "19.2.7",
+      "reactDrifted": "19.3.1",
+      "cause": "pnpm automatic overlay install before command execution",
+      "restore": "clean frozen offline install plus candidate-only source links",
+      "actualDependenciesMatchBaseline": true,
+      "productionPinsChanged": false,
+      "buildOnlyOfflineFlagRemovedFromRuntime": true,
+      "evidence": "frozen-actual-dependency-graph-20261030.json",
+      "focusedRecheck": {
+        "passed": 56,
+        "failed": 0,
+        "skipped": 1,
+        "skipReason": "existing Windows-only case",
+        "assertionsChanged": false,
+        "timeoutsChanged": false
+      }
+    },
+    "finalFrozenVerify": {
+      "sourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+      "ghostteaSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+      "command": [
+        "pnpm",
+        "verify"
+      ],
+      "exitCode": 1,
+      "elapsedSeconds": 971.26,
+      "log": "vibefield-final-verify-frozen-20261030.log",
+      "projectsSerial": true,
+      "maxVitestWorkers": 2,
+      "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+      "automaticDependencyReinstallDisabled": true,
+      "buildOnlyOfflineFlagAbsent": true,
+      "timeoutsChanged": false,
+      "assertionsChanged": false,
+      "projects": [
+        {
+          "project": "@vibefield/contracts",
+          "summary": "Tests  1214 passed (1214)",
+          "passed": 1214,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/trust",
+          "summary": "Tests  3 passed (3)",
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-build",
+          "summary": "Tests  77 passed (77)",
+          "passed": 77,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-sdk",
+          "summary": "Tests  80 passed (80)",
+          "passed": 80,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/logging",
+          "summary": "Tests  54 passed | 1 skipped (55)",
+          "passed": 54,
+          "failed": 0,
+          "skipped": 1,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/fieldd",
+          "summary": "Tests  1 failed | 2607 passed | 11 skipped (2619)",
+          "passed": 2607,
+          "failed": 1,
+          "skipped": 11,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/fieldd-client",
+          "summary": "Tests  47 passed (47)",
+          "passed": 47,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/users",
+          "summary": "Tests  40 passed | 1 skipped (41)",
+          "passed": 40,
+          "failed": 0,
+          "skipped": 1,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-example-kv",
+          "summary": "Tests  5 passed (5)",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-runtime",
+          "summary": "Tests  55 passed (55)",
+          "passed": 55,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/audit",
+          "summary": "Tests  6 passed | 1 skipped (7)",
+          "passed": 6,
+          "failed": 0,
+          "skipped": 1,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/test-env",
+          "summary": "Tests  5 passed (5)",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-browser-pane",
+          "summary": "Tests  151 passed (151)",
+          "passed": 151,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-example-desk-clock",
+          "summary": "Tests  36 passed (36)",
+          "passed": 36,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-comment-pad",
+          "summary": "Tests  37 passed (37)",
+          "passed": 37,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/live-surfaces",
+          "summary": "Tests  38 passed (38)",
+          "passed": 38,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-browser",
+          "summary": "Tests  9 passed (9)",
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-behavior-conformance",
+          "summary": "Tests  4 passed (4)",
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/field-app",
+          "summary": "Tests  2807 passed (2807)",
+          "passed": 2807,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/fieldd-supervisor",
+          "summary": "Tests  74 passed (74)",
+          "passed": 74,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/screenshot",
+          "summary": "Tests  38 passed (38)",
+          "passed": 38,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/terminal-perf",
+          "summary": "Tests  92 passed (92)",
+          "passed": 92,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/electron-shell",
+          "summary": "Tests  1983 passed | 3 skipped (1986)",
+          "passed": 1983,
+          "failed": 0,
+          "skipped": 3,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/plugin-playground",
+          "summary": "Tests  68 passed (68)",
+          "passed": 68,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/dev-runner",
+          "passed": 257,
+          "failed": 0,
+          "skipped": 0
+        },
+        {
+          "project": "@vibefield/plugin-cli",
+          "summary": "Tests  115 passed (115)",
+          "passed": 115,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        },
+        {
+          "project": "@vibefield/create-plugin",
+          "summary": "Tests  80 passed (80)",
+          "passed": 80,
+          "failed": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      ],
+      "failedProjects": [
+        "@vibefield/fieldd"
+      ],
+      "singleFailure": {
+        "test": "agent-session.test.ts item 87 cleanup-pending warning",
+        "expectedPendingMsAtLeast": 2000,
+        "observedPendingMs": 1999,
+        "behaviorChecksBeforeTimingAssertionPassed": true
+      },
+      "remainingChainStagesNotRun": [
+        "test:rust",
+        "gen:check"
+      ],
+      "testTotals": {
+        "passed": 9982,
+        "failed": 1,
+        "skipped": 17
+      }
+    },
+    "latestCompleteInvocation": "finalFrozenVerify; earlier runs remain historical evidence",
+    "agentTimingControls": {
+      "pairedRepetitions": 3,
+      "baselineSelectedPassed": 6,
+      "candidateSelectedPassed": 6,
+      "failed": 0,
+      "excludedPerInvocation": 54,
+      "testSourceAndImplementationIdenticalToBaseline": true,
+      "assertionsChanged": false,
+      "timeoutsChanged": false,
+      "setupChange": "reuse previously qualified retained native binaries instead of rebuilding in global setup",
+      "fullVerifyExitCodeUnchanged": 1,
+      "evidence": "agent-timing-controls-20261030.json"
+    },
+    "separateFinalTailStages": {
+      "command": [
+        "node",
+        "scripts/gate-landing.mjs",
+        "--only",
+        "test:rust,gen:check",
+        "--logs",
+        "/private/tmp/vibefield-libghostty-migration-2026-10-29/evidence/final-tail-stages-frozen-20261030"
+      ],
+      "exitCode": 0,
+      "elapsedSeconds": 313.14,
+      "gates": [
+        "GATE test:rust ok exit=0 308s load 20/21/17\u219222/22/19",
+        "GATE gen:check ok exit=0 5s load 22/22/19\u219221/22/19"
+      ],
+      "final": {
+        "sha": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+        "ok": true,
+        "red": [],
+        "at": "2026-10-30T18:26:16.596Z"
+      },
+      "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+      "automaticDependencyReinstallDisabled": true,
+      "buildOnlyOfflineFlagAbsent": true,
+      "originalVerifyExitCodeUnchanged": 1,
+      "log": "final-tail-stages-frozen-20261030.log",
+      "rustTestTotals": {
+        "passed": 498,
+        "failed": 0,
+        "ignoredIncludingDocTests": 15
+      },
+      "generatedFilesCurrent": true
     }
   },
   "cargoOutputCorrection": {
@@ -253,6 +580,160 @@
   },
   "candidateConsistencyChecks": "passed: upgrade source, bundled fonts, font parity, iOS BOM/resources, Swift manifests, App Store and beta metadata; initial sandbox font-parity attempt is retained separately",
   "finalPhysicalDeviceQualification": {
+    "ghostteaTestedSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+    "vibefieldTestedSourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+    "pairedCases": 4,
+    "passedCases": 4,
+    "passedTests": 8,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "matrix": [
+      {
+        "client": "candidate",
+        "host": "candidate",
+        "runnerExitCode": 0,
+        "elapsedSeconds": 33.6,
+        "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+        "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+        "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+        "resultBundle": "iphone-final-candidate-client-candidate-host-retry-20261030.xcresult",
+        "selectionTextSupported": true,
+        "copyChecksEnabled": true,
+        "copyExercised": true,
+        "mirroringExercised": true,
+        "remoteProbeCompleted": true,
+        "summaryExitCode": 0,
+        "tests": {
+          "result": "Passed",
+          "totalTestCount": 2,
+          "passedTests": 2,
+          "failedTests": 0,
+          "skippedTests": 0
+        },
+        "qaAppUninstalled": true,
+        "nativeFontGoldenPassed": true,
+        "copyVerdict": "exact Unicode/live-PTY text returned by both production attachments"
+      },
+      {
+        "client": "candidate",
+        "host": "baseline",
+        "runnerExitCode": 0,
+        "elapsedSeconds": 35.19,
+        "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+        "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+        "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+        "resultBundle": "iphone-final-candidate-client-baseline-host-retry-20261030.xcresult",
+        "selectionTextSupported": false,
+        "copyChecksEnabled": true,
+        "copyExercised": true,
+        "mirroringExercised": true,
+        "remoteProbeCompleted": true,
+        "summaryExitCode": 0,
+        "tests": {
+          "result": "Passed",
+          "totalTestCount": 2,
+          "passedTests": 2,
+          "failedTests": 0,
+          "skippedTests": 0
+        },
+        "qaAppUninstalled": true,
+        "nativeFontGoldenPassed": true,
+        "copyVerdict": "explicit unsupported result; stream and reconnect passed"
+      },
+      {
+        "client": "baseline",
+        "host": "candidate",
+        "runnerExitCode": 0,
+        "elapsedSeconds": 35.53,
+        "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+        "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+        "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+        "resultBundle": "iphone-final-baseline-client-candidate-host-retry-20261030.xcresult",
+        "selectionTextSupported": true,
+        "copyChecksEnabled": false,
+        "copyExercised": false,
+        "mirroringExercised": true,
+        "remoteProbeCompleted": true,
+        "summaryExitCode": 0,
+        "tests": {
+          "result": "Passed",
+          "totalTestCount": 2,
+          "passedTests": 2,
+          "failedTests": 0,
+          "skippedTests": 0
+        },
+        "qaAppUninstalled": true,
+        "nativeFontGoldenPassed": true,
+        "copyVerdict": "older client; optional capability not requested"
+      },
+      {
+        "client": "baseline",
+        "host": "baseline",
+        "runnerExitCode": 0,
+        "elapsedSeconds": 40.54,
+        "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+        "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+        "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+        "resultBundle": "iphone-final-baseline-client-baseline-host-retry-20261030.xcresult",
+        "selectionTextSupported": false,
+        "copyChecksEnabled": false,
+        "copyExercised": false,
+        "mirroringExercised": true,
+        "remoteProbeCompleted": true,
+        "summaryExitCode": 0,
+        "tests": {
+          "result": "Passed",
+          "totalTestCount": 2,
+          "passedTests": 2,
+          "failedTests": 0,
+          "skippedTests": 0
+        },
+        "qaAppUninstalled": true,
+        "nativeFontGoldenPassed": true,
+        "copyVerdict": "older client; optional capability not requested"
+      }
+    ],
+    "candidateAppMatchesPreviouslyPassed833TestSuite": true,
+    "productCodeChangedForRetry": false,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "previousTailnetJoinFailuresPreserved": true,
+    "previousJoinFailureCause": "not established; all pairings passed on the user-requested retry with unchanged binaries and test timeouts",
+    "visualReview": {
+      "newClientNewHost": "two matching Metal surfaces; CJK and combining text readable; joined emoji at natural artwork width; Unicode 18 missing-glyph box and following X preserve the host grid",
+      "newClientOldHost": "matching Metal mirrors; legacy host missing-glyph width preserved; following X remains aligned",
+      "imageEditingApplied": false
+    },
+    "cleanup": {
+      "baselineFixtureExitCode": 0,
+      "candidateFixtureExitCode": 0,
+      "allFourQAAppsUninstalled": true,
+      "phoneConfigurationDeleted": true
+    },
+    "latencyQualification": "unchanged: explicitly unqualified",
+    "production": {
+      "xcodebuildExitCode": 0,
+      "cleanupExitCode": 0,
+      "elapsedSeconds": 63.4,
+      "resultBundle": "iphone-final-package-production.xcresult",
+      "log": "iphone-final-package-production.log",
+      "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+      "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+      "nativeIosArchiveSha256": "0aea3d134386cccfd5381e8a7a2bd11c6383182bf008168babdcfa0a2bc76f61",
+      "testKeyTransferred": false,
+      "remoteProbeExcludedForSeparateMatrix": true,
+      "tests": {
+        "result": "Passed",
+        "totalTestCount": 833,
+        "passedTests": 833,
+        "failedTests": 0,
+        "skippedTests": 0
+      }
+    },
+    "finalRemoteVerdict": "passed: all four final-package old/new client-host pairings; eight tests, no failures or skips",
+    "priorFailedAttemptEvidence": "iphone-final-package.json"
+  },
+  "previousFinalPhysicalDeviceQualification": {
     "ghostteaTestedSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
     "vibefieldTestedSourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
     "production": {
@@ -389,5 +870,279 @@
       "allFourQAAppsUninstalled": true,
       "temporaryPhoneConfigRetained": false
     }
+  },
+  "desktopFullLandingGate": {
+    "sourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+    "ghostteaSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+    "command": [
+      "node",
+      "scripts/gate-landing.mjs",
+      "--logs",
+      "/private/tmp/vibefield-libghostty-migration-2026-10-29/evidence/landing-frozen-20261030"
+    ],
+    "exitCode": 0,
+    "elapsedSeconds": 1742.53,
+    "log": "vibefield-final-landing-frozen-20261030.log",
+    "projectsSerial": true,
+    "maxVitestWorkers": 2,
+    "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+    "automaticDependencyReinstallDisabled": true,
+    "buildOnlyOfflineFlagAbsent": true,
+    "timeoutsChanged": false,
+    "assertionsChanged": false,
+    "gates": [
+      {
+        "gate": "still",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 40,
+        "log": "01-still.log",
+        "processCensuses": []
+      },
+      {
+        "gate": "smoke",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 41,
+        "log": "02-smoke.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-t9SHaL",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:canvas",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 933,
+        "log": "03-smoke_canvas.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-hyz0zz",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:canvas:no-gpu",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 32,
+        "log": "04-smoke_canvas_no-gpu.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-ZyWDcm",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:canvas:no-webgpu",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 29,
+        "log": "05-smoke_canvas_no-webgpu.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-iJeAKW",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:kind-faults",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 89,
+        "log": "06-smoke_kind-faults.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-ja6W40",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:plugin-restart",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 82,
+        "log": "07-smoke_plugin-restart.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-ZIfeTv",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:plugin",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 64,
+        "log": "08-smoke_plugin.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-tTk02c",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ],
+        "visualReview": "Clock and complete board reviewed in both themes; clock geometry intact; dark styling is markedly dimmer. No theme changes made.",
+        "supplementalEvidence": "landing-frozen-20261030/plugin-author"
+      },
+      {
+        "gate": "smoke:godview",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 158,
+        "log": "09-smoke_godview.log",
+        "processCensuses": [
+          {
+            "mark": "vf-godview-profile-Vpuph7",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:terminal-door",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 41,
+        "log": "10-smoke_terminal-door.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-KV3WYH",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:terminal-direct",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 44,
+        "log": "11-smoke_terminal-direct.log",
+        "processCensuses": [
+          {
+            "mark": "vf-godview-profile-iGhlGr",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:studio",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 77,
+        "log": "12-smoke_studio.log",
+        "processCensuses": [
+          {
+            "mark": "vf-studio-nVHLKH",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      },
+      {
+        "gate": "smoke:bundled",
+        "verdict": "ok",
+        "exitCode": 0,
+        "elapsedSeconds": 112,
+        "log": "13-smoke_bundled.log",
+        "processCensuses": [
+          {
+            "mark": "vf-smoke-profile-hOsSEr",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          },
+          {
+            "mark": "vf-smoke-profile-vzsrxn",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          },
+          {
+            "mark": "vf-smoke-profile-sely6x",
+            "left": [],
+            "reaped": [],
+            "helpersSettledMs": 0
+          }
+        ]
+      }
+    ],
+    "gatesPassed": 13,
+    "gatesFailed": 0
+  },
+  "finalDesktopIntegrity": {
+    "revisions": {
+      "ghosttea-0.11.2": {
+        "head": "f535d6f679affe274aa49997f63125c5ce9c5213",
+        "status": []
+      },
+      "vibe-field": {
+        "head": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+        "status": [
+          " M apps/ios/VibeFieldKit/Package.swift"
+        ]
+      }
+    },
+    "nativeHelpers": [
+      {
+        "binary": "field-native",
+        "sha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+        "matchesFinalDeviceAndDesktopTestedBinary": true
+      },
+      {
+        "binary": "field-terminal-host",
+        "sha256": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+        "matchesFinalDeviceAndDesktopTestedBinary": true
+      },
+      {
+        "binary": "field-freeway-host",
+        "sha256": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6",
+        "matchesFinalDeviceAndDesktopTestedBinary": true
+      }
+    ],
+    "correctedCIArchiveSha256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd",
+    "ownedPathProcessCensus": [],
+    "smokeProcessCensuses": 14,
+    "nonemptySmokeProcessCensuses": 0,
+    "productionPinsPromoted": false,
+    "temporarySwiftOverlayKeptLocal": true,
+    "runtimeOutputRestorationEvidence": "restore-qualified-runtime-binaries-20261030.json",
+    "fullVerifyExitCodeUnchanged": 1
+  },
+  "finalDesktopArchive": {
+    "archive": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/qualification-evidence/desktop-final-20261030/desktop-results.tar.gz",
+    "sha256": "c8f770c7480e130578243bf4260f834eebd65a3b28344bbf508b4a46caaa6d7c",
+    "bytes": 7691046,
+    "files": 69,
+    "everyFileVerifiedAgainstOriginal": true,
+    "approvedTestKeyAbsent": true,
+    "manifest": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/qualification-evidence/desktop-final-20261030/manifest.json"
   }
 }

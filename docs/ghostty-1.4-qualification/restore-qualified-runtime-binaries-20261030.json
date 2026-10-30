@@ -1,0 +1,38 @@
+{
+  "cause": "cargo test feature unification enables tokio/test-util; ordinary cargo build restores the runtime feature graph",
+  "testTokioFingerprint": "tokio-0d49f801af0a13dc",
+  "runtimeTokioFingerprint": "tokio-fa843326b191abb7",
+  "tokioOnlyFeatureDifference": "test-util",
+  "restoredWith": [
+    "cargo",
+    "build",
+    "-p",
+    "field-native",
+    "--bins"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 177.16,
+  "helpers": [
+    {
+      "binary": "field-native",
+      "testFeatureBuildSha256": "40b65d39607c0783edf8140163b711e98b9458a898856406b0d0552a732e5ccc",
+      "qualifiedRuntimeSha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "restoredSha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb"
+    },
+    {
+      "binary": "field-terminal-host",
+      "testFeatureBuildSha256": "f01ab26bd9a5be3308b13e6469194840ad9df2f5211798a8daf76707e770b738",
+      "qualifiedRuntimeSha256": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+      "restoredSha256": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1"
+    },
+    {
+      "binary": "field-freeway-host",
+      "testFeatureBuildSha256": "a474ad48706f4e3cacf89425968cd5defc8e13e9bfee1c09f6893cf89bc8d323",
+      "qualifiedRuntimeSha256": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6",
+      "restoredSha256": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6"
+    }
+  ],
+  "allThreeRestoredToExactQualifiedHashes": true,
+  "log": "restore-qualified-runtime-binaries-20261030.log",
+  "productCodeChanged": false
+}
