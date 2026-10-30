@@ -1,0 +1,138 @@
+{
+  "ghostteaTestedSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+  "vibefieldTestedSourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+  "production": {
+    "xcodebuildExitCode": 0,
+    "cleanupExitCode": 0,
+    "elapsedSeconds": 63.4,
+    "resultBundle": "iphone-final-package-production.xcresult",
+    "log": "iphone-final-package-production.log",
+    "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+    "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+    "nativeIosArchiveSha256": "0aea3d134386cccfd5381e8a7a2bd11c6383182bf008168babdcfa0a2bc76f61",
+    "testKeyTransferred": false,
+    "remoteProbeExcludedForSeparateMatrix": true,
+    "tests": {
+      "result": "Passed",
+      "totalTestCount": 833,
+      "passedTests": 833,
+      "failedTests": 0,
+      "skippedTests": 0
+    }
+  },
+  "finalRemoteMatrix": [
+    {
+      "client": "candidate",
+      "host": "candidate",
+      "runnerExitCode": 65,
+      "elapsedSeconds": 86.5,
+      "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+      "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+      "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+      "resultBundle": "iphone-final-candidate-client-candidate-host.xcresult",
+      "selectionTextSupported": true,
+      "copyExercised": false,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Failed",
+        "totalTestCount": 2,
+        "passedTests": 1,
+        "failedTests": 1,
+        "skippedTests": 0
+      },
+      "copyChecksEnabled": true,
+      "mirroringExercised": false,
+      "remoteProbeCompleted": false,
+      "failureStage": "iPhone Truffle waitUntilRunning, before peer discovery or terminal connection",
+      "qaAppUninstalled": true
+    },
+    {
+      "client": "candidate",
+      "host": "baseline",
+      "runnerExitCode": 65,
+      "elapsedSeconds": 89.29,
+      "appSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+      "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+      "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+      "resultBundle": "iphone-final-candidate-client-baseline-host.xcresult",
+      "selectionTextSupported": false,
+      "copyExercised": false,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Failed",
+        "totalTestCount": 2,
+        "passedTests": 1,
+        "failedTests": 1,
+        "skippedTests": 0
+      },
+      "copyChecksEnabled": true,
+      "mirroringExercised": false,
+      "remoteProbeCompleted": false,
+      "failureStage": "iPhone Truffle waitUntilRunning, before peer discovery or terminal connection",
+      "qaAppUninstalled": true
+    },
+    {
+      "client": "baseline",
+      "host": "candidate",
+      "runnerExitCode": 65,
+      "elapsedSeconds": 85.33,
+      "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+      "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+      "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+      "resultBundle": "iphone-final-baseline-client-candidate-host.xcresult",
+      "selectionTextSupported": true,
+      "copyExercised": false,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Failed",
+        "totalTestCount": 2,
+        "passedTests": 1,
+        "failedTests": 1,
+        "skippedTests": 0
+      },
+      "copyChecksEnabled": false,
+      "mirroringExercised": false,
+      "remoteProbeCompleted": false,
+      "failureStage": "iPhone Truffle waitUntilRunning, before peer discovery or terminal connection",
+      "qaAppUninstalled": true
+    },
+    {
+      "client": "baseline",
+      "host": "baseline",
+      "runnerExitCode": 65,
+      "elapsedSeconds": 86.75,
+      "appSha256": "3414ce7fc235e197b0201ff3c84a9ac440fa32fb5f85ef0ee18ce4c4d04e3217",
+      "debugLibrarySha256": "ec4187ab43f03ebc460ca5fceb14511985a9e6958a7f656742ae0d5730d74649",
+      "xctestrunSha256": "1107814d5afcb766ac88f223e1b774893c7b614a4634f1fea318f8be0642afcf",
+      "resultBundle": "iphone-final-baseline-client-baseline-host.xcresult",
+      "selectionTextSupported": false,
+      "copyExercised": false,
+      "summaryExitCode": 0,
+      "tests": {
+        "result": "Failed",
+        "totalTestCount": 2,
+        "passedTests": 1,
+        "failedTests": 1,
+        "skippedTests": 0
+      },
+      "copyChecksEnabled": false,
+      "mirroringExercised": false,
+      "remoteProbeCompleted": false,
+      "failureStage": "iPhone Truffle waitUntilRunning, before peer discovery or terminal connection",
+      "qaAppUninstalled": true
+    }
+  ],
+  "finalRemoteVerdict": "unqualified: all four phone nodes timed out joining the tailnet before peer discovery or terminal connection",
+  "earlierRemoteMatricesPassed": true,
+  "hostFixturesJoinedTailnet": true,
+  "approvedKeyParsersMatched": true,
+  "networkAndPermissionPromptClarificationRequested": true,
+  "environmentalCauseEstablished": false,
+  "cleanup": {
+    "remainingIsolatedWorktreeProcesses": [],
+    "baselineFixtureExitCode": 0,
+    "candidateFixtureExitCode": 0,
+    "allFourQAAppsUninstalled": true,
+    "temporaryPhoneConfigRetained": false
+  }
+}

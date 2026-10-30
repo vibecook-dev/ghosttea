@@ -1,0 +1,9 @@
+{
+  "initialBaselineFixtureExitCode": 101,
+  "initialBaselineMatrixReachedPhone": false,
+  "reason": "Retained fixture was launched outside its original debug/deps layout; NativeConfig locates cell and Freeway helpers beside or one directory above the current executable. The storage-recovery copy had neither helper at those relative locations.",
+  "correction": "Restored a hard link to the same verified fixture bytes at target-vibefield-baseline/debug/deps; all three original adjacent helper binaries verified before retry.",
+  "productSourceChanged": false,
+  "fixtureAssertionsChanged": false,
+  "initialCandidateFixtureStoppedCleanly": true
+}

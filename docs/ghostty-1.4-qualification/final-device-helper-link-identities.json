@@ -1,0 +1,59 @@
+[
+  {
+    "binary": "field-native",
+    "sha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+    "cargoDependencyChain": [
+      "field-native-fd04087cf9a7a49b/bin-field-native.json",
+      "ghosttea-5728064a0c9a2c12/lib-ghosttea.json",
+      "ghosttea-text-1a264baadb494f4a/lib-ghosttea_text.json",
+      "ghosttea-vt-584b6105eca830a7/lib-ghosttea_vt.json",
+      "ghosttea-vt-sys-ff44760716521748/lib-ghosttea_vt_sys.json",
+      "ghosttea-vt-sys-6a5c1e706c6cecc5/run-build-script-build-script-build.json",
+      "ghosttea-vt-sys-7a091ab055249261/build-script-build-script-build.json",
+      "ghosttea-core-b9d2a8a7d6fe097c/lib-ghosttea_core.json",
+      "ghosttea-config-ff29e399594dd5c8/lib-ghosttea_config.json",
+      "field-native-4b5be8d0e0cf8add/lib-field_native.json"
+    ],
+    "vtArchiveSha256": [
+      "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd"
+    ]
+  },
+  {
+    "binary": "field-terminal-host",
+    "sha256": "3fde56bdc74abbb55dfaf185edee294ab7f66d8f1cc6f9773ad267b10b9b39d1",
+    "cargoDependencyChain": [
+      "field-native-ab71da0921531b03/bin-field-terminal-host.json",
+      "ghosttea-5728064a0c9a2c12/lib-ghosttea.json",
+      "ghosttea-text-1a264baadb494f4a/lib-ghosttea_text.json",
+      "ghosttea-vt-584b6105eca830a7/lib-ghosttea_vt.json",
+      "ghosttea-vt-sys-ff44760716521748/lib-ghosttea_vt_sys.json",
+      "ghosttea-vt-sys-6a5c1e706c6cecc5/run-build-script-build-script-build.json",
+      "ghosttea-vt-sys-7a091ab055249261/build-script-build-script-build.json",
+      "ghosttea-core-b9d2a8a7d6fe097c/lib-ghosttea_core.json",
+      "ghosttea-config-ff29e399594dd5c8/lib-ghosttea_config.json",
+      "field-native-4b5be8d0e0cf8add/lib-field_native.json"
+    ],
+    "vtArchiveSha256": [
+      "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd"
+    ]
+  },
+  {
+    "binary": "field-freeway-host",
+    "sha256": "a87677fc0db770faf878f1df0bbc7deed153db002f80fe5f593a982f73606fa6",
+    "cargoDependencyChain": [
+      "field-native-50ff0e340d5e31b0/bin-field-freeway-host.json",
+      "ghosttea-5728064a0c9a2c12/lib-ghosttea.json",
+      "ghosttea-text-1a264baadb494f4a/lib-ghosttea_text.json",
+      "ghosttea-vt-584b6105eca830a7/lib-ghosttea_vt.json",
+      "ghosttea-vt-sys-ff44760716521748/lib-ghosttea_vt_sys.json",
+      "ghosttea-vt-sys-6a5c1e706c6cecc5/run-build-script-build-script-build.json",
+      "ghosttea-vt-sys-7a091ab055249261/build-script-build-script-build.json",
+      "ghosttea-core-b9d2a8a7d6fe097c/lib-ghosttea_core.json",
+      "ghosttea-config-ff29e399594dd5c8/lib-ghosttea_config.json",
+      "field-native-4b5be8d0e0cf8add/lib-field_native.json"
+    ],
+    "vtArchiveSha256": [
+      "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd"
+    ]
+  }
+]
