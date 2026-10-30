@@ -31,15 +31,15 @@ must not silently change transport versions or activate a second Rust node type.
 | --- | --- | --- |
 | Source | Rebase both local patch contracts; checksum-verified Zig 0.17; deterministic bootstrap diff | Passed: both patches ported, nine extension exports retained; prepared-source diff reproduced twice. |
 | Artifacts | macOS ARM64 and both Windows MSVC runtime variants; immutable CI candidates and provenance | Passed in corrected run 40972570187: macOS and both Windows CRT consumers, signed provenance, all 40 inventoried files per bundle, header/library checksums, SBOM consistency and three CRT witnesses per Windows variant. All three candidates are pinned atomically. Run 40969422970 remains rejected for its macOS duplicate `memset`. |
-| Apple | All framework slices, complete combined Rust/Swift artifact, reviewed toolchain | Final combined candidate package verified: `ghosttea-apple-native-1611ad6b0820`, source digest `56dc58d73c6d319af6759ef6f1e465e011ae58b32ec5e7b50295a1c2d4f49ac8`. All 18 public Swift products link against it. Clean iPhone QA build passed; both staged iOS archives match the package and both baseline/candidate app signatures verify. No artifact published. |
+| Apple | All framework slices, complete combined Rust/Swift artifact, reviewed toolchain | Final combined candidate package verified: `ghosttea-apple-native-1611ad6b0820`, source digest `56dc58d73c6d319af6759ef6f1e465e011ae58b32ec5e7b50295a1c2d4f49ac8`. All 18 public Swift products link against it. The exact signed iPhone package now passes all 833 production terminal tests with no failures or skips, and its native font golden passes on device. Both staged iOS archives match the package and both baseline/candidate app signatures verify. No artifact published. |
 | Core | Full Rust tests, C ABI, allocation/lifetime checks, parser chunking and ordered replies | Passed against the corrected CI macOS archive: candidate 424 Rust tests / 3 ignored and 623 JS tests; baseline 414 Rust / 3 ignored. ABI 197 types / 1,916 assertions; four strict C shims. C FFI parity and AddressSanitizer gate passed without duplicate-symbol warnings. |
 | Fonts | Unicode policy, explicit missing-glyph handling, desktop and iOS rendered comparisons | Eight bundled files verified; two Noto fonts updated. Unicode 18 cell-width regression reproduced and fixed. Reviewed pixel comparison: all eight cases retain identical layout; two emoji cases have intentional font-pixel changes. New engine with old fonts reproduces the old golden exactly. Native iPhone font goldens passed in all four old/new client-host combinations. Joined-emoji artwork now stays at its natural cell width while following text retains the host grid; Godview and iPhone images show the corrected artwork/grid. The complete Metal/frame suite passes 80 tests. Its one font-dependent golden hash changed; restoring only the old fonts reproduced the old pixel hash exactly, with layout, edge map, mean channels, occupied pixels and tolerances unchanged. |
 | Godview | Pane creation/split/close, focus/input, resize, scrollback, selection/copy, freeze/resume, mirrors and restored panes | Passed: final full field-app suite (2,807 tests, no skips). Final exact-CI-artifact pane lab copies Unicode and 160-row scrollback, switches alternate screens, verifies hidden output, splits/closes panes, preserves used sessions, checks fullscreen/canvas sizing and reattaches eight times. Screenshot reviewed; clean process exit, PTYs 93 before/after and zero surviving owned processes. |
 | Real desktop | Isolated-profile Godview and terminal-direct smoke with candidate host binary | Final exact-CI-artifact Godview and direct-terminal smokes passed with no surviving processes. Terminal-door connection/origin checks passed, but its first shutdown exceeded the 30-second watchdog; unchanged baseline and candidate controls subsequently passed at that same timeout. This intermittent shutdown failure remains recorded. Windows evidence covers native CI consumers, not a physical Windows GPU/product-UI run. |
 | Host routing | Seat/geometry authority, activation/generation fences, drawn acknowledgements, credits and transfer bounds | Passed: baseline 493 originally; candidate now 498 / 15 explicitly ignored hardware/network fixtures, including read-only copy, identity/lease fences and oversized replies. Shared Freeway fix is included in both comparison hosts. |
-| Swift | FieldTerminal, FieldInput, FieldRoutedTerminal, FieldFreeway and relevant FieldMesh tests; real simulator rendering | Simulator: 1,306 passed / 2 skipped on both. iPhone baseline: 826 passed after correcting a demonstrated test-only acknowledgment race; the prior candidate passed all 833 production tests, including seven new selection tests. The final rebuilt artifact has a clean, signed QA app ready, but its on-device rerun is explicitly pending by user choice after the iPhone became unavailable. Prior device results do not claim execution of this final package. |
-| Remote | Concurrent desktop/Swift mirrors; slow viewers, disconnect/reconnect, foreground resync, stale frames and control handoff | Both real route probes and all four iPhone client-host pairings passed after the shared Freeway correction. Tests require two independent nodes and Metal surfaces to accept AND render PTY updates, with input, resize, park/resume and fresh-link redial. New-client/old-host copy fallback also passed. New-client/new-host and old-client/new-host reruns both passed and exited cleanly. Both supported views returned the expected Unicode/live PTY selection; the runner removed the isolated apps. |
-| Compatibility | Baseline/candidate host-client combinations without wire-version drift | Wire versions unchanged. Four mixed-version combinations passed. Copy is an optional negotiated `selection-text` capability; older hosts return explicit unsupported status without disrupting the route. All three pairings affected by copy changes passed; the unchanged old-client/old-host control is retained from the four-way matrix. |
+| Swift | FieldTerminal, FieldInput, FieldRoutedTerminal, FieldFreeway and relevant FieldMesh tests; real simulator rendering | Simulator: 1,306 passed / 2 skipped on both. iPhone baseline: 826 passed after correcting a demonstrated test-only acknowledgment race. The final rebuilt candidate now passes all 833 production tests, including seven new selection tests, with zero failures and zero skips. The tested app, debug library, xctestrun and native archives match their recorded final-package hashes. |
+| Remote | Concurrent desktop/Swift mirrors; slow viewers, disconnect/reconnect, foreground resync, stale frames and control handoff | Earlier real route probes, the four-way iPhone matrix and all three copy-affected pairings passed after the shared Freeway correction. The final-package reconfirmation is blocked: all four new pairings passed the device font check but timed out while the phone's Truffle node waited to join the tailnet, before peer discovery or a terminal connection. Both Mac fixtures joined, both old/new phone apps failed at the same step, and host/phone parsers read the same approved key. No final-run mirror, copy or reconnect pass is claimed. |
+| Compatibility | Baseline/candidate host-client combinations without wire-version drift | Wire versions unchanged. The earlier four mixed-version combinations and all three copy-affected pairings passed. Copy is an optional negotiated `selection-text` capability; older hosts returned explicit unsupported status without disrupting the route. The final-package attempts stopped at phone tailnet startup, so their compatibility reconfirmation remains open. |
 | Performance | Same-product pane workloads and frame latency; no acceptance based solely on old microbenchmarks | All 16 paired scenario processes completed without errors or unpresentable arms; approximately 120 Hz, frame p95 around 9.1–9.3 ms. Latency is explicitly unqualified: the user chose to continue under the heavily loaded host instead of arranging a quiet repeat. Injection-to-PTY measurements are not input-to-photon latency, and these results are not a performance sign-off. |
 | Release | Source/font/artifact/BOM consistency, device evidence and atomic upgrade/rollback | Candidate source, font parity, BOM, resources, Swift manifests, App Store and beta metadata checks passed. Final device confirmation, full landing gates and coordinated artifact/version promotion remain open. Config/UX retain their separately recorded 1.3.1 baseline. |
 
@@ -187,6 +187,27 @@ Cargo dependency fingerprints trace to the corrected CI archive's exact SHA-256;
 it is a later build from the same sources than the host recorded before full
 workspace verification.
 
+**Final physical-device run.** After the phone was reconnected, the exact final
+candidate passed all 833 production terminal, input, routed, Freeway and mesh
+tests, with zero failures and zero skips. The separate font golden passed in all
+four client-host attempts. Each real-network attempt then failed at the same
+60-second `waitUntilRunning` bound in the phone's Truffle startup, before peer
+discovery, routed attachment, mirrored output or copy. The retained baseline app
+failed identically. Both Mac nodes joined successfully; the approved key parsed
+identically for Mac and phone and was not printed or archived. Network access and
+any phone permission prompt were requested for diagnosis; no environmental cause
+is yet established. The earlier passing remote matrix remains historical evidence,
+not a substitute for a passing final-package reconfirmation. All QA apps were
+uninstalled, both retry fixtures exited zero, and the final process census was empty.
+
+The first baseline fixture startup in this resumed pass failed because its retained
+executable was launched outside Cargo's original `debug/deps` layout. The embedded
+floor locates its terminal and Freeway helpers beside the current executable or
+one directory above it. Restoring a hard link to the same fixture bytes at their
+original location resolved startup; all three adjacent helpers were verified.
+Product code and test assertions were unchanged. The failure and successful
+fixture recovery are retained separately from the phone's tailnet-join failures.
+
 **Storage recovery.** The user requested cache cleanup and use of SamsungRed.
 Disposable incremental/obsolete builds were removed; 20.98 GiB of isolated Rust,
 native and iPhone build caches were then copied to
@@ -205,8 +226,9 @@ from Vibefield's exact released npm, Cargo and Swift versions. Before landing,
 complete the required full landing gates and resolve or explicitly account for
 the recorded workspace timeouts and intermittent terminal-door shutdown failure.
 Corrected native packages and their consumers
-have passed. The final rebuilt-package iPhone run is pending by the user's choice
-after device availability was lost. Latency also remains explicitly unqualified;
+have passed. The final rebuilt-package iPhone production suite has passed, but
+its real Truffle reconfirmation requires resolving the phone's tailnet-join timeout
+and rerunning the matrix successfully. Latency also remains explicitly unqualified;
 do not convert the noisy measurements into a performance guarantee.
 Publish coordinated Ghosttea native/npm/Cargo/Swift artifacts only after release
 authorization, then move every Vibefield production pin together and run its
