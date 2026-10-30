@@ -1,0 +1,37 @@
+{
+  "candidateRunId": 40969422970,
+  "headSha": "4c674131158053a184b02e9d451bf35a26075e2b",
+  "sourceDigest": "4bf5fbebe3f2f961ccdd550aa1d71151ad51f3b305f569d15af0f568b2b37b50",
+  "targets": [
+    {
+      "target": "aarch64-apple-darwin",
+      "sha256": "704d69addca21ecf33164ac2b740e10e29f1a34916c5775dd56fa5230f46c021",
+      "librarySha256": "f202bdb37ebb79747248ca03c7a864ef8b0603b8df80de02076359478d44808f",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "filesVerified": 39,
+      "runtime": null,
+      "provenanceVerified": true
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "e479a6d4dc4ef389cc5a22fab80ba485ae252e1574b518569a5005566c6c11c7",
+      "librarySha256": "383326b227dc9a4c72f486d696f43c3d60704d98fd71bd6e42eeb469c60543dd",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "filesVerified": 39,
+      "runtime": "dll",
+      "provenanceVerified": true
+    },
+    {
+      "target": "x86_64-pc-windows-msvc-crt-static",
+      "sha256": "3ada5088a79fe821f9ba7a93185686e7f8b8fee001aac8a48c3269b9a0d09539",
+      "librarySha256": "86e1d1178e258506d86d6a92f65bccc45b3b84d00e9de79f7c294e7e04e20e7e",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "filesVerified": 39,
+      "runtime": "static",
+      "provenanceVerified": true
+    }
+  ],
+  "published": false,
+  "qualificationStatus": "rejected for promotion",
+  "reason": "Normalized macOS archive still exposes duplicate memset definitions; corrected Darwin postprocessing candidate run 40972570187 is pending."
+}

@@ -1,0 +1,14 @@
+{
+  "buildPassed": true,
+  "isolatedBundleIdentifier": "com.jamesyong.vibefield.ghosttyqualification.candidate",
+  "appExecutableSha256": "7498599981210cc3e0a1954c0f667cf1997c4ebd20dc6ab2b1ae69958000cb3d",
+  "debugLibrarySha256": "480f1bec1861a0c7bb46014a85bbc7a41052f6ac1a0d90d9e272a3118e599a5e",
+  "xctestrun": "/private/tmp/vibefield-libghostty-migration-2026-10-29/derived-device-candidate/Build/Products/VibeField_iphoneos26.5-arm64.xctestrun",
+  "xctestrunSha256": "3838d7ce226d2792ae21157dfc0441e14d89342a39c9597ae7c45a3c7a62bec9",
+  "stagedLibrarySha256": "0aea3d134386cccfd5381e8a7a2bd11c6383182bf008168babdcfa0a2bc76f61",
+  "stagedLibraryMatchesVerifiedPackage": true,
+  "deviceRun": "pending by user choice",
+  "signatureVerification": "baseline and candidate passed codesign --verify --deep --strict with system trust access",
+  "swiftAllProductsLinked": 18,
+  "packageZipSha256": "de397a043efee2cb3f8d0e2cecf320cb345af475c4ea9b6d70b50f13f789dc5d"
+}

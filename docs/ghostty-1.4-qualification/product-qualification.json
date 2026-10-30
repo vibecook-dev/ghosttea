@@ -1,0 +1,252 @@
+{
+  "status": "qualification in progress; not promoted",
+  "ghostteaBaseline": "3eee581c14b05850c90bea09536d4bc6b856223b",
+  "vibefieldBaseline": "e259f1fe31d9b3a01dca70dc33a5dad99841f6f3",
+  "physicalDevice": {
+    "model": "iPhone 14 Pro",
+    "os": "iOS 26.6",
+    "productionTests": {
+      "passed": 833,
+      "failed": 0,
+      "skipped": 0
+    },
+    "baselineProductionTests": {
+      "passed": 826,
+      "failed": 0
+    },
+    "finalRebuiltArtifactProbe": {
+      "status": "pending",
+      "reason": "iPhone unavailable after storage move; user explicitly chose to continue and leave the final device check pending",
+      "priorProductionAndMixedMatrixEvidence": "retained; does not claim the final package was re-run on device"
+    }
+  },
+  "baselineAdjustments": [
+    "Freeway accepts one trailing slash inserted by the pinned Truffle proxy, preserving secret and identity validation.",
+    "The Swift test helper awaits both leg acknowledgments before reopening; no product resume behavior changed."
+  ],
+  "mixedMatrixBeforeCopy": {
+    "combinations": 4,
+    "passed": 4,
+    "testsPerCombination": 2,
+    "checks": [
+      "native font golden",
+      "real PTY input",
+      "two independent Truffle nodes and Metal views",
+      "accepted and rendered frame advances",
+      "resize/seat handoff",
+      "park/resume",
+      "fresh-link redial"
+    ]
+  },
+  "newClientOldHost": {
+    "passed": 2,
+    "failed": 0,
+    "selectionTextSupported": false,
+    "copyVerdict": "explicit unsupported result; stream, mirrors and reconnect stay usable",
+    "runnerUninstalledQAApp": true
+  },
+  "copy": {
+    "nativeTests": 498,
+    "nativeIgnored": 15,
+    "contractTests": 1214,
+    "fieldAppTests": 2807,
+    "fieldAppSkipped": 0,
+    "swiftNewSelectionTests": 7,
+    "ghostteaReactTests": 445,
+    "ghostteaProtocolTests": 27,
+    "controls": [
+      "optional selection-text capability",
+      "authenticated read grant",
+      "session/activation/lease correlation",
+      "no input or geometry authority required",
+      "bounded queued responses and client pending requests",
+      "negotiated byte limit with explicit TOO_LARGE",
+      "timeout/cancellation; no replay",
+      "newest copy owns clipboard; empty text preserves clipboard"
+    ]
+  },
+  "godviewCopyLab": {
+    "passed": true,
+    "unicodeAndScrollback": true,
+    "alternateScreen": true,
+    "hiddenOutput": true,
+    "finalEmojiVisualRerun": "exact CI archive passed; selection and graphics screenshot reviewed; clean exit",
+    "exactCIArtifact": true,
+    "cleanProcessExit": true,
+    "ptyBefore": 93,
+    "ptyAfter": 93,
+    "survivingOwnedProcesses": 0
+  },
+  "artifactGate": {
+    "rejectedRun": 40969422970,
+    "reason": "Duplicate memset in the normalized cross-built macOS library; checksums and provenance alone did not reveal consumer-link warning.",
+    "correction": "Apply the exact upstream Darwin libSystem normalization script; checksum it in the build recipe and package it with the artifact; test normalized macOS Rust consumers in CI.",
+    "newCandidateRun": 40972570187,
+    "status": "all three corrected CI candidates passed consumers, inventories, provenance, SBOM and CRT verification; local macOS check:desktop, 424 Rust/623 JS tests, FFI/ASan and packaged npm/Rust consumers passed"
+  },
+  "limits": [
+    "No release or product dependency version promotion.",
+    "Final rebuilt-package iPhone probe is pending by user choice. Full verify retained six helper-process timeouts; all 41 affected-file tests passed unchanged on baseline and candidate in focused checks. The initial terminal-door shutdown timed out; matched baseline and candidate rechecks passed unchanged. Full landing gates remain open.",
+    "Latency is explicitly unqualified by user choice.",
+    "Pre-existing SSH production-readiness blockers remain separately recorded."
+  ],
+  "metalRenderer": {
+    "passed": 80,
+    "failed": 0,
+    "reviewedGolden": "only emoji-font pixel hash changed; old fonts restore exact old golden",
+    "exactFinalAppleArtifact": true,
+    "finalRunPassed": 80,
+    "finalRunFailed": 0,
+    "log": "swift-metal-exact-final-artifact.log"
+  },
+  "newClientNewHost": {
+    "passed": 2,
+    "failed": 0,
+    "runnerUninstalledQAApp": true,
+    "selectionTextSupported": true,
+    "copyExercised": true
+  },
+  "oldClientNewHost": {
+    "passed": 2,
+    "failed": 0,
+    "runnerUninstalledQAApp": true,
+    "selectionTextSupported": true,
+    "copyExercised": false
+  },
+  "performanceQualification": {
+    "status": "unqualified",
+    "reason": "shared host load; user explicitly chose to continue without a quiet comparison"
+  },
+  "workspaceGate": {
+    "originalVerify": "static/type/lint/clippy/bundle stages passed; five JavaScript failures retained",
+    "fielddRecheck": {
+      "passed": 81,
+      "skipped": 7,
+      "environment": "NO_COLOR unset to remove conflict with FORCE_COLOR"
+    },
+    "documentControls": {
+      "baselinePassed": 2,
+      "candidatePassed": 2,
+      "originalTimeoutSeconds": 5
+    },
+    "documentFullFunctionalRecheck": {
+      "passed": 19,
+      "outerTestTimeoutSeconds": 30,
+      "assertionsChanged": false
+    },
+    "finalExactArtifactRust": {
+      "passed": 498,
+      "ignoredIncludingDocTest": 15,
+      "failed": 0
+    },
+    "generatedContracts": "passed",
+    "oneShotVerifyGreen": false,
+    "finalSerialVerify": {
+      "exitCode": 1,
+      "projects": 27,
+      "failedProjects": [
+        "@vibefield/screenshot",
+        "@vibefield/electron-shell"
+      ],
+      "fiveSecondHelperTimeouts": 6,
+      "fielddPassed": 2608,
+      "fielddSkipped": 11,
+      "fieldAppPassed": 2807,
+      "fieldAppSkipped": 0,
+      "originalTimeoutsRetained": true,
+      "staticAndBundleStagesPassed": true
+    },
+    "finalTimeoutControls": {
+      "baselinePassed": 41,
+      "candidatePassed": 41,
+      "failed": 0,
+      "testSourceAndHelpersIdenticalToBaseline": true,
+      "testTimeoutChanged": false,
+      "assertionsChanged": false,
+      "oneTestFileAtATime": true
+    }
+  },
+  "cargoOutputCorrection": {
+    "cause": "Cargo shared target config overrides the checkout target symlink; old scripts read a different output directory",
+    "appleComposer": "resolve metadata target_directory and use it for producer and consumer",
+    "packageConsumer": "fresh fixture-owned archive directory; never reuse stale target/package archives",
+    "regressionTestsPassed": 4,
+    "packageConsumerPassed": true
+  },
+  "appleNativePackage": {
+    "verified": true,
+    "tag": "ghosttea-apple-native-1611ad6b0820",
+    "bytes": 50692910,
+    "sha256": "de397a043efee2cb3f8d0e2cecf320cb345af475c4ea9b6d70b50f13f789dc5d",
+    "nativeSourceDigest": "56dc58d73c6d319af6759ef6f1e465e011ae58b32ec5e7b50295a1c2d4f49ac8",
+    "published": false,
+    "slices": [
+      "macos-arm64",
+      "ios-arm64",
+      "ios-arm64-simulator"
+    ],
+    "allPublicSwiftProductsLinked": 18,
+    "cleanIPhoneBuildPassed": true,
+    "stagedIPhoneArchiveMatchesPackage": true,
+    "baselineAndCandidateSignaturesVerified": true
+  },
+  "ghostteaNativeBuildRevision": "a71e171409276412b1ff8f4546a3b6fe5a4bec4b",
+  "sourceIdentityNote": "The containing source revision also includes the reviewed Swift font golden and qualification records; these do not change the native source digest.",
+  "desktopFinalSmokes": {
+    "initialThreeGateExitCode": 1,
+    "godview": {
+      "exitCode": 0,
+      "seconds": 157,
+      "finalSurvivingProcesses": 0
+    },
+    "terminalDirect": {
+      "exitCode": 0,
+      "seconds": 48,
+      "finalSurvivingProcesses": 0
+    },
+    "terminalDoor": {
+      "exitCode": 3,
+      "seconds": 45,
+      "connectionAndOriginChecksPassed": true,
+      "failure": "30-second teardown watchdog",
+      "finalSurvivingProcesses": 0
+    },
+    "terminalDoorControls": [
+      {
+        "label": "baseline",
+        "exitCode": 0,
+        "durationSeconds": 45.71,
+        "nativeSha256": "79d9f93b73bfb27c09ebff104fb0bef8392499f8fc66b53403e63d0cb9f2148f",
+        "connectionAndOriginChecksPassed": true,
+        "watchdogFired": false,
+        "timeoutChanged": false,
+        "assertionsChanged": false,
+        "drainWaitMs": 20129,
+        "forcedCleanupCount": 1,
+        "finalSurvivingProcesses": 0,
+        "finalReapedProcesses": 0,
+        "log": "final-baseline-terminal-door-recheck.log"
+      },
+      {
+        "label": "candidate",
+        "exitCode": 0,
+        "durationSeconds": 49.8,
+        "nativeSha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+        "connectionAndOriginChecksPassed": true,
+        "watchdogFired": false,
+        "timeoutChanged": false,
+        "assertionsChanged": false,
+        "drainWaitMs": 20412,
+        "forcedCleanupCount": 1,
+        "finalSurvivingProcesses": 0,
+        "finalReapedProcesses": 0,
+        "log": "final-candidate-terminal-door-recheck.log"
+      }
+    ],
+    "sourceFilesIdentical": true,
+    "rootCause": "not established; initial intermittent shutdown failure retained",
+    "fullLandingGateRun": false,
+    "finalHostLinkIdentity": "final-desktop-host-link-identity.json"
+  },
+  "candidateConsistencyChecks": "passed: upgrade source, bundled fonts, font parity, iOS BOM/resources, Swift manifests, App Store and beta metadata; initial sandbox font-parity attempt is retained separately"
+}

@@ -1,0 +1,61 @@
+{
+  "method": "Exclude only fixture receipts strictly before first injection; then require exact probe identity in arrival order and nonnegative latency <=1000ms. Original reports remain unchanged. This measures injection to PTY receipt, not input to visible pixels.",
+  "runs": [
+    {
+      "run": "echo-probe-baseline-1",
+      "rawReportPaired": 0,
+      "excludedBeforeFirstInjection": 3,
+      "injected": 60,
+      "receivedAfterFirstInjection": 60,
+      "strictOrderMismatches": 0,
+      "matched": 60,
+      "inputToPtyMs": {
+        "p50": 0.8425205,
+        "p95": 1.531542,
+        "max": 2.115417
+      }
+    },
+    {
+      "run": "echo-probe-baseline-4",
+      "rawReportPaired": 60,
+      "excludedBeforeFirstInjection": 0,
+      "injected": 60,
+      "receivedAfterFirstInjection": 60,
+      "strictOrderMismatches": 0,
+      "matched": 60,
+      "inputToPtyMs": {
+        "p50": 0.8565834999999999,
+        "p95": 1.583666,
+        "max": 17.426708
+      }
+    },
+    {
+      "run": "echo-probe-candidate-2",
+      "rawReportPaired": 60,
+      "excludedBeforeFirstInjection": 0,
+      "injected": 60,
+      "receivedAfterFirstInjection": 60,
+      "strictOrderMismatches": 0,
+      "matched": 60,
+      "inputToPtyMs": {
+        "p50": 0.875292,
+        "p95": 1.503,
+        "max": 2.2365
+      }
+    },
+    {
+      "run": "echo-probe-candidate-3",
+      "rawReportPaired": 60,
+      "excludedBeforeFirstInjection": 0,
+      "injected": 60,
+      "receivedAfterFirstInjection": 60,
+      "strictOrderMismatches": 0,
+      "matched": 60,
+      "inputToPtyMs": {
+        "p50": 1.152187,
+        "p95": 3.015583,
+        "max": 9.5705
+      }
+    }
+  ]
+}

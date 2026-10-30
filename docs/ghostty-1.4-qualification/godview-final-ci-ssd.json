@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "selectionCopy": {
+    "status": "passed"
+  },
+  "behaviors": {
+    "scrollTopAndBottom": true,
+    "alternateScreenRoundTrip": true,
+    "hiddenProcessRetained": true,
+    "hiddenOutputText": "copy-verified"
+  },
+  "processExitCode": 0,
+  "ptyCensus": {
+    "before": 93,
+    "after": 93,
+    "leaked": 0,
+    "settled": true,
+    "survivingProcesses": 0,
+    "survivingLabElectrons": 0,
+    "note": "clean"
+  },
+  "artifactLibrarySha256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd",
+  "screenshotReviewed": "terminal-behaviors.png; selected final X, joined emoji, adjacent ab and block all preserve host grid",
+  "screenshotSha256": "2f6486e7dc0141e19c4b45d28f86015863c6b87a9c21624b9a77d7f5a2a25327",
+  "sourceRecordSha256": "b96ca2a9ed78addee681fef0b0b71a4e3dee2183a208f2e25083cc8bf9da7f7a",
+  "fullEvidenceDirectory": "/private/tmp/vibefield-libghostty-migration-2026-10-29/evidence/candidate-ci-ssd-pane-behaviors",
+  "latencyQualified": false,
+  "usedSessionRetained": true,
+  "reattachmentChecks": 8
+}

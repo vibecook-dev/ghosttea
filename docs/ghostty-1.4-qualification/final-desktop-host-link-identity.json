@@ -1,0 +1,58 @@
+{
+  "hostBinarySHA256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+  "cargoBinary": "field_native-fd04087cf9a7a49b",
+  "dependencyChain": [
+    {
+      "fingerprint": "field-native-fd04087cf9a7a49b/bin-field-native.json",
+      "features": "[\"default\", \"truffle-egress\"]",
+      "profile": 9469513639638652478
+    },
+    {
+      "fingerprint": "ghosttea-5728064a0c9a2c12/lib-ghosttea.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    },
+    {
+      "fingerprint": "ghosttea-text-1a264baadb494f4a/lib-ghosttea_text.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    },
+    {
+      "fingerprint": "ghosttea-vt-584b6105eca830a7/lib-ghosttea_vt.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    },
+    {
+      "fingerprint": "ghosttea-vt-sys-ff44760716521748/lib-ghosttea_vt_sys.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    },
+    {
+      "fingerprint": "ghosttea-vt-sys-6a5c1e706c6cecc5/run-build-script-build-script-build.json",
+      "features": "",
+      "profile": 0
+    },
+    {
+      "fingerprint": "ghosttea-vt-sys-7a091ab055249261/build-script-build-script-build.json",
+      "features": "[]",
+      "profile": 5509259098233294680
+    },
+    {
+      "fingerprint": "ghosttea-core-b9d2a8a7d6fe097c/lib-ghosttea_core.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    },
+    {
+      "fingerprint": "ghosttea-config-ff29e399594dd5c8/lib-ghosttea_config.json",
+      "features": "[]",
+      "profile": 4636522799852498062
+    }
+  ],
+  "vtArchives": [
+    {
+      "archive": "/private/tmp/vibefield-libghostty-migration-2026-10-29/target-vibefield-candidate/debug/build/ghosttea-vt-sys-6a5c1e706c6cecc5/out/libghosttea_ghostty_vt_static.a",
+      "sha256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd"
+    }
+  ],
+  "expectedCIArchiveSHA256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd"
+}

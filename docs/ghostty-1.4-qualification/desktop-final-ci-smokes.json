@@ -1,0 +1,56 @@
+{
+  "initialThreeGateExitCode": 1,
+  "godview": {
+    "exitCode": 0,
+    "seconds": 157,
+    "finalSurvivingProcesses": 0
+  },
+  "terminalDirect": {
+    "exitCode": 0,
+    "seconds": 48,
+    "finalSurvivingProcesses": 0
+  },
+  "terminalDoor": {
+    "exitCode": 3,
+    "seconds": 45,
+    "connectionAndOriginChecksPassed": true,
+    "failure": "30-second teardown watchdog",
+    "finalSurvivingProcesses": 0
+  },
+  "terminalDoorControls": [
+    {
+      "label": "baseline",
+      "exitCode": 0,
+      "durationSeconds": 45.71,
+      "nativeSha256": "79d9f93b73bfb27c09ebff104fb0bef8392499f8fc66b53403e63d0cb9f2148f",
+      "connectionAndOriginChecksPassed": true,
+      "watchdogFired": false,
+      "timeoutChanged": false,
+      "assertionsChanged": false,
+      "drainWaitMs": 20129,
+      "forcedCleanupCount": 1,
+      "finalSurvivingProcesses": 0,
+      "finalReapedProcesses": 0,
+      "log": "final-baseline-terminal-door-recheck.log"
+    },
+    {
+      "label": "candidate",
+      "exitCode": 0,
+      "durationSeconds": 49.8,
+      "nativeSha256": "f54ed5d54ebad4740ccdf9f9162351d0a46f1c6eaa311bd0be790c5fd28164fb",
+      "connectionAndOriginChecksPassed": true,
+      "watchdogFired": false,
+      "timeoutChanged": false,
+      "assertionsChanged": false,
+      "drainWaitMs": 20412,
+      "forcedCleanupCount": 1,
+      "finalSurvivingProcesses": 0,
+      "finalReapedProcesses": 0,
+      "log": "final-candidate-terminal-door-recheck.log"
+    }
+  ],
+  "sourceFilesIdentical": true,
+  "rootCause": "not established; initial intermittent shutdown failure retained",
+  "fullLandingGateRun": false,
+  "finalHostLinkIdentity": "final-desktop-host-link-identity.json"
+}
