@@ -33,6 +33,7 @@ on:
       - "native/ghostty.lock.json"
       - "native/ssh.lock.json"
       - "scripts/build-ghosttea-apple-native.mjs"
+      - "scripts/cargo-target-directory.mjs"
       - "scripts/build-ghostty-vt-apple.mjs"
       - "scripts/ghostty-vt-target.mjs"
       - "scripts/build-ssh-candidate-apple.mjs"

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { cargoTargetDirectory } from "./cargo-target-directory.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const packageVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
@@ -184,6 +185,7 @@ execute(process.execPath, [join(root, "scripts/sync-ghosttea-fonts.mjs")]);
 
 const ghosttyInfo = readXCFramework(ghosttyArtifact);
 const sshInfo = readXCFramework(sshArtifact);
+const cargoTarget = cargoTargetDirectory(root, environment);
 rmSync(work, { recursive: true, force: true });
 rmSync(output, { recursive: true, force: true });
 mkdirSync(prefixRoot, { recursive: true });
@@ -231,11 +233,25 @@ function stageGhosttyPrefix(platform) {
 
 for (const platform of platforms) {
   const prefix = stageGhosttyPrefix(platform);
-  execute("cargo", ["build", "--locked", "--release", "-p", "ghosttea-apple-ffi", "--target", platform.target], {
-    environment: {
-      GHOSTTY_VT_PREFIX: prefix,
+  execute(
+    "cargo",
+    [
+      "build",
+      "--locked",
+      "--release",
+      "-p",
+      "ghosttea-apple-ffi",
+      "--target",
+      platform.target,
+      "--target-dir",
+      cargoTarget,
+    ],
+    {
+      environment: {
+        GHOSTTY_VT_PREFIX: prefix,
+      },
     },
-  });
+  );
 }
 
 const libraries = [];
@@ -278,7 +294,7 @@ for (const platform of platforms) {
     ].join("\n"),
   );
 
-  const rustLibrary = join(root, "target", platform.target, "release", "libghosttea_apple_ffi.a");
+  const rustLibrary = join(cargoTarget, platform.target, "release", "libghosttea_apple_ffi.a");
   if (!existsSync(rustLibrary)) throw new Error(`Missing unified Rust static library ${rustLibrary}.`);
   requireExactCAbi(rustLibrary);
   requireUniqueMembers(rustLibrary);
