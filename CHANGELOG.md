@@ -3,6 +3,23 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.13.8 - 2026-11-02
+
+### Fixed
+
+- Conditional terminal release checks lifetime input, view attachments and process
+  state atomically at the session owner. Cleanup can no longer race an accepted
+  input or a newly attached view and remove a terminal that is in use.
+- React runtime disposal acknowledges when the view has detached, so hosts can
+  sequence terminal cleanup after attachment teardown.
+
+### Added
+
+- Control protocol 1.18 adds conditional `release-session` outcomes and session
+  creation IDs. Session summaries expose lifetime input use and resolved program
+  kind, allowing hosts to correlate terminal births and release only unused
+  shells or exited sessions.
+
 ## 0.13.7 - 2026-10-26
 
 ### Fixed
