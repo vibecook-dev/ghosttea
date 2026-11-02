@@ -436,7 +436,14 @@ describe("GhostteaAutomationClient", () => {
     const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
     await expect(client.releaseSession("session", "unused")).rejects.toThrow("requires protocol 1.18");
     await expect(
-      client.createSession({ executable: "/bin/sh", args: [], cols: 80, rows: 24, creationId: "birth" }),
+      client.createSession({
+        executable: "/bin/sh",
+        args: [],
+        cols: 80,
+        rows: 24,
+        persistence: "keep-until-exit",
+        creationId: "birth",
+      }),
     ).rejects.toThrow("requires protocol 1.18");
     expect(commands.map((command) => command.type)).toEqual(["hello"]);
     client.dispose();
