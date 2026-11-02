@@ -835,6 +835,9 @@ impl ExitLatch {
 pub struct Session {
     /// Orders conditional release against every input path and view attachment.
     lifecycle: Mutex<()>,
+    /// Seals owner release, not process termination: retained final output
+    /// remains attachable after Stop until the owner actually releases it.
+    released: AtomicBool,
     summary: Mutex<SessionSummary>,
     created_at_ms: u64,
     process: PtyProcess,
@@ -1524,6 +1527,7 @@ impl Session {
         model.set_link_context(link_cwd.clone(), link_home);
         let session = Arc::new(Self {
             lifecycle: Mutex::new(()),
+            released: AtomicBool::new(false),
             summary: Mutex::new(SessionSummary {
                 program_kind: Some(match program_kind {
                     ResolvedProgramKind::InteractiveShell => SessionProgramKind::InteractiveShell,
@@ -2122,7 +2126,7 @@ impl Session {
         resume: Option<ResumeEvidence>,
     ) -> std::result::Result<TakeOver, AttachRejection> {
         let _lifecycle = self.lifecycle.lock().unwrap();
-        if self.termination_started.load(Ordering::Acquire) {
+        if self.released.load(Ordering::Acquire) {
             return Err(AttachRejection {
                 code: ghosttea_core::AttachRejectionCode::ViewInvalid,
                 detail: "session is closing".into(),
@@ -2469,10 +2473,7 @@ impl Session {
     }
 
     fn refuse_after_release(&self) -> Result<()> {
-        anyhow::ensure!(
-            !self.termination_started.load(Ordering::Acquire),
-            "session is closing"
-        );
+        anyhow::ensure!(!self.released.load(Ordering::Acquire), "session is closing");
         Ok(())
     }
 
@@ -2517,8 +2518,9 @@ impl Session {
             }
         }
         self.terminate(TerminationSource::Application)?;
-        // Exited sessions do not enter terminate's ladder; still seal them.
-        self.termination_started.store(true, Ordering::Release);
+        // Retained sessions can be terminated without being released. Seal
+        // this owner decision independently of the process termination ladder.
+        self.released.store(true, Ordering::Release);
         Ok(ReleaseResult::Released)
     }
 
@@ -3255,6 +3257,44 @@ mod tests {
                 .is_err()
         );
         stop(&session);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_terminated_session_keeps_final_output_attachable_until_release() {
+        let session = unused_shell();
+        stop(&session);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !session.has_concluded() {
+            assert!(
+                Instant::now() < deadline,
+                "terminated session did not conclude"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(session.termination_started.load(Ordering::Acquire));
+        assert!(!session.released.load(Ordering::Acquire));
+
+        session.attach_view("final-output", "desktop").unwrap();
+        session
+            .take_over_view("remote-output", "phone", ViewAccess::ReadWrite, 1, 1, None)
+            .unwrap();
+        assert_eq!(
+            session.release_if(ReleaseCondition::Exited).unwrap(),
+            ReleaseResult::Attached
+        );
+        session.detach_view("final-output", "desktop");
+        session.detach_view("remote-output", "phone");
+        assert_eq!(
+            session.release_if(ReleaseCondition::Exited).unwrap(),
+            ReleaseResult::Released
+        );
+        assert!(session.attach_view("late", "desktop").is_err());
+        assert!(
+            session
+                .take_over_view("late", "phone", ViewAccess::ReadWrite, 1, 1, None)
+                .is_err()
+        );
     }
 
     #[cfg(unix)]
