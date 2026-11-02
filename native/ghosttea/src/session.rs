@@ -194,7 +194,7 @@ pub enum SessionEnvironment {
     },
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionProgramKind {
     InteractiveShell,
@@ -318,6 +318,9 @@ pub type ExitCallback = Arc<dyn Fn(String, SessionExit) + Send + Sync>;
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOptions {
+    /// Opaque host correlation, present in the first published summary.
+    #[serde(default)]
+    pub creation_id: Option<String>,
     pub executable: String,
     #[serde(default)]
     pub args: Vec<String>,
@@ -430,6 +433,9 @@ pub struct MouseInput {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
+    pub program_kind: Option<SessionProgramKind>,
+    pub creation_id: Option<String>,
+    pub input_used: Option<bool>,
     pub id: String,
     pub handle: String,
     pub executable: String,
@@ -467,6 +473,7 @@ pub struct SessionSummary {
 /// learns nothing from one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionMetadata {
+    pub input_used: Option<bool>,
     pub cwd: Option<String>,
     pub title: Option<String>,
 }
@@ -476,6 +483,7 @@ impl SessionMetadata {
         Self {
             cwd: summary.cwd.clone(),
             title: summary.title.clone(),
+            input_used: summary.input_used,
         }
     }
 }
@@ -825,6 +833,8 @@ impl ExitLatch {
 }
 
 pub struct Session {
+    /// Orders conditional release against every input path and view attachment.
+    lifecycle: Mutex<()>,
     summary: Mutex<SessionSummary>,
     created_at_ms: u64,
     process: PtyProcess,
@@ -865,6 +875,39 @@ enum InputOperation {
     Focus(bool),
     Interrupt,
     Automation(AutomationInputOperation),
+}
+
+impl InputOperation {
+    fn consumes_session(&self) -> bool {
+        match self {
+            Self::Text(text) | Self::Paste(text) => !text.is_empty(),
+            Self::Key(key) => {
+                matches!(key.action, KeyAction::Down)
+                    && !matches!(key.key.as_str(), "Shift" | "Control" | "Alt" | "Meta")
+            }
+            Self::Interrupt => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReleaseCondition {
+    Unused,
+    Exited,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReleaseResult {
+    Released,
+    Gone,
+    Attached,
+    Busy,
+    Running,
+    Used,
+    NotShell,
 }
 
 struct PtyProcess {
@@ -1342,6 +1385,7 @@ impl Session {
         on_exit: ExitCallback,
     ) -> Result<Arc<Self>> {
         let SpawnOptions {
+            creation_id,
             executable,
             args,
             cwd,
@@ -1479,7 +1523,15 @@ impl Session {
         )?;
         model.set_link_context(link_cwd.clone(), link_home);
         let session = Arc::new(Self {
+            lifecycle: Mutex::new(()),
             summary: Mutex::new(SessionSummary {
+                program_kind: Some(match program_kind {
+                    ResolvedProgramKind::InteractiveShell => SessionProgramKind::InteractiveShell,
+                    ResolvedProgramKind::Application => SessionProgramKind::Application,
+                    ResolvedProgramKind::Unknown => SessionProgramKind::Auto,
+                }),
+                creation_id,
+                input_used: Some(false),
                 id,
                 handle: handle.to_string(),
                 executable,
@@ -2037,6 +2089,8 @@ impl Session {
         client_id: &str,
         access: ViewAccess,
     ) -> Result<u64> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.refuse_after_release()?;
         let attachment_epoch = {
             let mut authority = self.authority.lock().unwrap();
             authority.attach(view_id, client_id, access)?
@@ -2067,6 +2121,13 @@ impl Session {
         fence_conn_id: u64,
         resume: Option<ResumeEvidence>,
     ) -> std::result::Result<TakeOver, AttachRejection> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        if self.termination_started.load(Ordering::Acquire) {
+            return Err(AttachRejection {
+                code: ghosttea_core::AttachRejectionCode::ViewInvalid,
+                detail: "session is closing".into(),
+            });
+        }
         let session_epoch = self.session_epoch();
         let mut authority = self.authority.lock().unwrap();
         let taken = authority.take_over(TakeOverRequest {
@@ -2381,6 +2442,9 @@ impl Session {
         operation: InputOperation,
         counts_as_human_input: bool,
     ) -> Result<()> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.refuse_after_release()?;
+        let consumes = operation.consumes_session();
         if !self.authority.lock().unwrap().authorize_input(
             view_id,
             client_id,
@@ -2393,12 +2457,69 @@ impl Session {
         self.input_tx
             .try_send(operation)
             .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+        if consumes {
+            self.mark_input_used();
+        }
         if counts_as_human_input {
             order.record_input(true);
         } else {
             order.record_input(false);
         }
         Ok(())
+    }
+
+    fn refuse_after_release(&self) -> Result<()> {
+        anyhow::ensure!(
+            !self.termination_started.load(Ordering::Acquire),
+            "session is closing"
+        );
+        Ok(())
+    }
+
+    fn mark_input_used(&self) {
+        let next = {
+            let mut summary = self.summary.lock().unwrap();
+            if summary.input_used == Some(true) {
+                return;
+            }
+            summary.input_used = Some(true);
+            SessionMetadata::of(&summary)
+        };
+        let _ = self.metadata_tx.send(next);
+    }
+
+    /// The caller holds the registry write lock through this and removal.
+    /// Attachment, human input and automation all take `lifecycle` first, so a
+    /// successful check seals the session before another client can use it.
+    pub fn release_if(self: &Arc<Self>, condition: ReleaseCondition) -> Result<ReleaseResult> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        if matches!(condition, ReleaseCondition::Unused) {
+            if self.summary.lock().unwrap().input_used != Some(false) {
+                return Ok(ReleaseResult::Used);
+            }
+            if self.program_kind != ResolvedProgramKind::InteractiveShell {
+                return Ok(ReleaseResult::NotShell);
+            }
+        }
+        if self.has_active_views() {
+            return Ok(ReleaseResult::Attached);
+        }
+        if !self.has_exited() {
+            match condition {
+                ReleaseCondition::Exited => return Ok(ReleaseResult::Running),
+                ReleaseCondition::Unused => {
+                    self.sample_activity();
+                    if self.summary.lock().unwrap().activity.kind != SessionActivityKind::ShellIdle
+                    {
+                        return Ok(ReleaseResult::Busy);
+                    }
+                }
+            }
+        }
+        self.terminate(TerminationSource::Application)?;
+        // Exited sessions do not enter terminate's ladder; still seal them.
+        self.termination_started.store(true, Ordering::Release);
+        Ok(ReleaseResult::Released)
     }
 
     pub fn automation_state(&self) -> u64 {
@@ -2410,6 +2531,13 @@ impl Session {
         expected_human_input_epoch: u64,
         operation: AutomationInputOperation,
     ) -> Result<AutomationInputResult> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.refuse_after_release()?;
+        let consumes = match &operation {
+            AutomationInputOperation::Text { text } => !text.is_empty(),
+            AutomationInputOperation::Paste { text, submit } => !text.is_empty() || *submit,
+            AutomationInputOperation::Interrupt => true,
+        };
         let mut order = self.input_order.lock().unwrap();
         if !order.accepts_automation(expected_human_input_epoch) {
             return Ok(AutomationInputResult {
@@ -2421,6 +2549,9 @@ impl Session {
         self.input_tx
             .try_send(InputOperation::Automation(operation))
             .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+        if consumes {
+            self.mark_input_used();
+        }
         let input_sequence = order.record_input(false);
         Ok(AutomationInputResult {
             accepted: true,
@@ -2950,6 +3081,7 @@ mod tests {
     fn blocked_paste_does_not_hold_the_model_or_prevent_termination() {
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "stty -echo; exec sleep 30".into()],
                 cwd: None,
@@ -3039,6 +3171,7 @@ mod tests {
     fn shell_session(script: &str) -> Arc<Session> {
         Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), script.into()],
                 cwd: None,
@@ -3058,6 +3191,117 @@ mod tests {
             Arc::new(|_, _| {}),
         )
         .unwrap()
+    }
+
+    #[cfg(unix)]
+    fn unused_shell() -> Arc<Session> {
+        let mut options: SpawnOptions = serde_json::from_value(serde_json::json!({
+            "executable": "/bin/sh", "args": ["-i"], "cols": 80, "rows": 24,
+            "programKind": "interactive-shell", "persistence": "keep-until-exit",
+            "creationId": "birth-for-pane-a"
+        }))
+        .unwrap();
+        options.environment = Some(SessionEnvironment::Clean {
+            variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+        });
+        let session = Session::spawn(
+            options,
+            FrameHub::new(8),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            session.sample_activity();
+            if session.summary().activity.kind == SessionActivityKind::ShellIdle {
+                break;
+            }
+            assert!(Instant::now() < deadline, "shell did not become idle");
+            thread::sleep(Duration::from_millis(5));
+        }
+        session
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_release_checks_all_views_and_seals_against_late_attach() {
+        let session = unused_shell();
+        assert_eq!(
+            session.summary().creation_id.as_deref(),
+            Some("birth-for-pane-a")
+        );
+        session.attach_view("pane", "desktop").unwrap();
+        session.attach_view("mirror", "phone").unwrap();
+        session.detach_view("pane", "desktop");
+        assert_eq!(
+            session.release_if(ReleaseCondition::Unused).unwrap(),
+            ReleaseResult::Attached
+        );
+        session.detach_view("mirror", "phone");
+        assert_eq!(
+            session.release_if(ReleaseCondition::Unused).unwrap(),
+            ReleaseResult::Released
+        );
+        assert!(session.attach_view("late", "phone").is_err());
+        assert!(
+            session
+                .automation_input(
+                    0,
+                    AutomationInputOperation::Text {
+                        text: "late".into()
+                    }
+                )
+                .is_err()
+        );
+        stop(&session);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_input_from_another_client_or_automation_consumes_unused_shell() {
+        for human in [true, false] {
+            let session = unused_shell();
+            if human {
+                let epoch = session.attach_view("phone", "remote").unwrap();
+                session.claim_control("phone", "remote", 80, 24).unwrap();
+                session
+                    .send_text("phone", "remote", epoch, 1, "x".into())
+                    .unwrap();
+                session.detach_view("phone", "remote");
+            } else {
+                session
+                    .automation_input(0, AutomationInputOperation::Text { text: "x".into() })
+                    .unwrap();
+            }
+            assert_eq!(session.summary().input_used, Some(true));
+            assert_eq!(
+                session.release_if(ReleaseCondition::Unused).unwrap(),
+                ReleaseResult::Used
+            );
+            assert!(!session.termination_started.load(Ordering::Acquire));
+            stop(&session);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_input_racing_release_is_never_accepted_then_killed_as_unused() {
+        for _ in 0..12 {
+            let session = unused_shell();
+            let barrier = Arc::new(std::sync::Barrier::new(2));
+            let typing = Arc::clone(&session);
+            let ready = Arc::clone(&barrier);
+            let input = thread::spawn(move || {
+                ready.wait();
+                typing.automation_input(0, AutomationInputOperation::Text { text: "x".into() })
+            });
+            barrier.wait();
+            let result = session.release_if(ReleaseCondition::Unused).unwrap();
+            let accepted = input.join().unwrap().is_ok();
+            assert_eq!(accepted, result == ReleaseResult::Used);
+            stop(&session);
+        }
     }
 
     #[cfg(unix)]
@@ -3124,6 +3368,7 @@ mod tests {
         assert_eq!(
             changes.try_recv().unwrap(),
             SessionMetadata {
+                input_used: Some(false),
                 cwd: start.cwd.clone(),
                 title: Some("build".into()),
             },
@@ -3137,6 +3382,7 @@ mod tests {
         assert_eq!(
             changes.try_recv().unwrap(),
             SessionMetadata {
+                input_used: Some(false),
                 cwd: Some("file://localhost/tmp/elsewhere".into()),
                 title: Some("build".into()),
             }
@@ -3185,6 +3431,7 @@ mod tests {
         assert_eq!(
             next_metadata(&mut changes),
             SessionMetadata {
+                input_used: Some(false),
                 cwd: directory.cwd.clone(),
                 title: Some("ghosttea metadata".into()),
             }
@@ -3485,6 +3732,7 @@ mod tests {
         let frames = FrameHub::new(8);
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 cwd: None,
@@ -3558,6 +3806,7 @@ mod tests {
         let frames = FrameHub::new(8);
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 cwd: None,
@@ -3640,6 +3889,7 @@ mod tests {
         let frames = FrameHub::new(8);
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 cwd: None,
@@ -3902,6 +4152,7 @@ mod tests {
         let (exited_tx, exited_rx) = mpsc::channel();
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/bash".into(),
                 args: vec!["--norc".into(), "--noprofile".into(), "-i".into()],
                 cwd: None,
@@ -3976,6 +4227,7 @@ mod tests {
         let frames = FrameHub::new(8);
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 cwd: None,
@@ -4030,6 +4282,7 @@ mod tests {
             let (exited_tx, exited_rx) = mpsc::channel();
             let session = Session::spawn(
                 SpawnOptions {
+                    creation_id: None,
                     executable: "/bin/sh".into(),
                     args: vec!["-c".into(), "exit 0".into()],
                     cwd: None,
@@ -4095,6 +4348,7 @@ mod tests {
         let (exited_tx, exited_rx) = mpsc::channel();
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: shell.into(),
                 args: Vec::new(),
                 cwd: None,
@@ -4246,6 +4500,7 @@ mod reply_delivery_tests {
     fn replies_survive_a_full_input_queue() {
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "exec sleep 30".into()],
                 cwd: None,
@@ -4323,6 +4578,7 @@ mod reply_delivery_tests {
     fn termination_cancels_reply_backpressure_without_holding_the_model() {
         let session = Session::spawn(
             SpawnOptions {
+                creation_id: None,
                 executable: "/bin/sh".into(),
                 args: vec!["-c".into(), "exec sleep 30".into()],
                 cwd: None,

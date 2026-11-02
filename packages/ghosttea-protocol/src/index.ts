@@ -1,5 +1,6 @@
 export const PROTOCOL_MAJOR = 1;
-export const PROTOCOL_MINOR = 17;
+export const PROTOCOL_MINOR = 18;
+export const SESSION_LIFECYCLE_PROTOCOL_MINOR = 18;
 export const SESSION_SCROLLBACK_PROTOCOL_MINOR = 15;
 export const STRUCTURED_ERROR_PROTOCOL_MINOR = 16;
 export const METADATA_EVENT_PROTOCOL_MINOR = 17;
@@ -232,6 +233,8 @@ export type AutomationInputOperation =
   { kind: "text"; text: string } | { kind: "paste"; text: string; submit: boolean } | { kind: "interrupt" };
 
 export interface CreateSessionOptions {
+  /** Opaque correlation in the first summary; requires protocol 1.18. */
+  creationId?: string;
   executable: string;
   args: string[];
   cwd?: string;
@@ -364,6 +367,7 @@ export type ClientCommand =
       expectedHumanInputEpoch: number;
       operation: AutomationInputOperation;
     }
+  | { requestId: number; type: "release-session"; sessionId: string; condition: "unused" | "exited" }
   | { requestId: number; type: "terminate"; sessionId: string; source?: TerminationSource }
   /** Re-class a live, locally governed session; answered with the updated summary. */
   | { requestId: number; type: "set-persistence"; sessionId: string; persistence: SessionPersistence }
@@ -437,6 +441,10 @@ export function isRendererClientCommandAllowed(value: unknown): boolean {
 }
 
 export interface SessionSummary {
+  programKind?: "interactive-shell" | "application" | "auto" | null | undefined;
+  creationId?: string | null | undefined;
+  /** Native lifetime input evidence; absent/null means unknown. */
+  inputUsed?: boolean | null | undefined;
   id: string;
   handle: string;
   executable: string;
@@ -495,7 +503,10 @@ export interface RemoteHostSummary {
   sessions: SharedSessionSummary[];
 }
 
+export type SessionReleaseState = "released" | "gone" | "attached" | "busy" | "running" | "used" | "not-shell";
+
 export type ServerEvent =
+  | { requestId: number; type: "session-release"; state: SessionReleaseState }
   | {
       requestId: number;
       type: "hello";
@@ -649,7 +660,14 @@ export type ServerEvent =
    * absolute state, sent together every time; neither a resize nor a repeated
    * OSC 7 sends one. A hint: `list-sessions` stays the reconciliation path.
    */
-  | { requestId: 0; type: "session-metadata-changed"; sessionId: string; cwd: string | null; title: string | null }
+  | {
+      requestId: 0;
+      type: "session-metadata-changed";
+      sessionId: string;
+      cwd: string | null;
+      title: string | null;
+      inputUsed?: boolean | null | undefined;
+    }
   | { requestId: 0; type: "config-changed"; config: ConfigSnapshot }
   /**
    * The daemon produced events faster than this client drained them and the
@@ -748,6 +766,11 @@ export function isServerEvent(value: unknown): value is ServerEvent {
     if (!session || typeof session !== "object") return false;
     const summary = session as Record<string, unknown>;
     return (
+      (summary.creationId === undefined || summary.creationId === null || typeof summary.creationId === "string") &&
+      (summary.inputUsed === undefined || summary.inputUsed === null || typeof summary.inputUsed === "boolean") &&
+      (summary.programKind === undefined ||
+        summary.programKind === null ||
+        ["interactive-shell", "application", "auto"].includes(String(summary.programKind))) &&
       typeof summary.id === "string" &&
       typeof summary.handle === "string" &&
       typeof summary.executable === "string" &&
@@ -1079,6 +1102,8 @@ export function isServerEvent(value: unknown): value is ServerEvent {
         (candidate.inputSequence === null || Number.isSafeInteger(candidate.inputSequence)) &&
         (candidate.reason === null || candidate.reason === "human-input-conflict")
       );
+    case "session-release":
+      return ["released", "gone", "attached", "busy", "running", "used", "not-shell"].includes(String(candidate.state));
     case "ok":
       return true;
     case "error":
@@ -1113,6 +1138,9 @@ export function isServerEvent(value: unknown): value is ServerEvent {
       return candidate.requestId === 0 && typeof candidate.sessionId === "string" && validActivity(candidate.activity);
     case "session-metadata-changed":
       return (
+        (candidate.inputUsed === undefined ||
+          candidate.inputUsed === null ||
+          typeof candidate.inputUsed === "boolean") &&
         candidate.requestId === 0 &&
         typeof candidate.sessionId === "string" &&
         (candidate.cwd === null || typeof candidate.cwd === "string") &&

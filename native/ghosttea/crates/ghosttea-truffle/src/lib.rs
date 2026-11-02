@@ -7903,6 +7903,7 @@ mod tests {
     fn spawn_host_session(registry: &Registry) -> Result<String> {
         let session = Session::spawn(
             ghosttea::session::SpawnOptions {
+                creation_id: None,
                 executable: idle_child_executable(),
                 args: Vec::new(),
                 cwd: None,

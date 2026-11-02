@@ -868,6 +868,25 @@ describe("routed terminal runtime", () => {
     vi.useRealTimers();
   });
 
+  it("publishes owner input consumption without a title change and preserves it across stale registration", async () => {
+    const { runtime } = await routedSeat();
+    const first = {
+      ...session("session-a", "11"),
+      programKind: "interactive-shell" as const,
+      inputUsed: false,
+      creationId: "birth-one",
+    };
+    runtime.registerSession(first);
+    const heard = vi.fn();
+    runtime.addEventListener("session-metadata", heard);
+    runtime.applySessionEvent({ type: "updated", session: { ...first, inputUsed: true } });
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(runtime.sessionSummary(first.id)?.inputUsed).toBe(true);
+    runtime.registerSession(first);
+    expect(runtime.sessionSummary(first.id)).toMatchObject({ inputUsed: true, creationId: "birth-one" });
+    runtime.dispose();
+  });
+
   it("applies routed session events with ports-compatible activity and exit ordering", () => {
     vi.stubGlobal("window", globalThis);
     const worker = new FakeWorker();

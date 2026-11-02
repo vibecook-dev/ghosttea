@@ -769,6 +769,19 @@ export class GhostteaTerminalRuntime extends EventTarget {
       // daemon's authoritative session list.
       void this.#resyncAfterLostEvents();
     });
+    this.#control.addEventListener("session-metadata-changed", (event) => {
+      const detail = (event as CustomEvent<Extract<ServerEvent, { type: "session-metadata-changed" }>>).detail;
+      const handle = this.#handleBySessionId.get(detail.sessionId);
+      const previous = handle === undefined ? undefined : this.#sessionByHandle.get(handle);
+      if (handle !== undefined && previous !== undefined) {
+        this.#applyRoutedSessionSummary(handle, {
+          ...previous,
+          cwd: detail.cwd,
+          title: detail.title,
+          inputUsed: previous.inputUsed === true ? true : detail.inputUsed,
+        });
+      }
+    });
     this.#control.addEventListener("session-activity-changed", (event) => {
       const detail = (event as CustomEvent<Extract<ServerEvent, { type: "session-activity-changed" }>>).detail;
       this.#applySessionActivity(detail);
@@ -983,6 +996,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#sessionByHandle.set(sessionHandle, next);
     this.#bumpSessionGeneration(sessionHandle);
     if (
+      previous.inputUsed !== next.inputUsed ||
       previous.title !== next.title ||
       previous.cwd !== next.cwd ||
       previous.exited !== next.exited ||
@@ -1014,6 +1028,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
             if (!previous || previous.id !== response.session.id || previous.exited) return;
             this.#sessionByHandle.set(sessionHandle, response.session);
             if (
+              previous.inputUsed !== response.session.inputUsed ||
               previous.title !== response.session.title ||
               previous.cwd !== response.session.cwd ||
               previous.exited !== response.session.exited ||
@@ -1071,6 +1086,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#metadataRefreshPending.delete(sessionHandle);
   }
 
+  /** Latest owner summary by public session id. Missing means unknown. */
+  sessionSummary(sessionId: string): SessionSummary | undefined {
+    const handle = this.#handleBySessionId.get(sessionId);
+    return handle === undefined ? undefined : this.#sessionByHandle.get(handle);
+  }
+
   sessionMetadata(sessionHandle: string): SessionSummary | undefined {
     return this.#sessionByHandle.get(sessionHandle);
   }
@@ -1079,6 +1100,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const previous = this.#sessionByHandle.get(session.handle);
     if (!previous || previous.id !== session.id || !previous.exited || !session.exited) {
       this.#appliedRoutedExitEvents.delete(session.handle);
+    }
+    // Input is lifetime evidence. A delayed create/list reply cannot undo a
+    // newer owner update already applied for this same session.
+    if (previous?.id === session.id && previous.inputUsed === true && session.inputUsed !== true) {
+      session = { ...session, inputUsed: true };
     }
     this.#sessionByHandle.set(session.handle, session);
     this.#handleBySessionId.set(session.id, session.handle);
