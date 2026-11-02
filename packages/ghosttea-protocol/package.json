@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttea-protocol",
-  "version": "0.13.7",
+  "version": "0.13.8",
   "description": "Typed control protocol for Ghosttea terminal clients and bridges.",
   "license": "MIT",
   "author": "James Yong",
