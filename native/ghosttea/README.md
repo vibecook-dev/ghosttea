@@ -200,3 +200,19 @@ permissions and constant-time token verification do not provide command-level
 scopes.
 
 See <https://github.com/vibecook-dev/ghosttea> for the complete repository.
+
+# Session lifecycle ownership
+
+The terminal owner records whether accepted human or automation input has used a session.
+View-only operations do not consume it. Conditional release checks that fact, shell activity,
+and all attached views under the same gate that admits input and attachments. Once release
+is accepted, a late attachment or input is refused. A host must not emulate this operation
+by reading a summary and then sending an unconditional terminate.
+
+An optional opaque creation identity travels from spawn options into the first summary.
+Hosts can correlate a birth before its create response arrives; it is not a session identifier
+or a grant of authority, and does not make create idempotent. Control protocol 1.18
+adds `release-session` (`unused` or `exited`) and `session-release`. `attached`,
+`busy`, and `running` defer cleanup; `used` and `not-shell` retain the session;
+`released` and `gone` complete it. The client refuses correlated creation and
+conditional release against an older daemon.

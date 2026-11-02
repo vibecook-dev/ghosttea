@@ -25,8 +25,8 @@ use tokio::{
 use crate::{
     FrameHub, ipc, mesh, session,
     session::{
-        AutomationInputOperation, ExitCallback, KeyInput, MouseInput, Persistence, Session,
-        SessionMetadata, SpawnOptions, TerminationSource,
+        AutomationInputOperation, ExitCallback, KeyInput, MouseInput, Persistence,
+        ReleaseCondition, ReleaseResult, Session, SessionMetadata, SpawnOptions, TerminationSource,
     },
     tunnel_protocol,
 };
@@ -43,7 +43,7 @@ const MAX_CLOSED_OWNER_TOMBSTONES: usize = 16_384;
 const CLOSED_OWNER_BLOOM_BITS: usize = 1 << 23;
 const CLOSED_OWNER_BLOOM_HASHES: u64 = 4;
 const CONTROL_PROTOCOL_MAJOR: u16 = 1;
-const CONTROL_PROTOCOL_MINOR: u16 = 17;
+const CONTROL_PROTOCOL_MINOR: u16 = 18;
 const ACTIVITY_EVENT_PROTOCOL_MINOR: u16 = 6;
 const EVENTS_LOST_PROTOCOL_MINOR: u16 = 8;
 const SESSION_CREATED_PROTOCOL_MINOR: u16 = 9;
@@ -131,6 +131,7 @@ fn metadata_event(session_id: &str, metadata: &SessionMetadata) -> Value {
         "sessionId": session_id,
         "cwd": metadata.cwd,
         "title": metadata.title,
+        "inputUsed": metadata.input_used,
     })
 }
 
@@ -647,6 +648,10 @@ enum Command {
         session_id: String,
         persistence: Persistence,
     },
+    ReleaseSession {
+        session_id: String,
+        condition: ReleaseCondition,
+    },
     Terminate {
         session_id: String,
         #[serde(default)]
@@ -676,6 +681,9 @@ struct ResponseEnvelope {
     rename_all_fields = "camelCase"
 )]
 enum ResponseBody {
+    SessionRelease {
+        state: ReleaseResult,
+    },
     Hello {
         protocol_major: u16,
         protocol_minor: u16,
@@ -1533,6 +1541,7 @@ impl TerminalService {
                 match remote_metadata.recv().await {
                     Ok(changed) => {
                         let metadata = SessionMetadata {
+                            input_used: Some(false),
                             cwd: changed.cwd,
                             title: changed.title,
                         };
@@ -3334,6 +3343,24 @@ async fn handle_command(
                 };
                 Ok(ResponseBody::Session { session: summary })
             }
+            Command::ReleaseSession { session_id, condition } => {
+                let (state, released) = {
+                    let mut registry = registry.write().unwrap();
+                    if let Some(session) = registry.get(&session_id).cloned() {
+                        let state = session.release_if(condition)?;
+                        if state == ReleaseResult::Released {
+                            context.shutdown.terminate_tracked(&session, TerminationSource::Application, None)?;
+                            context.tombstones.remove_with_cause_locked(&mut registry, &session_id);
+                        }
+                        (state, state == ReleaseResult::Released)
+                    } else { (ReleaseResult::Gone, false) }
+                };
+                if released {
+                    remove_session_view_owners(context, &session_id);
+                    let _ = context.lifecycle_tx.send(SessionLifecycleEvent::Removed { session_id });
+                }
+                Ok(ResponseBody::SessionRelease { state })
+            }
             Command::Terminate { session_id, source } => {
                 let local_session = { registry.read().unwrap().get(&session_id).cloned() };
                 if let Some(session) = local_session {
@@ -4126,6 +4153,7 @@ mod protocol_tests {
             ],
         );
         SpawnOptions {
+            creation_id: None,
             executable,
             args,
             cwd: None,
@@ -5355,6 +5383,7 @@ mod protocol_tests {
         let event = metadata_event(
             "session-1",
             &SessionMetadata {
+                input_used: Some(false),
                 cwd: Some("file://localhost/tmp".into()),
                 title: None,
             },
@@ -5367,6 +5396,7 @@ mod protocol_tests {
                 "sessionId": "session-1",
                 "cwd": "file://localhost/tmp",
                 "title": null,
+                "inputUsed": false,
             })
         );
     }
@@ -5387,6 +5417,9 @@ mod protocol_tests {
     fn creation_events_carry_the_summary_under_the_response_key() {
         let (event_tx, mut events) = broadcast::channel(4);
         let summary = session::SessionSummary {
+            creation_id: None,
+            input_used: Some(false),
+            program_kind: Some(session::SessionProgramKind::InteractiveShell),
             id: "session".to_owned(),
             handle: "7".to_owned(),
             executable: "/bin/zsh".to_owned(),
@@ -5919,6 +5952,9 @@ mod protocol_tests {
 
     fn remote_summary(session_id: &str) -> session::SessionSummary {
         session::SessionSummary {
+            creation_id: None,
+            input_used: Some(false),
+            program_kind: Some(session::SessionProgramKind::InteractiveShell),
             id: session_id.to_owned(),
             handle: "1".to_owned(),
             executable: "remote-terminal".to_owned(),

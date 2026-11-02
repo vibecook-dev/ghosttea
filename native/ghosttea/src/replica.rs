@@ -39,6 +39,9 @@ impl RemoteReplica {
         let runtime = Arc::new(TerminalRuntime::from_shared_text_engine(text_engine));
         Arc::new(Self {
             summary: Mutex::new(SessionSummary {
+                program_kind: None,
+                creation_id: None,
+                input_used: None,
                 id: id.to_string(),
                 handle: handle.to_string(),
                 executable: "remote-terminal".into(),
@@ -326,6 +329,7 @@ mod tests {
         assert_eq!(
             changes.try_recv().unwrap(),
             SessionMetadata {
+                input_used: None,
                 cwd: Some("/remote".into()),
                 title: Some("remote".into()),
             }
@@ -341,6 +345,7 @@ mod tests {
         assert_eq!(
             changes.try_recv().unwrap(),
             SessionMetadata {
+                input_used: None,
                 cwd: Some("/remote".into()),
                 title: Some("remote title".into()),
             }

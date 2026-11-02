@@ -27,6 +27,8 @@ describe("session-metadata-changed", () => {
       title: null,
     };
     expect(isServerEvent(event)).toBe(true);
+    expect(isServerEvent({ ...event, inputUsed: true })).toBe(true);
+    expect(isServerEvent({ ...event, inputUsed: "false" })).toBe(false);
     expect(isServerEvent({ ...event, cwd: null, title: "build" })).toBe(true);
     expect(isServerEvent({ ...event, cwd: undefined })).toBe(false);
     expect(isServerEvent({ ...event, title: 7 })).toBe(false);
@@ -501,5 +503,16 @@ describe("terminalLinkUrl", () => {
     "https://example.com/\n",
   ])("rejects %s", (input) => {
     expect(terminalLinkUrl(input)).toBeNull();
+  });
+});
+
+describe("conditional session release", () => {
+  it("validates owner decisions and keeps release off the unprivileged renderer command lane", () => {
+    for (const state of ["released", "gone", "attached", "busy", "running", "used", "not-shell"])
+      expect(isServerEvent({ requestId: 1, type: "session-release", state })).toBe(true);
+    expect(isServerEvent({ requestId: 1, type: "session-release", state: "maybe" })).toBe(false);
+    expect(
+      isRendererClientCommandAllowed({ requestId: 1, type: "release-session", sessionId: "s", condition: "unused" }),
+    ).toBe(false);
   });
 });

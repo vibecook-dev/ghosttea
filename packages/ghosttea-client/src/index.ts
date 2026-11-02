@@ -9,6 +9,8 @@ import {
   isServerEvent,
   isValidScrollbackBytes,
   type AutomationInputOperation,
+  SESSION_LIFECYCLE_PROTOCOL_MINOR,
+  type SessionReleaseState,
   type ClientCommand,
   type ConfigDocument,
   type ConfigDocumentUpdate,
@@ -392,6 +394,12 @@ export class GhostteaAutomationClient extends EventEmitter {
     return this.input(sessionId, { kind: "interrupt" }, expectedHumanInputEpoch);
   }
 
+  async releaseSession(sessionId: string, condition: "unused" | "exited"): Promise<SessionReleaseState> {
+    const event = await this.request({ type: "release-session", sessionId, condition });
+    if (event.type !== "session-release") throw new Error("ghosttead returned an unexpected release response");
+    return event.state;
+  }
+
   async terminate(sessionId: string, source: TerminationSource = "application"): Promise<void> {
     const event = await this.request({ type: "terminate", sessionId, source });
     if (event.type !== "ok") throw new Error("ghosttead rejected session termination");
@@ -438,6 +446,12 @@ export class GhostteaAutomationClient extends EventEmitter {
         return Promise.reject(new RangeError("scrollbackBytes must be a non-negative safe integer"));
       }
       this.#requireProtocolMinor(SESSION_SCROLLBACK_PROTOCOL_MINOR, "per-session scrollback limits");
+    }
+    if (
+      command.type === "release-session" ||
+      (command.type === "create-session" && command.options.creationId !== undefined)
+    ) {
+      this.#requireProtocolMinor(SESSION_LIFECYCLE_PROTOCOL_MINOR, "session lifecycle ownership");
     }
     const requestId = this.#nextRequestId++;
     const encoded = Buffer.from(JSON.stringify({ ...command, requestId } satisfies ClientCommand));
@@ -543,3 +557,5 @@ export class GhostteaAutomationClient extends EventEmitter {
     this.#pending.clear();
   }
 }
+
+export { SESSION_LIFECYCLE_PROTOCOL_MINOR };

@@ -115,6 +115,8 @@ class FakeSocket extends EventEmitter {
           );
         }
       });
+    } else if (command.type === "release-session") {
+      queueMicrotask(() => this.emit("data", packet({ requestId, type: "session-release", state: "attached" })));
     } else if (command.type === "get-automation-state") {
       queueMicrotask(() =>
         this.emit(
@@ -427,6 +429,32 @@ describe("GhostteaAutomationClient", () => {
     );
     expect(commands.filter((command) => command.type === "create-session")).toHaveLength(1);
     current.dispose();
+  });
+
+  it("refuses conditional release and correlated creation before lifecycle protocol 1.18", async () => {
+    serverProtocolMinor = 17;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    await expect(client.releaseSession("session", "unused")).rejects.toThrow("requires protocol 1.18");
+    await expect(
+      client.createSession({
+        executable: "/bin/sh",
+        args: [],
+        cols: 80,
+        rows: 24,
+        persistence: "keep-until-exit",
+        creationId: "birth",
+      }),
+    ).rejects.toThrow("requires protocol 1.18");
+    expect(commands.map((command) => command.type)).toEqual(["hello"]);
+    client.dispose();
+  });
+
+  it("returns the owner's conditional release decision without converting attachment into a kill", async () => {
+    serverProtocolMinor = 18;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    await expect(client.releaseSession("session", "unused")).resolves.toBe("attached");
+    expect(commands.at(-1)).toMatchObject({ type: "release-session", sessionId: "session", condition: "unused" });
+    client.dispose();
   });
 
   it("surfaces structured daemon error metadata", async () => {

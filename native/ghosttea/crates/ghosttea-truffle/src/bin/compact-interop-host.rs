@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
     let registry = SessionRegistry::default();
     let session = Session::spawn(
         SpawnOptions {
+            creation_id: None,
             executable: "/bin/sh".to_owned(),
             args: vec!["-c".to_owned(), SESSION_SCRIPT.to_owned()],
             cwd: None,
