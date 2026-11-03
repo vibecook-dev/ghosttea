@@ -353,6 +353,47 @@ describe("routed terminal runtime", () => {
     return { runtime, worker, socket, first, mount, attaches, framesAttaches, connect, accept, present, dispose };
   }
 
+  it("holds input while hidden and until the resumed demand has a fresh cell status", async () => {
+    const h = inputFixture();
+    try {
+      h.mount("view-a");
+      await h.connect();
+      const activationId = h.attaches().at(-1)!.activationId;
+      h.accept(activationId, 1);
+      h.present(activationId);
+      const status = { ...h.runtime.routedActivation(h.first.id)!.cellStatus! };
+      delete status.type;
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(true);
+      h.runtime.setVisible(h.first.handle, false, "view-a");
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.runtime.sendText(h.first.id, "view-a", "hidden");
+      h.runtime.setVisible(h.first.handle, true, "view-a");
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 2 }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.runtime.sendText(h.first.id, "view-a", "before demand acknowledgement");
+      const demands = h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "DeclareDemand");
+      h.socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: demands.at(-2)!.demandSequence }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: demands.at(-1)!.demandSequence }));
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 2 }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(
+        encodeRoutedMessage("CellActivationStatus", {
+          ...status,
+          cellStatusSequence: 3,
+          input: { state: "suspended", reason: "pending" },
+        }),
+      );
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 4 }));
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(true);
+      h.runtime.sendText(h.first.id, "view-a", "after confirmation");
+      expect(h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "TerminalInput")).toHaveLength(1);
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("restores input after repeated last-pane detach and reattach with a fresh presentation lease", async () => {
     const h = inputFixture();
     try {
@@ -1159,6 +1200,75 @@ describe("routed terminal runtime", () => {
     runtime.dispose();
   });
 
+  it.each(["visible", "focused"])(
+    "retries exhausted control recovery when its pane becomes %s again",
+    async (trigger) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("window", globalThis);
+      const worker = new FakeWorker();
+      const sockets: FakeSocket[] = [];
+      const openTicket = vi.fn(async () => ticket("cell-a", "session-a", "set-a"));
+      const runtime = new GhostteaTerminalRuntime({
+        transport: "routed",
+        host: { openTicket },
+        platform: {
+          writeClipboard: () => undefined,
+          forceCanvasFallback: () => false,
+          setForceCanvasFallback: () => undefined,
+          reload: () => undefined,
+        },
+        websocketFactory: () => {
+          const socket = new FakeSocket();
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+        workerFactory: () => worker as unknown as Worker,
+      });
+      try {
+        runtime.registerSession(session("session-a", "11"));
+        runtime.mount("session-a", "11", "view-a", canvas());
+        await flush();
+        if (trigger === "visible") runtime.setVisible("11", false, "view-a");
+        else runtime.setFocused("11", "view-a", false, 80, 24);
+        // A covered renderer can repeatedly miss its heartbeat before a new
+        // scene is ready. Exhaust the actual bounded retry path, not its reducer.
+        for (let attempt = 0; attempt < 6; attempt++) {
+          const socket = sockets.at(-1)!;
+          socket.open();
+          socket.receive(
+            encodeRoutedMessage("ConnectionAccepted", {
+              selectedProtocolVersion: { major: 1, minor: 0 },
+              connectionSetId: "set-a",
+              channel: "control",
+              legGeneration: attempt + 1,
+              heartbeatTtlMs: 15_000,
+              protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+              capabilities: ["resume"],
+            }),
+          );
+          socket.close(4004, "heartbeat timeout");
+          await vi.advanceTimersByTimeAsync(2_100);
+        }
+        expect(runtime.routedActivation("session-a")).toMatchObject({
+          phase: "unavailable",
+          unavailableReason: "recovery-exhausted",
+          inputAllowed: false,
+        });
+        expect(openTicket).toHaveBeenCalledTimes(6);
+        if (trigger === "visible") runtime.setVisible("11", true, "view-a");
+        else runtime.setFocused("11", "view-a", true, 80, 24);
+        await vi.advanceTimersByTimeAsync(150);
+        expect(openTicket).toHaveBeenCalledTimes(7);
+        expect(runtime.routedActivation("session-a")?.phase).toBe("attaching");
+        expect(runtime.routedViewInputAllowed("view-a")).toBe(false);
+      } finally {
+        runtime.dispose();
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it("re-dials one protocol failure, then makes a persistent failure unavailable", async () => {
     vi.stubGlobal("window", globalThis);
     const worker = new FakeWorker();
@@ -1226,6 +1336,12 @@ describe("routed terminal runtime", () => {
       type: "routed-frames-detach",
       activationId: secondActivationId,
     });
+
+    runtime.setVisible(first.handle, false, "view-a");
+    runtime.setVisible(first.handle, true, "view-a");
+    runtime.setFocused(first.handle, "view-a", true, 80, 24);
+    expect(runtime.routedActivation(first.id)?.phase).toBe("unavailable");
+    expect(openTicket).toHaveBeenCalledTimes(2);
 
     runtime.dispose();
   });

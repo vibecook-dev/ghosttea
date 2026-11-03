@@ -28,6 +28,9 @@ export interface RoutedActivationState {
   activationId: string;
   phase: RoutedActivationPhase;
   inputPolicy: RoutedInputPolicy;
+  sourceDemand: "live" | "none";
+  resumeDemandSequence?: number;
+  inputStatusAfterDemand?: number;
   unavailableReason?: string;
   replacesActivationId?: string;
   controlAttached: boolean;
@@ -84,6 +87,8 @@ export type RoutedActivationEvent =
   | { type: "renew-failed" }
   | { type: "renewed"; grantGeneration: number; rights: readonly RoutedSessionRight[] }
   | { type: "input-policy"; policy: RoutedInputPolicy }
+  | { type: "demand-declared"; mode: "live" | "none"; sequence?: number }
+  | { type: "demand-accepted"; sequence: number }
   | { type: "retry" }
   | { type: "detach" | "replaced" | "runtime-destroyed" };
 
@@ -97,6 +102,7 @@ export function initialRoutedActivation(
     activationId,
     phase: "unresolved",
     inputPolicy,
+    sourceDemand: "live",
     controlAttached: false,
     framesAttached: false,
     rights: [],
@@ -130,6 +136,9 @@ function withReadiness(state: RoutedActivationState): RoutedActivationState {
     sceneCoversAccepted;
   const inputAllowed =
     presentationReady &&
+    state.sourceDemand === "live" &&
+    state.resumeDemandSequence === undefined &&
+    (state.inputStatusAfterDemand === undefined || state.lastCellStatusSequence > state.inputStatusAfterDemand) &&
     state.inputPolicy === "read-write" &&
     state.grantInputValid &&
     state.rights.includes("input") &&
@@ -180,6 +189,25 @@ export function reduceRoutedActivation(
   if (event.type === "input-policy") return withReadiness({ ...state, inputPolicy: event.policy });
 
   switch (event.type) {
+    case "demand-declared": {
+      const next = { ...state, sourceDemand: event.mode };
+      if (event.mode === "none") {
+        delete next.resumeDemandSequence;
+        delete next.inputStatusAfterDemand;
+      } else if (state.sourceDemand === "none" || state.resumeDemandSequence !== undefined) {
+        // A cached worker frame and old allowed lease cannot authorize input
+        // into a view the cell is still reattaching after a visibility change.
+        if (event.sequence !== undefined) next.resumeDemandSequence = event.sequence;
+        next.inputStatusAfterDemand = state.lastCellStatusSequence;
+      }
+      return withReadiness(next);
+    }
+    case "demand-accepted": {
+      if (state.resumeDemandSequence !== event.sequence) return state;
+      const next = { ...state, inputStatusAfterDemand: state.lastCellStatusSequence };
+      delete next.resumeDemandSequence;
+      return withReadiness(next);
+    }
     case "ticket-minted":
       if (!["unresolved", "recovering", "unavailable"].includes(state.phase)) return state;
       if (!event.endpointsPresent) {
@@ -213,6 +241,8 @@ export function reduceRoutedActivation(
         delete reset.trfIdentity;
         delete reset.cellStatus;
         delete reset.presentationStatus;
+        delete reset.resumeDemandSequence;
+        delete reset.inputStatusAfterDemand;
         return {
           ...reset,
           phase: "attaching",

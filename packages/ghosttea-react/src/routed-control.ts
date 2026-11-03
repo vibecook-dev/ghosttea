@@ -143,6 +143,9 @@ export class RoutedControlTransport {
   readonly #acceptExtensionMessages: boolean;
   readonly #connections = new Map<string, ControlConnection>();
   readonly #activations = new Map<string, ControlActivation>();
+  // DemandAccepted names no activation. Globally unique sequences preserve
+  // per-activation monotonicity without confusing two sessions on one leg.
+  #nextDemandSequence = 0;
   #disposed = false;
 
   constructor(options: {
@@ -198,7 +201,7 @@ export class RoutedControlTransport {
       replacement?.admitted !== activationId
     )
       return undefined;
-    activation.demandSequence += 1;
+    activation.demandSequence = ++this.#nextDemandSequence;
     const body: RoutedDeclareDemand = {
       sessionId: activation.request.attachGrant.claims.sessionId,
       activationId,
