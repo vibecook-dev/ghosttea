@@ -222,6 +222,16 @@
       }
     }
     public private(set) var terminalTextMetrics = GhostteaTextMetrics()
+
+    /// Metrics used to shape incoming glyph coordinates. Set this for a remote
+    /// display list whose host keeps its font metrics while this viewer changes
+    /// font size. Nil preserves local runtimes shaped at the viewer's own size.
+    public var frameTextMetrics: GhostteaTextMetrics? {
+      didSet {
+        evictRendererResources()
+        requestEventDrivenDraw()
+      }
+    }
     public private(set) var configurationWarnings: [String] = []
     public private(set) var diagnostics = GhostteaTerminalMetalDiagnostics()
     public private(set) var currentGridSize: GhostteaTerminalGridSize?
@@ -1666,6 +1676,8 @@
         runtime: metalRuntime,
         cellWidth: terminalTextMetrics.cellWidthPixels,
         lineHeight: terminalTextMetrics.lineHeightPixels,
+        sourceCellWidth: frameTextMetrics?.cellWidthPixels,
+        sourceLineHeight: frameTextMetrics?.lineHeightPixels,
         encodedGeometryReuseEnabled: encodedGeometryReuseEnabled,
         instancedSubmissionEnabled: instancedSubmissionEnabled,
         rowGeometryReuseEnabled: rowGeometryReuseEnabled,
