@@ -2,18 +2,18 @@ GHOSTTEA iOS THIRD-PARTY NOTICES
 ================================
 
 This file is generated from the reviewed iOS release dependency graph.
-CycloneDX SHA-256: 37cdaa0687700c43f0dc331d8941518498cdc654ba921b618a7913bec7207303
+CycloneDX SHA-256: 8cf7f94e99a42f2bf351f189149f59c7571681a5c64ea64a3a91ab27d5ca896f
 Components: 106
 Unique license documents: 95
 
 COMPONENT INDEX
 ===============
 
-ghosttea-apple-ffi 0.13.8
+ghosttea-apple-ffi 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-Ghostty VT f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+Ghostty VT 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: MIT
   Documents: LICENSE-020
 
@@ -137,31 +137,31 @@ getrandom 0.4.3
   License: MIT OR Apache-2.0
   Documents: LICENSE-031, LICENSE-068
 
-ghosttea-config 0.13.8
+ghosttea-config 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-core 0.13.8
+ghosttea-core 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-ffi 0.13.8
+ghosttea-ffi 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-font-fixture-ffi 0.13.8
+ghosttea-font-fixture-ffi 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-text 0.13.8
+ghosttea-text 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-vt-sys 0.13.8
+ghosttea-vt-sys 0.14.0
   License: MIT
   Documents: LICENSE-079
 
-ghosttea-vt 0.13.8
+ghosttea-vt 0.14.0
   License: MIT
   Documents: LICENSE-079
 
@@ -401,23 +401,23 @@ zmij 1.0.23
   License: MIT
   Documents: LICENSE-016
 
-JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+JetBrainsMonoNerdFont-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
-JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+JetBrainsMonoNerdFont-Bold.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
-JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+JetBrainsMonoNerdFont-Italic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
-JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+JetBrainsMonoNerdFont-BoldItalic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
-NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+NotoColorEmoji.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
@@ -429,7 +429,7 @@ NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
-NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+NotoEmoji-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd
   License: OFL-1.1
   Documents: LICENSE-043, LICENSE-092
 
@@ -1576,7 +1576,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 LICENSE-020 · LICENSE
 SHA-256: 386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1
-Used by: Ghostty VT f8041e849b36efbbb9736b6ecf0ccfcb01d94e69
+Used by: Ghostty VT 83fb95624b0439ee660c2679b43b38c8b63769cd
 --------------------------------------------------------------------------------
 MIT License
 
@@ -2843,7 +2843,7 @@ DEALINGS IN THE SOFTWARE.
 ================================================================================
 LICENSE-043 · FONT-NOTICES.md
 SHA-256: 74a171c239592ee050b78f675550e837814715caee6c4133f2b072c57b6579e6
-Used by: JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
+Used by: JetBrainsMonoNerdFont-Bold.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-BoldItalic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-Italic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoColorEmoji.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoEmoji-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
 --------------------------------------------------------------------------------
 # Fonts and Licenses
 
@@ -5275,7 +5275,7 @@ in this Software without prior written authorization of the copyright holder.
 ================================================================================
 LICENSE-079 · LICENSE, TRUFFLE-LICENSE
 SHA-256: d5988fd09ab1f97d46de9b2678a4fd2950286601f0a5995e739ac926c5a8eae0
-Used by: Truffle Swift 0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc, ghosttea-apple-ffi 0.13.8, ghosttea-config 0.13.8, ghosttea-core 0.13.8, ghosttea-ffi 0.13.8, ghosttea-font-fixture-ffi 0.13.8, ghosttea-text 0.13.8, ghosttea-vt 0.13.8, ghosttea-vt-sys 0.13.8
+Used by: Truffle Swift 0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc, ghosttea-apple-ffi 0.14.0, ghosttea-config 0.14.0, ghosttea-core 0.14.0, ghosttea-ffi 0.14.0, ghosttea-font-fixture-ffi 0.14.0, ghosttea-text 0.14.0, ghosttea-vt 0.14.0, ghosttea-vt-sys 0.14.0
 --------------------------------------------------------------------------------
 MIT License
 
@@ -5879,7 +5879,7 @@ in the source collection may be redistributed.
 ================================================================================
 LICENSE-092 · OFL-1.1.txt
 SHA-256: fb755fa3280d1d215a20df2e64fe6a0f75f8208439b11671978214aae60d2997
-Used by: JetBrainsMonoNerdFont-Bold.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-BoldItalic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Italic.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, JetBrainsMonoNerdFont-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoColorEmoji.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoEmoji-Regular.ttf f8041e849b36efbbb9736b6ecf0ccfcb01d94e69, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
+Used by: JetBrainsMonoNerdFont-Bold.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-BoldItalic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-Italic.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, JetBrainsMonoNerdFont-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoColorEmoji.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoEmoji-Regular.ttf 83fb95624b0439ee660c2679b43b38c8b63769cd, NotoSansSymbols2-Regular.ttf NotoSansSymbols2-v2.008, STIXTwoMath-Regular.otf v2.13b171
 --------------------------------------------------------------------------------
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
