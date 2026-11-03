@@ -511,11 +511,31 @@ released app.
 The Truffle patch is now committed as `2d91013` on latest main in
 [Truffle PR #247](https://github.com/vibecook-dev/truffle/pull/247). All 116 root
 Swift package tests passed, including canonical-name updates/clearing, local
-snapshots, stable references and provisional-peer merging. The next Truffle
-patch release and matching Ghosttea/Vibefield Swift pins are a product-release
-prerequisite. No workaround removes the DNS fix or changes the existing login
-and transport checks. The original failed clean build is retained at
+snapshots, stable references and provisional-peer merging. The patch shipped in
+[Truffle 0.7.26](https://github.com/vibecook-dev/truffle/releases/tag/truffle-v0.7.26)
+through [release PR #248](https://github.com/vibecook-dev/truffle/pull/248).
+[Release run 41563588677](https://github.com/vibecook-dev/truffle/actions/runs/41563588677)
+passed its complete publication sequence; the final SwiftPM `v0.7.26` tag names
+`101889f676d32989e2c32295c3b608ccd5972c02`. All 13 npm packages and three crates
+were independently checked at that version. Both Ghosttea Swift manifests,
+their resolved/provenance locks and the iOS inventory move to this release.
+Vibefield's Swift pin must match when its Ghosttea 0.14.0 pin lands.
+
+The Swift sources at the release tag are identical to the reviewed candidate.
+The TailscaleKit binary, license/privacy hashes and Ghosttea native source digest
+are unchanged. The intervening Truffle Swift update also reads peers' application
+tags, retaining the tested hostname fallback for older peers. Desktop Truffle
+Rust and sidecar versions remain 0.7.24; the DNS fix does not change the existing
+login and transport checks. The original failed clean build is retained at
 `G14/publication-20261102/keypad-profiles-swift.log`.
+
+With the verified Truffle 0.7.26 pin, all **307 Ghosttea Swift tests** passed
+against the published native archive, including the Claude block-gap,
+resize/appearance and routed attachment regressions. A fresh downstream package
+linked all **18 public Swift library products**. The served-byte audit and
+generated iOS BOM/resource checks passed; the three pre-existing release
+blockers remain recorded. These results qualify the updated Ghosttea package,
+not a final published-dependency Vibefield device run.
 
 ### Subsequent phone UI issues
 

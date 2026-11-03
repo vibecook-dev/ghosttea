@@ -31,12 +31,20 @@ dependencies are pinned together and the final consumer gates pass.
 
 The clean consumer build exposed one more release dependency: the DNS fix uses
 `Truffle.Peer.dnsName`, which was present in the manual build's local Truffle
-patch but is absent from published 0.7.23 and 0.7.25. The source fix is now
-[Truffle PR #247](https://github.com/vibecook-dev/truffle/pull/247), based on latest
-main and passing all 116 Swift tests. Ghosttea's product tag is held until that
-fix has a verified SwiftPM release and both consumers resolve it consistently.
-The already-published Ghosttea native archive does not establish this Swift
-source dependency; the final package and product checks must cover it separately.
+patch but is absent from published 0.7.23 and 0.7.25. That prerequisite is now
+released: [Truffle PR #247](https://github.com/vibecook-dev/truffle/pull/247) passed
+all 116 Swift tests and shipped in
+[Truffle 0.7.26](https://github.com/vibecook-dev/truffle/releases/tag/truffle-v0.7.26).
+Its release pipeline passed CI, real-network tests, Apple package/iOS builds,
+binary checks and registry publication before creating the SwiftPM `v0.7.26`
+tag at `101889f676d32989e2c32295c3b608ccd5972c02`.
+
+Both Ghosttea Swift manifests and their provenance lock now pin that verified
+version. The Truffle license, TailscaleKit artifact and Ghosttea native source
+digest are unchanged. Vibefield must use the same Swift pin when adopting
+Ghosttea 0.14.0; its desktop Truffle Rust/sidecar pin remains 0.7.24. Final
+published-package and product checks still cover this dependency separately
+from the already-published Ghosttea native archive.
 
 ## Baselines and scope
 

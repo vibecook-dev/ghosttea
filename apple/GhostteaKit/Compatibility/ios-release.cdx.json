@@ -328,9 +328,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/vibecook-dev/truffle@0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+      "bom-ref": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
       "name": "Truffle Swift",
-      "version": "0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+      "version": "101889f676d32989e2c32295c3b608ccd5972c02",
       "licenses": [
         {
           "license": {
@@ -338,7 +338,7 @@
           }
         }
       ],
-      "purl": "pkg:github/vibecook-dev/truffle@0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+      "purl": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
       "externalReferences": [
         {
           "type": "vcs",
@@ -3324,7 +3324,7 @@
         "pkg:cargo/ghosttea-apple-ffi@0.14.0",
         "pkg:github/openssl/openssl@8cf17aaeb4599f8af87fefd810b5b5fee90fe69e",
         "pkg:github/libssh2/libssh2@a312b43325e3383c865a87bb1d26cb52e3292641",
-        "pkg:github/vibecook-dev/truffle@0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+        "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
         "pkg:github/mbadolato/iTerm2-Color-Schemes@875a82f0fdc773ae45099ce683a11c56bb0f8b3d",
         "pkg:github/0xhckr/ghostty-shaders@85898f08fcf4a9274e418912098e99e00a5f8350",
         "ghosttea:font/regular@83fb95624b0439ee660c2679b43b38c8b63769cd",
@@ -3360,7 +3360,7 @@
       ]
     },
     {
-      "ref": "pkg:github/vibecook-dev/truffle@0b83a2ceac54b60c54c01ab5b95fad480bc7d6bc",
+      "ref": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
       "dependsOn": [
         "pkg:github/tailscale/libtailscale@d1dc45d039edb7759ecbee6ba2aea0c4bca884b8"
       ]
