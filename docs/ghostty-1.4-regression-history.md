@@ -1,7 +1,9 @@
 # Ghostty 1.4 migration: regression history, causes, and resolutions
 
-Recorded through **2026-10-31, America/Los_Angeles**. Branch:
-`codex/libghostty-1.4-vibefield`.
+Original investigation recorded through **2026-10-31, America/Los_Angeles**, on
+`codex/libghostty-1.4-vibefield`. The **November 2 publication addendum** below
+records the subsequent fixes, device installations and release preparation on
+`release/0.14.0`. Sections 1–9 retain their original checkpoint dates.
 
 The migration exposed several independent problems in VibeField's Godview panes,
 Swift terminal, Truffle connection path, and verification-build packaging. Some
@@ -14,12 +16,12 @@ for its exact builds, but subsequent signed-in manual testing found failures tha
 those checks missed. This document is the later record; earlier “passed” entries
 must not be read as acceptance of the final product or the latest fixes.
 
-This is a documentation-only commit. The source port and earlier fixes are
-committed through `fc0740eb08c9393cbc5aa689286188bf6b1641fd`. Later fixes described
-below remain local changes across the isolated Ghosttea, VibeField, and Truffle
-worktrees. In particular, the final block-rendering and resource-bundle fixes
-have been built and checked, but the corrected app has **not** been installed for
-a new physical-phone acceptance run. Nothing in this record promotes a release.
+At the October 31 documentation checkpoint, the source port and earlier fixes
+were committed through `fc0740eb08c9393cbc5aa689286188bf6b1641fd`. Later fixes were
+still local changes, and the final block-rendering/resource-bundle build had not
+yet been installed. Those statements are historical: the November 2 addendum
+records the later installed app and committed fixes. Neither the earlier tests
+nor the later UI checks replace qualification of the final published artifacts.
 
 ## 1. Versions and ownership
 
@@ -472,3 +474,92 @@ These hashes identify the local implementation reviewed here; they do not mean
 those files are included in this documentation commit. The screenshot gallery
 and archived prototype material are supporting review aids. The retained final
 images, source identities, and test logs determine which result a claim refers to.
+
+## 10. November 2: committed fixes and release preparation
+
+The migration was rebased onto the latest published Ghosttea main, 0.13.8. The
+release branch is `release/0.14.0`; the synchronized npm/Cargo version and generated
+iOS inventory are 0.14.0. This preserves the newer conditional terminal-release
+and acknowledged attachment-disposal behavior rather than publishing an older
+fork of main.
+
+The fixes that sections 6–8 described as uncommitted are now tracked:
+
+- Ghosttea `59c002f` contains remote source-frame text metrics and the cell-geometry
+  treatment of solid blocks and quadrants. `ce80daa` contains routed foreground
+  recovery and the input barrier after resumed demand.
+- Vibefield `e65d31e88` adds authenticated selection copy; `3d7081ea0` adds scene
+  repair and input gating; `165045ba4` connects mirrored glyph scaling to the
+  terminal font settings; `75ef64d2e` dials the canonical mesh DNS name.
+- Vibefield `0c4590d7a` and `836d8e700` refine the terminal overlays, gesture/focus
+  ownership and keypad. `c2c72be4e` fixes both icon paths. `b8771d46a` retains the
+  desktop and physical-device qualification tools.
+
+These consumer commits are reviewable in
+[Vibefield PR #12](https://github.com/vibefield/vibefield/pull/12). The original
+manual-testing worktree remains separate; its machine-specific dependency and QA
+configuration are not the publication branch's dependency pins.
+
+### Subsequent phone UI issues
+
+The corrected VibeField G14 app was built, installed alongside the regular app,
+launched on the physical iPhone, and used for the subsequent user-directed UI
+refinements. This supersedes the October 31 statement that no corrected app had
+been installed. It does not claim a new complete four-pairing Truffle matrix on
+the final 0.14.0 registry release.
+
+The terminal now keeps the keyboard hidden during scrolling, extends behind a
+fading header, and uses floating paste/keyboard controls with a context indicator.
+Remote-driver takeover folds the keyboard; the device name fits the available
+width and the takeover message is centered in the available terminal area.
+
+The replacement keypad has Navigate, Shortcuts and Fn pages. Switching between
+native and custom keyboards preserves the measured composer geometry. Switching
+between drafting and direct terminal input keeps the outgoing responder mounted
+until the incoming responder owns focus. Removing it, or disabling its UIKit
+interaction too early, caused the observed keyboard dismissal/reappearance.
+Deferred stale focus requests are rejected, and the redundant prompt Enter key
+was removed.
+
+Two separate icon defects required separate fixes:
+
+- The swarm's PNG was already byte-identical to the desktop atlas. A CGContext
+  transform flipped its rows during Metal upload, so valid tile coordinates read
+  the wrong icons. Removing that transform makes the actual R8 texture match
+  desktop pixels; the new test reproduces the old failure.
+- The terminal header uses SVG assets, not that atlas. Xcode misread compact
+  numeric/arc arguments in the Codex path. Separating commands and arguments
+  preserves all 59 geometry operations and the desktop reference pixels while
+  fixing the compiled asset at 11, 24 and 96 pt in light and dark appearances.
+
+### Evidence and remaining limits
+
+The later checks are distinct checkpoints, not counts to sum:
+
+| Checkpoint | Result | Boundary |
+| --- | --- | --- |
+| Keypad layout | 185 simulator checks passed, including portrait/landscape UI; physical-phone fixture checks preserved composer position, terminal rows and takeover folding. | Local rendering/input checks, not a new live Truffle matrix. |
+| Direct-terminal mode switch | 186 checks passed; zero keyboard-hide notifications when switching both directions with native and custom keyboards. | Selected page, unsent draft and composer frame were checked in the simulator. |
+| Duplicate Enter removal | 184 checks passed; no mode-switch keyboard dismissal. | The corresponding G14 app was built, installed and launched. |
+| Swarm atlas | 38 checks passed; all 20 icons reviewed in both appearances. | Test reads the uploaded Metal texture, not just the PNG source. |
+| Header SVG | UI check passed; all three sizes reviewed in both appearances; reference geometry and 240 px pixels unchanged. | Product app built, installed and launched. |
+| November 2 release preparation | All Ghosttea workspace type checks and 631 JavaScript tests passed; 428 Rust tests passed with three existing ignored cases against the promoted VT archive; Vibefield's committed product sources passed 1,509 contract and 32 routed-host tests. Rust formatting and 205 iOS fixture copies / 67 contract constants passed. | The Vibefield tests used the local Ghosttea candidate. Published dependency pins and the complete release/consumer gates remain separate. |
+
+The local evidence directories are `G14/keypad-implementation`,
+`G14/keypad-mode-switch`, `G14/live-enter-removal`, `G14/swarm-icons` and
+`G14/header-icon`, each suffixed `-20261102`, under the evidence root indexed in
+section 9. Their result JSON records the tested source hashes. Large xcresult
+bundles, device data and test credentials are not release source assets.
+
+One recorded keypad limit remains: if the custom keypad is open during the first
+rotation into an orientation with no measured native keyboard height, the first
+ABC switch may recalibrate once (40 pt on the tested iOS 26.5 simulator). Subsequent
+switches use the measured height. Physical hardware-keyboard input was checked by
+routing tests, not an attached keyboard.
+
+Latency remains unqualified at the user's direction. Physical Windows GPU/product
+behavior, real Wi-Fi/cellular handoff and long suspension remain unclaimed. The
+pre-existing SSH production-readiness blockers and the historical full-Vibefield
+agent-cleanup timing failure are not waived by these UI checks. Product release
+CI must verify the final native pin, and Vibefield must qualify the published
+0.14.0 dependency graph before its integration PR becomes merge-ready.

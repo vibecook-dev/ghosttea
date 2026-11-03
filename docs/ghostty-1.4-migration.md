@@ -1,7 +1,33 @@
 # Ghostty 1.4 migration for Vibefield
 
-Status: migration candidate implemented and qualification recorded with open gates.
-No release promotion.
+Status, **2026-11-02**: migration and regression fixes are committed for Ghosttea
+0.14.0, rebased on released 0.13.8. Final release CI and Vibefield's published
+dependency qualification remain open. No product release tag is recorded here.
+
+The qualification table below records the **October 30 candidate**, not the
+subsequent 0.14.0 release artifact. Later manual regressions and their fixes are
+recorded in [the regression history](./ghostty-1.4-regression-history.md), including
+its November 2 publication addendum. Passing an earlier candidate does not qualify
+later source changes or a different native archive.
+
+The release branch is `release/0.14.0`. It retains 0.13.8's conditional session
+release and attachment-disposal fixes. The reviewed VT candidates from run
+40972570187 were promoted without rebuilding to
+[`ghostty-vt-b2a959db6a0d`](https://github.com/vibecook-dev/ghosttea/releases/tag/ghostty-vt-b2a959db6a0d)
+on November 2; promotion and both Windows CRT checks passed in
+[run 41552795762](https://github.com/vibecook-dev/ghosttea/actions/runs/41552795762).
+The Apple artifact
+[`ghosttea-apple-native-fcf9a17cce90`](https://github.com/vibecook-dev/ghosttea/releases/tag/ghosttea-apple-native-fcf9a17cce90)
+was built, tested, attested, published and independently checked in
+[run 41552793124](https://github.com/vibecook-dev/ghosttea/actions/runs/41552793124).
+Commit `50e5c39` pins it to the 0.14.0 source digest
+`5c36ad009576b86696efe06e1c1cc359fdaf7c8076dae57c367bbc8bdb270282`.
+The complete Swift suite and all-products consumer passed before publication;
+the served archive and all-products consumer passed again before the pin commit.
+
+[Vibefield PR #12](https://github.com/vibefield/vibefield/pull/12) contains the
+consumer fixes and remains a draft until the published npm, Cargo and SwiftPM
+dependencies are pinned together and the final consumer gates pass.
 
 ## Baselines and scope
 
