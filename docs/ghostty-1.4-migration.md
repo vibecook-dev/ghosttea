@@ -29,6 +29,15 @@ the served archive and all-products consumer passed again before the pin commit.
 consumer fixes and remains a draft until the published npm, Cargo and SwiftPM
 dependencies are pinned together and the final consumer gates pass.
 
+The clean consumer build exposed one more release dependency: the DNS fix uses
+`Truffle.Peer.dnsName`, which was present in the manual build's local Truffle
+patch but is absent from published 0.7.23 and 0.7.25. The source fix is now
+[Truffle PR #247](https://github.com/vibecook-dev/truffle/pull/247), based on latest
+main and passing all 116 Swift tests. Ghosttea's product tag is held until that
+fix has a verified SwiftPM release and both consumers resolve it consistently.
+The already-published Ghosttea native archive does not establish this Swift
+source dependency; the final package and product checks must cover it separately.
+
 ## Baselines and scope
 
 - Ghosttea: `3eee581c14b05850c90bea09536d4bc6b856223b`, released as 0.13.7.

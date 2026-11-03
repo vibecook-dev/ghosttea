@@ -500,6 +500,23 @@ These consumer commits are reviewable in
 manual-testing worktree remains separate; its machine-specific dependency and QA
 configuration are not the publication branch's dependency pins.
 
+### Clean publication build exposed the remaining Truffle dependency
+
+The first clean iOS build against the published dependency graph failed to
+compile `FieldStoreDoors+Mesh.swift`: published `Truffle.Peer` has no `dnsName`.
+The manual builds had used the local Truffle patch described in section 4. The
+Vibefield source fix alone therefore cannot close the discovery issue in a
+released app.
+
+The Truffle patch is now committed as `2d91013` on latest main in
+[Truffle PR #247](https://github.com/vibecook-dev/truffle/pull/247). All 116 root
+Swift package tests passed, including canonical-name updates/clearing, local
+snapshots, stable references and provisional-peer merging. The next Truffle
+patch release and matching Ghosttea/Vibefield Swift pins are a product-release
+prerequisite. No workaround removes the DNS fix or changes the existing login
+and transport checks. The original failed clean build is retained at
+`G14/publication-20261102/keypad-profiles-swift.log`.
+
 ### Subsequent phone UI issues
 
 The corrected VibeField G14 app was built, installed alongside the regular app,
