@@ -35,10 +35,15 @@ const configCommit = configLock.ghostty?.commit;
 if (!/^[0-9a-f]{40}$/.test(configCommit ?? "")) {
   throw new Error("native/ghostty-config.lock.json must pin a full lowercase 40-character commit.");
 }
-requireEqual(groundTruthCommit, commit, "Ghostty UX ground-truth commit");
+const uxCommit = configLock.uxGroundTruth?.vendorCommit;
+if (!/^[0-9a-f]{40}$/.test(uxCommit ?? "")) {
+  throw new Error("native/ghostty-config.lock.json must pin the reviewed UX source commit.");
+}
+requireEqual(groundTruthCommit, uxCommit, "Ghostty UX ground-truth commit");
 const version = groundTruthVersion.match(/^\s*-\s+version:\s+(\S+)\s*$/m)?.[1];
 if (!version) throw new Error("Ghostty UX ground truth does not report a version.");
 requireEqual(version, configLock.ghostty?.version, "Ghostty config ground-truth version");
+requireEqual(version, configLock.uxGroundTruth?.cliVersion, "Ghostty UX CLI version");
 requireEqual(configLock.ghostty?.tag, `v${version}`, "Ghostty config release tag");
 if (
   !configCompatibilitySource.includes(`GHOSTTY_CONFIG_COMPAT_COMMIT: &str = "${configCommit}"`) ||
@@ -99,7 +104,13 @@ requireEqual(
 requireEqual(artifacts.source, sourceIdentity, "native artifact source-and-recipe identity");
 requireEqual(fonts.source, lock.ghostty, "font source pin");
 requireEqual(lock.builder?.zigBuildJobs, 1, "Ghostty VT Zig build concurrency");
-requireEqual(lock.builder?.zigBuildSeed, 0, "Ghostty VT Zig build seed");
+requireEqual(lock.builder?.zigOptimize, "fast", "Ghostty VT optimization mode");
+requireEqual(lock.builder?.zigPackageDirectory, "packages", "Ghostty VT writable package directory");
+requireEqual(
+  lock.builder?.msvcRuntimeWitnesses,
+  ["ghosttea-msvc-simd.obj", "ghosttea-msvc-simdutf.obj", "ghosttea-msvc-highway.obj"],
+  "Ghostty VT MSVC runtime witnesses",
+);
 requireEqual(lock.builder?.normalizer?.runner, "macos-26", "Ghostty VT normalizer runner");
 for (const field of ["developerDirectory", "xcodeVersion", "xcodeBuild"]) {
   if (typeof lock.builder?.normalizer?.[field] !== "string" || lock.builder.normalizer[field] === "") {
@@ -272,7 +283,10 @@ const desktopBuild = read("scripts/build-ghostty-vt.mjs");
 for (const text of [
   "-Dcpu=${config.zigCpu}",
   "-j${lock.builder.zigBuildJobs}",
-  "lock.builder.zigBuildSeed",
+  "-Doptimize=${lock.builder.zigOptimize}",
+  "-Demit-xcframework=false",
+  "ZIG_GLOBAL_CACHE_DIR",
+  "lock.builder.zigPackageDirectory",
   "-Dmsvc-runtime=${config.msvcRuntime}",
 ]) {
   if (!desktopBuild.includes(text)) {

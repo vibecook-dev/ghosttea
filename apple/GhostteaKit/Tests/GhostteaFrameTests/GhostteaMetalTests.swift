@@ -7,6 +7,13 @@ import Testing
 @testable import GhostteaFrame
 @testable import GhostteaTerminal
 
+@Test func graphicsClassificationDoesNotGuessAcrossHostWidthDifferences() {
+  #expect(GhostteaMetalGraphicCells.cells(in: "👩‍💻ab▀X", nativeCellEnd: 8).isEmpty)
+  #expect(GhostteaMetalGraphicCells.cells(in: "🛙a▀", nativeCellEnd: 3).isEmpty)
+  #expect(GhostteaMetalGraphicCells.cells(in: "日▀e\u{0301}╭", nativeCellEnd: 5).keys.sorted() == [2, 4])
+  #expect(GhostteaMetalGraphicCells.cells(in: "  日▀e\u{0301}╭  ", nativeCellEnd: 7).keys.sorted() == [4, 6])
+}
+
 @Test func terminalDamageUnionsRowsAndPresentationCategories() {
   var damage = GhostteaTerminalRenderDamage.rows([1, 2])
   damage.formUnion(.cursor)

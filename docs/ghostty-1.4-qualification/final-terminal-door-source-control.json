@@ -1,0 +1,32 @@
+[
+  {
+    "path": "packages/electron-shell/src/testing/terminal-door-probe.ts",
+    "baselineSha256": "3aa367173e49d85d0c966a6d9bf50e416e42fb6ca6a3cd6f7fd13d756014419d",
+    "candidateSha256": "3aa367173e49d85d0c966a6d9bf50e416e42fb6ca6a3cd6f7fd13d756014419d",
+    "identical": true
+  },
+  {
+    "path": "packages/electron-shell/src/testing/smoke-daemons.ts",
+    "baselineSha256": "b7ac14e13221aed51364553ce3460560e98cdbfcb4a154617ad3555c4de50680",
+    "candidateSha256": "b7ac14e13221aed51364553ce3460560e98cdbfcb4a154617ad3555c4de50680",
+    "identical": true
+  },
+  {
+    "path": "packages/fieldd-supervisor/src/supervisor.ts",
+    "baselineSha256": "d3c469b4c9035bbbdff268219b7f0e450fd52c4dc5c162f44e82ad0de26385d2",
+    "candidateSha256": "d3c469b4c9035bbbdff268219b7f0e450fd52c4dc5c162f44e82ad0de26385d2",
+    "identical": true
+  },
+  {
+    "path": "apps/desktop/packaging/run-smoke.mjs",
+    "baselineSha256": "2aeb3c5b60374b4d68349331abd6e17dd6166271e435bdf2705b47e667a457cd",
+    "candidateSha256": "2aeb3c5b60374b4d68349331abd6e17dd6166271e435bdf2705b47e667a457cd",
+    "identical": true
+  },
+  {
+    "path": "apps/desktop/packaging/smoke-daemons.mjs",
+    "baselineSha256": "070e853e019582731c0cec877bb3f5d4064575e2c85d1d3539a69f1327d38c63",
+    "candidateSha256": "070e853e019582731c0cec877bb3f5d4064575e2c85d1d3539a69f1327d38c63",
+    "identical": true
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "command": [
+    "pnpm",
+    "exec",
+    "vitest",
+    "run",
+    "test/doc-compaction.test.ts",
+    "test/loro-host.test.ts",
+    "test/pair-log-root.test.ts",
+    "test/terminal-kill-matrix.test.ts",
+    "--maxWorkers=1",
+    "--no-file-parallelism"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 107.28,
+  "log": "frozen-affected-daemon-recheck-20261030.log",
+  "dependencyGraphRestored": true,
+  "buildOnlyOfflineFlagAbsent": true,
+  "timeoutsChanged": false,
+  "assertionsChanged": false
+}

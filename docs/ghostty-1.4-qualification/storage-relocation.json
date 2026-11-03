@@ -1,0 +1,42 @@
+{
+  "completedAt": "2026-10-30T00:13:21Z",
+  "allocatedGiBRelocated": 20.98,
+  "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29",
+  "validation": "Each directory copied with modes, timestamps and hardlinks; all file contents checksum-compared before originals were removed; all original paths retained as symlinks.",
+  "sourceAndEvidence": "preserved internally",
+  "directories": [
+    {
+      "source": "/private/tmp/vibefield-libghostty-migration-2026-10-29/target-candidate",
+      "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/target-candidate",
+      "allocatedSourceBytes": 7341580288,
+      "status": "relocated-and-linked"
+    },
+    {
+      "source": "/private/tmp/vibefield-libghostty-migration-2026-10-29/target-vibefield-candidate",
+      "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/target-vibefield-candidate",
+      "allocatedSourceBytes": 9519702016,
+      "status": "relocated-and-linked"
+    },
+    {
+      "source": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/native/build",
+      "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/ghosttea-native-build",
+      "allocatedSourceBytes": 3014553600,
+      "status": "relocated-and-linked"
+    },
+    {
+      "source": "/private/tmp/vibefield-libghostty-migration-2026-10-29/derived-device-candidate",
+      "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/derived-device-candidate",
+      "allocatedSourceBytes": 1365946368,
+      "status": "relocated-and-linked"
+    },
+    {
+      "source": "/private/tmp/vibefield-libghostty-migration-2026-10-29/derived-device-baseline",
+      "destination": "/Volumes/SamsungRed/codex-build-cache/vibefield-libghostty-migration-2026-10-29/derived-device-baseline",
+      "allocatedSourceBytes": 1280655360,
+      "status": "relocated-and-linked"
+    }
+  ],
+  "internalFreeAtCompletionGiB": 64.35,
+  "ssdFreeAtCompletionGiB": 47.55,
+  "note": "Free-space totals also vary with other work on this shared machine; they are not an attribution of all reclaimed space to this migration."
+}

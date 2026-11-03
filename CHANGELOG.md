@@ -3,6 +3,45 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.14.0 - 2026-11-02
+
+### Changed
+
+- Upgrade the terminal engine to Ghostty 1.4 at
+  `83fb95624b0439ee660c2679b43b38c8b63769cd`, with Unicode 18 cell widths and
+  the checksum-locked Zig 0.17 build recipe. The native build and Apple renderer
+  retain Ghosttea's host-owned terminal geometry and embedding patches.
+- Rebuild the Apple native artifact from the release sources. Windows keeps
+  separate dynamic-CRT and static-CRT VT archives; macOS archives apply the
+  pinned upstream Darwin runtime-symbol normalization before packaging.
+
+### Added
+
+- Routed terminal selection copy through the optional `selection-text`
+  capability. Copy uses read authority, supports Unicode and scrollback, and
+  rejects stale, oversized or timed-out results without replaying requests.
+- Apple remote viewers can declare the source frame's text metrics, so changing
+  the viewer's font size scales incoming glyphs with its terminal grid.
+
+### Fixed
+
+- Foreground routed panes recover after background retry exhaustion. Input
+  remains gated until resumed demand is accepted and a fresh cell status arrives.
+- Solid block and quadrant characters fill their cells in the Apple renderer,
+  removing horizontal gaps in TUI artwork at different font sizes and display
+  scales. Selection, cursor colors and faint opacity remain consistent.
+- Joined emoji follow host cell boundaries while keeping their intended visual
+  span. Selection backgrounds cover the host's complete glyph spans, and graphics
+  classification preserves host glyphs when Unicode widths are ambiguous.
+- Native packaging locates Cargo outputs through the configured target directory.
+
+### Qualification
+
+- Migration evidence and remaining limits are recorded in
+  `docs/ghostty-1.4-migration.md` and `docs/ghostty-1.4-qualification/`.
+  Latency remains unqualified; physical Windows GPU and real Wi-Fi/cellular
+  handoff are not claimed. Release CI verifies the final published artifacts.
+
 ## 0.13.8 - 2026-11-02
 
 ### Fixed

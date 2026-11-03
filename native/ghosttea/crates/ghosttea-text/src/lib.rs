@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use fontdb::{Database, Family, ID, Query, Source as FontSource, Stretch, Style, Weight};
 use harfrust::{Buffer, ShapeOptions, ShaperFont, shape};
 use swash::{
@@ -153,6 +153,18 @@ pub struct StyleSpan {
     pub style: FontStyle,
 }
 
+/// A terminal host's authoritative text cluster and grid placement.
+/// Keep these boundaries when rendering a local or mirrored terminal: the
+/// host's Unicode version and grapheme mode may differ from this shaper's.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TerminalCellSpan {
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub column: u16,
+    pub span: u16,
+    pub style: FontStyle,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum GlyphFormat {
@@ -229,11 +241,13 @@ struct Grapheme<'a> {
     cell_span: u16,
     face: ID,
     style: FontStyle,
+    presentation: FontPresentation,
 }
 
 struct CachedShapedRow {
     text: String,
     spans: Vec<StyleSpan>,
+    cells: Option<Vec<TerminalCellSpan>>,
     shaped: ShapedRow,
 }
 
@@ -502,19 +516,43 @@ impl TextEngine {
     }
 
     pub fn shape_styled_row(&mut self, text: &str, spans: &[StyleSpan]) -> Result<ShapedRow> {
-        let cache_key = shaped_row_hash(text, spans);
+        self.shape_row_layout(text, spans, None)
+    }
+
+    /// Shapes using the terminal's cell boundaries, widths and columns.
+    /// Empty cell metadata retains the text-only API's layout for legacy
+    /// logical rows. Nonempty metadata must cover the complete UTF-8 text.
+    pub fn shape_terminal_row(
+        &mut self,
+        text: &str,
+        cells: &[TerminalCellSpan],
+    ) -> Result<ShapedRow> {
+        self.shape_row_layout(text, &[], (!cells.is_empty()).then_some(cells))
+    }
+
+    fn shape_row_layout(
+        &mut self,
+        text: &str,
+        spans: &[StyleSpan],
+        cells: Option<&[TerminalCellSpan]>,
+    ) -> Result<ShapedRow> {
+        let cache_key = shaped_row_hash(text, spans, cells);
         if let Some(shaped) = self
             .shaped_rows
             .get(&cache_key)
             .and_then(|rows| {
-                rows.iter()
-                    .find(|row| row.text == text && row.spans == spans)
+                rows.iter().find(|row| {
+                    row.text == text && row.spans == spans && row.cells.as_deref() == cells
+                })
             })
             .map(|row| row.shaped.clone())
         {
             return Ok(shaped);
         }
-        let graphemes = self.resolve_graphemes(text, spans)?;
+        let graphemes = match cells {
+            Some(cells) => self.resolve_terminal_cells(text, cells)?,
+            None => self.resolve_graphemes(text, spans)?,
+        };
         let mut output = ShapedRow::default();
         let mut used_definitions = HashSet::new();
         let mut run_start = 0;
@@ -522,9 +560,19 @@ impl TextEngine {
             let face = graphemes[run_start].face;
             let mut run_end = run_start + 1;
             let style = graphemes[run_start].style;
+            let presentation = graphemes[run_start].presentation;
             while run_end < graphemes.len()
                 && graphemes[run_end].face == face
                 && graphemes[run_end].style == style
+                // Emoji need independent visual fitting while their grid
+                // advance still comes from the host. Keep normal text runs
+                // together so ordinary cross-cell ligatures are unchanged.
+                && (cells.is_none()
+                    || graphemes[run_end].presentation == presentation)
+                && graphemes[run_end].cell_start
+                    == graphemes[run_end - 1]
+                        .cell_start
+                        .saturating_add(graphemes[run_end - 1].cell_span)
             {
                 run_end += 1;
             }
@@ -533,6 +581,7 @@ impl TextEngine {
                 &graphemes[run_start..run_end],
                 face,
                 style,
+                cells.is_some() && presentation == FontPresentation::Emoji,
                 &mut output.glyphs,
                 &mut used_definitions,
             )?;
@@ -555,6 +604,7 @@ impl TextEngine {
                 .push(CachedShapedRow {
                     text: text.to_owned(),
                     spans: spans.to_vec(),
+                    cells: cells.map(<[_]>::to_vec),
                     shaped: output.clone(),
                 });
             self.shaped_row_count += 1;
@@ -564,6 +614,60 @@ impl TextEngine {
             }
             self.shaped_row_candidates.insert(cache_key);
         }
+        Ok(output)
+    }
+
+    fn resolve_terminal_cells<'a>(
+        &mut self,
+        text: &'a str,
+        cells: &[TerminalCellSpan],
+    ) -> Result<Vec<Grapheme<'a>>> {
+        let mut byte_end = 0;
+        let mut column_end = 0;
+        let mut output = Vec::with_capacity(cells.len());
+        for cell in cells {
+            ensure!(
+                cell.byte_start == byte_end && cell.byte_end > cell.byte_start,
+                "terminal cells must cover the row without gaps or overlaps"
+            );
+            ensure!(
+                cell.span > 0 && cell.column >= column_end,
+                "terminal cells must have positive, non-overlapping grid spans"
+            );
+            let cluster = text
+                .get(cell.byte_start..cell.byte_end)
+                .context("terminal cell is not a valid UTF-8 range")?;
+            column_end = cell
+                .column
+                .checked_add(cell.span)
+                .context("terminal cell exceeds the grid")?;
+            byte_end = cell.byte_end;
+            let primary = *self
+                .styled_faces
+                .get(&cell.style)
+                .context("missing styled primary face")?;
+            let presentation = cluster_presentation(cluster);
+            let face = if self.face_supports(primary, cluster)?
+                && self.face_matches(primary, presentation)
+            {
+                primary
+            } else {
+                self.fallback_for(cluster, presentation).unwrap_or(primary)
+            };
+            output.push(Grapheme {
+                text: cluster,
+                byte_start: cell.byte_start,
+                cell_start: cell.column,
+                cell_span: cell.span,
+                face,
+                style: cell.style,
+                presentation,
+            });
+        }
+        ensure!(
+            byte_end == text.len(),
+            "terminal cells do not cover the complete row"
+        );
         Ok(output)
     }
 
@@ -600,6 +704,7 @@ impl TextEngine {
                 cell_span: span,
                 face,
                 style,
+                presentation,
             });
             cell = cell.saturating_add(span);
         }
@@ -691,6 +796,7 @@ impl TextEngine {
         graphemes: &[Grapheme<'_>],
         face_id: ID,
         style: FontStyle,
+        grid_emoji: bool,
         output: &mut Vec<GlyphInstance>,
         used_definitions: &mut HashSet<u32>,
     ) -> Result<()> {
@@ -721,6 +827,13 @@ impl TextEngine {
             1.0
         };
         let mut pen_x = first.cell_start as f32 * metrics.cell_width_px;
+        let mut emoji_positions = HashMap::<u32, (f32, f32)>::new();
+        if grid_emoji {
+            for glyph in &shaped {
+                emoji_positions.entry(glyph.cluster).or_default().0 +=
+                    glyph.x_advance as f32 / 64.0;
+            }
+        }
 
         let mut cluster_starts: Vec<u32> = shaped.iter().map(|glyph| glyph.cluster).collect();
         cluster_starts.sort_unstable();
@@ -746,10 +859,28 @@ impl TextEngine {
                 .map(|grapheme| grapheme.cell_start)
                 .unwrap_or_else(|| last.cell_start.saturating_add(last.cell_span));
             let cluster_span = cluster_end_cell.saturating_sub(cluster_cell_start).max(1);
+            let (glyph_x, scale_x) = if grid_emoji {
+                // Legacy width mode may reserve four (or more) columns for
+                // one ZWJ emoji. Preserve its combined artwork at at most two
+                // columns, then anchor the next cluster at ITS host column.
+                // Breaking the ZWJ into separate shaping runs would change
+                // the symbol; scaling the whole run would stretch it.
+                let (advance, offset) = emoji_positions.get_mut(&glyph.cluster).unwrap();
+                let scale = if advance.abs() > f32::EPSILON {
+                    f32::from(cluster_span.min(2)) * metrics.cell_width_px / *advance
+                } else {
+                    1.0
+                };
+                let x = f32::from(cluster_cell_start) * metrics.cell_width_px + *offset * scale;
+                *offset += glyph.x_advance as f32 / 64.0;
+                (x, scale)
+            } else {
+                (pen_x, run_scale_x)
+            };
             if let Some((glyph_id, definition)) = self.rasterize(&loaded, glyph.glyph_id, style)? {
-                let x = pen_x
-                    + glyph.x_offset as f32 / 64.0 * run_scale_x
-                    + definition.bearing_x as f32 / raster_scale * run_scale_x;
+                let x = glyph_x
+                    + glyph.x_offset as f32 / 64.0 * scale_x
+                    + definition.bearing_x as f32 / raster_scale * scale_x;
                 let y = metrics.baseline_px
                     - glyph.y_offset as f32 / 64.0
                     - definition.bearing_y as f32 / raster_scale;
@@ -758,7 +889,7 @@ impl TextEngine {
                     style_id: style_id(style),
                     x,
                     y,
-                    width: definition.width as f32 / raster_scale * run_scale_x,
+                    width: definition.width as f32 / raster_scale * scale_x,
                     height: definition.height as f32 / raster_scale,
                     cell_start: cluster_cell_start,
                     cell_span: cluster_span,
@@ -988,10 +1119,11 @@ fn style_id(style: FontStyle) -> u32 {
     u32::from(style.bold) | (u32::from(style.italic) << 1)
 }
 
-fn shaped_row_hash(text: &str, spans: &[StyleSpan]) -> u64 {
+fn shaped_row_hash(text: &str, spans: &[StyleSpan], cells: Option<&[TerminalCellSpan]>) -> u64 {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     spans.hash(&mut hasher);
+    cells.hash(&mut hasher);
     hasher.finish()
 }
 
@@ -1020,7 +1152,7 @@ mod tests {
         FontResource::new("test-monospace", bytes).with_face_index(index as usize)
     }
 
-    fn presentation_test_engine() -> TextEngine {
+    pub(super) fn presentation_test_engine() -> TextEngine {
         let mut fonts = FontResources::new(FontResource::new(
             "JetBrainsMonoNerdFont-Regular.ttf",
             include_bytes!(
@@ -1072,6 +1204,87 @@ mod tests {
         );
         assert_eq!(engine.fallback_for(missing, FontPresentation::Text), None);
         assert!(engine.fallback_for("a", FontPresentation::Text).is_some());
+    }
+
+    #[test]
+    fn terminal_layout_preserves_missing_glyph_width_and_separates_cached_host_layouts() {
+        let mut engine = presentation_test_engine();
+        let text = "\u{1f6d9}X";
+        // Unicode 17 and 18 hosts disagree about the new character's width.
+        // Neither bundled emoji font has artwork yet; the next cell still
+        // belongs at the position sent by that host, including on cache hits.
+        assert_eq!(
+            engine.fallback_for("\u{1f6d9}", FontPresentation::Emoji),
+            None
+        );
+        for width in [1, 2, 1, 2, 2, 1] {
+            let cells = [
+                TerminalCellSpan {
+                    byte_start: 0,
+                    byte_end: 4,
+                    column: 0,
+                    span: width,
+                    style: FontStyle::default(),
+                },
+                TerminalCellSpan {
+                    byte_start: 4,
+                    byte_end: 5,
+                    column: width,
+                    span: 1,
+                    style: FontStyle::default(),
+                },
+            ];
+            let shaped = engine.shape_terminal_row(text, &cells).unwrap();
+            assert!(
+                shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == width && glyph.cell_span == 1)
+            );
+            assert!(
+                shaped
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph.cell_start == 0 && glyph.cell_span == width)
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_layout_keeps_grid_gaps_and_rejects_invalid_utf8_ranges() {
+        let mut engine = presentation_test_engine();
+        let mut cells = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 1,
+                column: 0,
+                span: 1,
+                style: FontStyle::default(),
+            },
+            TerminalCellSpan {
+                byte_start: 1,
+                byte_end: 2,
+                column: 5,
+                span: 1,
+                style: FontStyle::default(),
+            },
+        ];
+        let shaped = engine.shape_terminal_row("XX", &cells).unwrap();
+        assert_eq!(
+            shaped
+                .glyphs
+                .iter()
+                .map(|g| g.cell_start)
+                .collect::<Vec<_>>(),
+            [0, 5]
+        );
+        assert!(shaped.glyphs[1].x >= 5.0 * engine.metrics().cell_width_px);
+        assert!(engine.shape_terminal_row("é", &cells).is_err());
+        cells[1].column = 0;
+        assert!(engine.shape_terminal_row("XX", &cells).is_err());
+        cells[1].column = 1;
+        cells[1].span = 0;
+        assert!(engine.shape_terminal_row("XX", &cells).is_err());
     }
 
     #[test]
@@ -1347,5 +1560,138 @@ mod tests {
 
         engine.shape_row("different", FontStyle::default()).unwrap();
         assert_eq!(engine.shaped_row_count, 1);
+    }
+}
+
+#[cfg(test)]
+mod terminal_emoji_boundaries {
+    use super::*;
+
+    #[test]
+    fn emoji_joining_respects_host_cell_boundaries_without_stretching() {
+        let mut engine = super::tests::presentation_test_engine();
+        let text = "👩\u{200d}💻X";
+        let style = FontStyle::default();
+        // Legacy width accounting keeps the two emoji in separate cells.
+        let split = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 7,
+                column: 0,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 7,
+                byte_end: 11,
+                column: 2,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 11,
+                byte_end: 12,
+                column: 4,
+                span: 1,
+                style,
+            },
+        ];
+        let row = engine.shape_terminal_row(text, &split).unwrap();
+        assert!(
+            row.glyphs
+                .iter()
+                .all(|glyph| glyph.width <= 2.0 * engine.metrics().cell_width_px + 1.0),
+            "a joined emoji must not stretch across distinct terminal cells: {:?}",
+            row.glyphs
+        );
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 4 && glyph.cell_span == 1)
+        );
+        assert_eq!(
+            row.glyphs.len(),
+            2,
+            "the ZWJ must remain one combined emoji plus X"
+        );
+        let split_emoji = row.glyphs[0];
+        // Mode 2027 hosts give the entire ZWJ sequence one two-column cell.
+        let joined = [
+            TerminalCellSpan {
+                byte_start: 0,
+                byte_end: 11,
+                column: 0,
+                span: 2,
+                style,
+            },
+            TerminalCellSpan {
+                byte_start: 11,
+                byte_end: 12,
+                column: 2,
+                span: 1,
+                style,
+            },
+        ];
+        let row = engine.shape_terminal_row(text, &joined).unwrap();
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 0 && glyph.cell_span == 2)
+        );
+        assert!(
+            row.glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 2 && glyph.cell_span == 1)
+        );
+        assert_eq!(row.glyphs[0].glyph_id, split_emoji.glyph_id);
+        assert_eq!(row.glyphs[0].width, split_emoji.width);
+        assert_eq!(row.glyphs[0].height, split_emoji.height);
+        let adjacent = engine
+            .shape_terminal_row(
+                "👩‍💻😀X",
+                &[
+                    TerminalCellSpan {
+                        byte_start: 0,
+                        byte_end: 7,
+                        column: 0,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 7,
+                        byte_end: 11,
+                        column: 2,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 11,
+                        byte_end: 15,
+                        column: 4,
+                        span: 2,
+                        style,
+                    },
+                    TerminalCellSpan {
+                        byte_start: 15,
+                        byte_end: 16,
+                        column: 6,
+                        span: 1,
+                        style,
+                    },
+                ],
+            )
+            .unwrap();
+        let second_emoji = adjacent
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.cell_start == 4)
+            .unwrap();
+        assert!((second_emoji.x - 4.0 * engine.metrics().cell_width_px).abs() < 1.0);
+        assert!(
+            adjacent
+                .glyphs
+                .iter()
+                .any(|glyph| glyph.cell_start == 6 && glyph.cell_span == 1)
+        );
     }
 }

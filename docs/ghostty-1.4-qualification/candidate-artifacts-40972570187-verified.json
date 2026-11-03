@@ -1,0 +1,47 @@
+{
+  "workflow": "https://github.com/vibecook-dev/ghosttea/actions/runs/40972570187",
+  "sourceCommit": "905ffb875008df4c3c03a54608ad3515bb49b49a",
+  "sourceDigest": "b2a959db6a0db555b42ae84358a9680a8c6c5a3c4b9a9050eb0812baa215edb7",
+  "ci": "passed",
+  "targets": [
+    {
+      "target": "aarch64-apple-darwin",
+      "sourceDigest": "b2a959db6a0db555b42ae84358a9680a8c6c5a3c4b9a9050eb0812baa215edb7",
+      "bundleSha256": "b7d95901b38bf490a4f9808c019b91df9731d43913e880cb5e4c4df7218b6b7b",
+      "librarySha256": "0844e97d76ab520b560cd0a9ef7c33403f307dbdf50167d26ad09a43775fb4dd",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "verifiedFiles": 40,
+      "fileInventory": "passed",
+      "sourceIdentity": "passed",
+      "sbomConsistency": "passed",
+      "provenance": "passed",
+      "candidateRunId": 40972570187
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "sourceDigest": "b2a959db6a0db555b42ae84358a9680a8c6c5a3c4b9a9050eb0812baa215edb7",
+      "bundleSha256": "b8f364d60521f13f8fd8b3ec361b11585985e00542ca9bb2019cac6503402ea0",
+      "librarySha256": "99da659f3a7f5d495700c1f527b8f7e8a5dc5b6e624fc102aff82c8b1420f834",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "verifiedFiles": 40,
+      "fileInventory": "passed",
+      "sourceIdentity": "passed",
+      "sbomConsistency": "passed",
+      "provenance": "passed",
+      "candidateRunId": 40972570187
+    },
+    {
+      "target": "x86_64-pc-windows-msvc-crt-static",
+      "sourceDigest": "b2a959db6a0db555b42ae84358a9680a8c6c5a3c4b9a9050eb0812baa215edb7",
+      "bundleSha256": "0249b96bec6f04b29bba09637c7cfdc375b4e05754e0162ee22128c4c5a475c7",
+      "librarySha256": "94c149ed42fb8ea5d18c3717821b4c713af41dc77181d33fd167b58929d524ca",
+      "headersSha256": "0df7672281d665c37bddb962a12c49d93609dd531bea87adcf30b140991a785b",
+      "verifiedFiles": 40,
+      "fileInventory": "passed",
+      "sourceIdentity": "passed",
+      "sbomConsistency": "passed",
+      "provenance": "passed",
+      "candidateRunId": 40972570187
+    }
+  ]
+}

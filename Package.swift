@@ -44,8 +44,8 @@
 import PackageDescription
 
 let appleNativeURL =
-    "https://github.com/vibecook-dev/ghosttea/releases/download/ghosttea-apple-native-be8c80c9cfd3/GhostteaAppleNative.xcframework.zip"
-let appleNativeChecksum = "2a9e41d98e7e746c61cc0a4c61d6505cee5b69977ff4796db6f4de93a51362f9"
+    "https://github.com/vibecook-dev/ghosttea/releases/download/ghosttea-apple-native-fcf9a17cce90/GhostteaAppleNative.xcframework.zip"
+let appleNativeChecksum = "5a4a72b9aeb5d11a05170e2f423327f9cd3405d7eaf64f7d3e01467e68ec896c"
 
 // Truffle is consumed from its published repository, pinned to an exact version
 // rather than a bare revision.
@@ -65,8 +65,8 @@ let appleNativeChecksum = "2a9e41d98e7e746c61cc0a4c61d6505cee5b69977ff4796db6f4d
 //
 // `exact:` rather than `from:` keeps the lockstep discipline the revision pin
 // had: exactly one Truffle across both planes, moved deliberately. Truffle's
-// remote carries a plain `v0.7.23` tag on the same commit its release-please
-// `truffle-v0.7.23` tag names, so this resolves that exact build through a
+// remote carries a plain `v0.7.26` tag on the same commit its release-please
+// `truffle-v0.7.26` tag names, so this resolves that exact build through a
 // stable requirement.
 //
 // Keep this equal to `package.version` in
@@ -74,7 +74,7 @@ let appleNativeChecksum = "2a9e41d98e7e746c61cc0a4c61d6505cee5b69977ff4796db6f4d
 // `package.revision` records the commit that version resolves to; the App Store
 // readiness check compares the resolved pin against both and fails closed.
 let truffleRepository = "https://github.com/vibecook-dev/truffle.git"
-let truffleVersion: Version = "0.7.23"
+let truffleVersion: Version = "0.7.26"
 
 let sources = "apple/GhostteaKit/Sources"
 let tests = "apple/GhostteaKit/Tests"

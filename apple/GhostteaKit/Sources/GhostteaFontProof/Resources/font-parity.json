@@ -38,7 +38,7 @@
       "role": "fallback-0",
       "family": "Noto Color Emoji",
       "faceIndex": 0,
-      "sha256": "bf2a8506b80614ba190a34c7b037af1269a7d614fe9f3b613cc15cdeec6f814b"
+      "sha256": "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b"
     },
     {
       "role": "fallback-1",
@@ -56,7 +56,7 @@
       "role": "fallback-3",
       "family": "Noto Emoji",
       "faceIndex": 0,
-      "sha256": "84a38f2f02374efb72cac2b7eb5589102e06fffc33f7b531ed708f4a08236c91"
+      "sha256": "cd07743a4c93d8da929afdd28c1d368f11da478a1093146a13610081c2a58440"
     }
   ],
   "cases": {
@@ -83,12 +83,12 @@
     "emoji-fallback": {
       "glyphCount": 9,
       "definitionCount": 9,
-      "sha256": "00247df6157df4b8e1f2c09380f68b66f990108964d2c89280bcbd6b147d1f61"
+      "sha256": "e7c0afd6aae4c49e0d58653427346f4088810bd8807b247021e58feabbb1b1d5"
     },
     "emoji-presentation": {
       "glyphCount": 4,
       "definitionCount": 3,
-      "sha256": "9d1d5ba7323a77090d1ebbe26d71c5f712e4e21274f8a3a8217b50d10ede17ef"
+      "sha256": "8460b1ccad4691ee6363560ce62fbb1508c29c4e9a408c15213e5eb96108b3be"
     },
     "italic": {
       "glyphCount": 14,

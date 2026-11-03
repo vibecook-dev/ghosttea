@@ -1,0 +1,34 @@
+[
+  {
+    "tree": "baseline",
+    "suite": "screenshot",
+    "exitCode": 0,
+    "log": "final-baseline-screenshot-recheck.log",
+    "testTimeoutChanged": false,
+    "assertionsChanged": false
+  },
+  {
+    "tree": "baseline",
+    "suite": "shell-helpers",
+    "exitCode": 0,
+    "log": "final-baseline-shell-helpers-recheck.log",
+    "testTimeoutChanged": false,
+    "assertionsChanged": false
+  },
+  {
+    "tree": "candidate",
+    "suite": "screenshot",
+    "exitCode": 0,
+    "log": "final-candidate-screenshot-recheck.log",
+    "testTimeoutChanged": false,
+    "assertionsChanged": false
+  },
+  {
+    "tree": "candidate",
+    "suite": "shell-helpers",
+    "exitCode": 0,
+    "log": "final-candidate-shell-helpers-recheck.log",
+    "testTimeoutChanged": false,
+    "assertionsChanged": false
+  }
+]

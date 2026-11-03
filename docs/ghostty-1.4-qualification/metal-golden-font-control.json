@@ -1,0 +1,13 @@
+{
+  "onlyChangedField": "referencePixelHash",
+  "changes": {
+    "referencePixelHash": {
+      "before": "6eda391be8a068fc",
+      "after": "22286852f3cdfa6b"
+    }
+  },
+  "oldFontsWithNewRendererRestoreExactOldGolden": true,
+  "candidateFontsRestoredAfterControl": true,
+  "layoutEdgesMeanChannelsAndNonBackgroundCount": "unchanged",
+  "sourceOfDifference": "reviewed upstream Noto emoji font pixel changes"
+}

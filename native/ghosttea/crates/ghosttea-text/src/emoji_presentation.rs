@@ -1,9 +1,11 @@
-//! Unicode 17.0 `Emoji_Presentation` property used by the pinned Ghostty font stack.
+//! Unicode 18.0 `Emoji_Presentation` property used by the pinned Ghostty font stack.
 //!
 //! The ranges are derived from the `emoji-data.txt` consumed by Ghostty's pinned
 //! `uucode` dependency. Keeping this compact table beside the Rust shaper makes
 //! default presentation deterministic on every host without relying on platform
 //! font discovery.
+//! Source: uucode ea62149739404a73c202b48a33bf6dd2af4bd9b0, emoji/emoji-data.txt.
+//! SHA-256: 80d00f8e616a0ef27fd6b8de3b758c06383b5d917e2977709578e68baf733bf1.
 
 const EMOJI_PRESENTATION_RANGES: &[(u32, u32)] = &[
     (0x231A, 0x231B),
@@ -71,7 +73,7 @@ const EMOJI_PRESENTATION_RANGES: &[(u32, u32)] = &[
     (0x1F680, 0x1F6C5),
     (0x1F6CC, 0x1F6CC),
     (0x1F6D0, 0x1F6D2),
-    (0x1F6D5, 0x1F6D8),
+    (0x1F6D5, 0x1F6D9),
     (0x1F6DC, 0x1F6DF),
     (0x1F6EB, 0x1F6EC),
     (0x1F6F4, 0x1F6FC),
@@ -81,12 +83,11 @@ const EMOJI_PRESENTATION_RANGES: &[(u32, u32)] = &[
     (0x1F93C, 0x1F945),
     (0x1F947, 0x1F9FF),
     (0x1FA70, 0x1FA7C),
-    (0x1FA80, 0x1FA8A),
-    (0x1FA8E, 0x1FAC6),
+    (0x1FA80, 0x1FAC6),
     (0x1FAC8, 0x1FAC8),
-    (0x1FACD, 0x1FADC),
-    (0x1FADF, 0x1FAEA),
-    (0x1FAEF, 0x1FAF8),
+    (0x1FACC, 0x1FADD),
+    (0x1FADF, 0x1FAEB),
+    (0x1FAEF, 0x1FAFA),
 ];
 
 pub(crate) fn has_default_emoji_presentation(character: char) -> bool {
@@ -114,5 +115,12 @@ mod tests {
         assert!(!has_default_emoji_presentation('⚠'));
         assert!(has_default_emoji_presentation('😀'));
         assert!(has_default_emoji_presentation('⌚'));
+        for codepoint in [
+            0x1f6d9, 0x1fa8b, 0x1fa8c, 0x1fa8d, 0x1facc, 0x1fadd, 0x1faeb, 0x1faf9, 0x1fafa,
+        ] {
+            assert!(has_default_emoji_presentation(
+                char::from_u32(codepoint).unwrap()
+            ));
+        }
     }
 }

@@ -1,0 +1,23 @@
+{
+  "changedOnly": "generated links inside the isolated candidate renderer node_modules",
+  "sourceAndLocksChanged": false,
+  "releasePinsChanged": false,
+  "selectionCapabilityVerified": true,
+  "changes": [
+    {
+      "package": "@vibecook/ghosttea",
+      "before": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@vibecook+ghosttea@0.13.7/node_modules/@vibecook/ghosttea",
+      "after": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/packages/ghosttea"
+    },
+    {
+      "package": "@vibecook/ghosttea-frame",
+      "before": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@vibecook+ghosttea-frame@0.13.7/node_modules/@vibecook/ghosttea-frame",
+      "after": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/packages/ghosttea-frame"
+    },
+    {
+      "package": "@vibecook/ghosttea-protocol",
+      "before": "/private/tmp/vibefield-libghostty-migration-2026-10-29/vibe-field/node_modules/.pnpm/@vibecook+ghosttea-protocol@0.13.7/node_modules/@vibecook/ghosttea-protocol",
+      "after": "/private/tmp/vibefield-libghostty-migration-2026-10-29/ghosttea-0.11.2/packages/ghosttea-protocol"
+    }
+  ]
+}

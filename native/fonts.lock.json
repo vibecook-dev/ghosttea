@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "source": {
     "repository": "https://github.com/ghostty-org/ghostty.git",
-    "commit": "f8041e849b36efbbb9736b6ecf0ccfcb01d94e69"
+    "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd"
   },
   "license": {
     "id": "OFL-1.1",
@@ -40,7 +40,7 @@
     {
       "role": "fallback-emoji",
       "path": "src/font/res/NotoColorEmoji.ttf",
-      "sha256": "bf2a8506b80614ba190a34c7b037af1269a7d614fe9f3b613cc15cdeec6f814b"
+      "sha256": "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b"
     },
     {
       "role": "fallback-symbols-math",
@@ -68,7 +68,7 @@
     {
       "role": "fallback-emoji-text",
       "path": "src/font/res/NotoEmoji-Regular.ttf",
-      "sha256": "84a38f2f02374efb72cac2b7eb5589102e06fffc33f7b531ed708f4a08236c91"
+      "sha256": "cd07743a4c93d8da929afdd28c1d368f11da478a1093146a13610081c2a58440"
     }
   ],
   "additionalNotices": [

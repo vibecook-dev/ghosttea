@@ -1,6 +1,6 @@
 {
   "name": "@vibecook/ghosttead-win32-x64",
-  "version": "0.13.8",
+  "version": "0.14.0",
   "description": "Ghosttea terminal daemon binary for Windows on x64.",
   "license": "MIT",
   "author": "James Yong",

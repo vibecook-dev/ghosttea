@@ -74,6 +74,23 @@ jobs:
         if: github.ref_type != 'tag'
         run: npm run package:ghostty-vt -- --target=aarch64-apple-darwin --allow-mismatch
 
+      - if: github.ref_type != 'tag'
+        uses: dtolnay/rust-toolchain@1.99.1
+
+      - name: Test consumers of the normalized macOS archive
+        if: github.ref_type != 'tag'
+        env:
+          GHOSTTY_DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+          RUSTFLAGS: -Dlinker-messages
+        run: |
+          npm run bootstrap:ghostty-vt:apple
+          npm run sync:fonts
+          export GHOSTTY_VT_PREFIX="$PWD/native/build/ghostty/aarch64-apple-darwin/install"
+          export GHOSTTEA_GHOSTTY_VT_OFFLINE=1
+          export GHOSTTEA_FONT_DIR="$PWD/native/build/ghosttea-fonts"
+          cargo test --locked -p ghosttea-vt -p ghosttea-text -p ghosttea-core -p ghosttea-ffi
+          cargo test --locked -p ghosttea-ffi --test parity -- --ignored
+
       - name: Resolve locked macOS candidate run
         if: github.ref_type == 'tag'
         id: macos_candidate
@@ -174,12 +191,55 @@ jobs:
 
       - run: npm ci --ignore-scripts
 
+      # Zig 0.17 queries Windows system libraries through pkg-config. The
+      # runner's Strawberry Perl .BAT shim fails when spawned by Zig; use a
+      # native executable and record the tool version in the build recipe.
+      - name: Select native pkg-config
+        if: github.ref_type != 'tag'
+        shell: pwsh
+        run: |
+          $recipe = (Get-Content native/ghostty.lock.json | ConvertFrom-Json).builder.windowsPkgConfig
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install $recipe.package --version=$($recipe.version) --yes --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { throw "pkg-config installation failed" }
+            Start-Sleep -Seconds 10
+          }
+          $exe = Get-ChildItem "$env:ChocolateyInstall/lib/$($recipe.package)" -Recurse -Filter pkg-config.exe | Select-Object -First 1
+          if (-not $exe) { throw "native pkg-config executable was not installed" }
+          & $exe.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "native pkg-config is not executable" }
+          "PKG_CONFIG=$($exe.FullName)" >> $env:GITHUB_ENV
+
       - name: Build native Windows candidate
         if: github.ref_type != 'tag'
         run: |
           npm run bootstrap:ghostty-vt -- --target="$TARGET"
           npm run build:ghostty-vt -- --target="$TARGET"
           npm run package:ghostty-vt -- --target="$TARGET" --allow-mismatch
+
+      - name: Test Rust consumers with the selected Windows runtime
+        if: github.ref_type != 'tag'
+        timeout-minutes: 20
+        run: |
+          export GHOSTTY_VT_PREFIX="$(cygpath -w "$PWD/native/build/ghostty/$TARGET/install")"
+          export GHOSTTEA_GHOSTTY_VT_OFFLINE=1
+          export GHOSTTEA_FONT_DIR="$(cygpath -w "$PWD/native/build/ghosttea-fonts")"
+          if [ "$TARGET" = "x86_64-pc-windows-msvc-crt-static" ]; then
+            export RUSTFLAGS="-C target-feature=+crt-static"
+          fi
+          node scripts/sync-ghosttea-fonts.mjs
+          cargo test --locked --target x86_64-pc-windows-msvc -p ghosttea-vt -p ghosttea-text -p ghosttea-core -p ghosttea-ffi
+          cargo test --locked --target x86_64-pc-windows-msvc -p ghosttea-ffi --test parity -- --ignored
+
+      - name: Preserve rejected Windows build for diagnosis
+        if: failure() && github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rejected-${{ matrix.target }}
+          path: native/build/ghostty/${{ matrix.target }}/install/
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Resolve locked Windows candidate run
         if: github.ref_type == 'tag'

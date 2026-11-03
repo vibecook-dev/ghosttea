@@ -157,16 +157,23 @@ interface RoutedSeatHarness {
 
 /** One routed session ("session-a", handle "11", client "window-1") with its control leg attached. */
 async function routedSeat(
-  options: { views?: string[]; rights?: string[]; attach?: boolean } = {},
+  options: {
+    views?: string[];
+    rights?: string[];
+    attach?: boolean;
+    capabilities?: string[];
+    copy?: (text: string) => void;
+  } = {},
 ): Promise<RoutedSeatHarness> {
   vi.stubGlobal("window", globalThis);
   const worker = new FakeWorker();
   const socket = new FakeSocket();
   const runtime = new GhostteaTerminalRuntime({
     transport: "routed",
+    capabilities: options.capabilities ?? ["resume"],
     host: { openTicket: async () => ticket("cell-a", "session-a", "set-a") },
     platform: {
-      writeClipboard: () => undefined,
+      writeClipboard: options.copy ?? (() => undefined),
       forceCanvasFallback: () => false,
       setForceCanvasFallback: () => undefined,
       reload: () => undefined,
@@ -187,7 +194,7 @@ async function routedSeat(
       legGeneration: 1,
       heartbeatTtlMs: 15_000,
       protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
-      capabilities: ["resume"],
+      capabilities: options.capabilities ?? ["resume"],
     }),
   );
   const attach = JSON.parse(socket.sent.at(-1)!) as SentMessage & { activationId: string };
@@ -345,6 +352,47 @@ describe("routed terminal runtime", () => {
     };
     return { runtime, worker, socket, first, mount, attaches, framesAttaches, connect, accept, present, dispose };
   }
+
+  it("holds input while hidden and until the resumed demand has a fresh cell status", async () => {
+    const h = inputFixture();
+    try {
+      h.mount("view-a");
+      await h.connect();
+      const activationId = h.attaches().at(-1)!.activationId;
+      h.accept(activationId, 1);
+      h.present(activationId);
+      const status = { ...h.runtime.routedActivation(h.first.id)!.cellStatus! };
+      delete status.type;
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(true);
+      h.runtime.setVisible(h.first.handle, false, "view-a");
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.runtime.sendText(h.first.id, "view-a", "hidden");
+      h.runtime.setVisible(h.first.handle, true, "view-a");
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 2 }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.runtime.sendText(h.first.id, "view-a", "before demand acknowledgement");
+      const demands = h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "DeclareDemand");
+      h.socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: demands.at(-2)!.demandSequence }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: demands.at(-1)!.demandSequence }));
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 2 }));
+      expect.soft(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(
+        encodeRoutedMessage("CellActivationStatus", {
+          ...status,
+          cellStatusSequence: 3,
+          input: { state: "suspended", reason: "pending" },
+        }),
+      );
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(false);
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 4 }));
+      expect(h.runtime.routedViewInputAllowed("view-a")).toBe(true);
+      h.runtime.sendText(h.first.id, "view-a", "after confirmation");
+      expect(h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "TerminalInput")).toHaveLength(1);
+    } finally {
+      h.dispose();
+    }
+  });
 
   it("restores input after repeated last-pane detach and reattach with a fresh presentation lease", async () => {
     const h = inputFixture();
@@ -1152,6 +1200,75 @@ describe("routed terminal runtime", () => {
     runtime.dispose();
   });
 
+  it.each(["visible", "focused"])(
+    "retries exhausted control recovery when its pane becomes %s again",
+    async (trigger) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("window", globalThis);
+      const worker = new FakeWorker();
+      const sockets: FakeSocket[] = [];
+      const openTicket = vi.fn(async () => ticket("cell-a", "session-a", "set-a"));
+      const runtime = new GhostteaTerminalRuntime({
+        transport: "routed",
+        host: { openTicket },
+        platform: {
+          writeClipboard: () => undefined,
+          forceCanvasFallback: () => false,
+          setForceCanvasFallback: () => undefined,
+          reload: () => undefined,
+        },
+        websocketFactory: () => {
+          const socket = new FakeSocket();
+          sockets.push(socket);
+          return socket as unknown as WebSocket;
+        },
+        workerFactory: () => worker as unknown as Worker,
+      });
+      try {
+        runtime.registerSession(session("session-a", "11"));
+        runtime.mount("session-a", "11", "view-a", canvas());
+        await flush();
+        if (trigger === "visible") runtime.setVisible("11", false, "view-a");
+        else runtime.setFocused("11", "view-a", false, 80, 24);
+        // A covered renderer can repeatedly miss its heartbeat before a new
+        // scene is ready. Exhaust the actual bounded retry path, not its reducer.
+        for (let attempt = 0; attempt < 6; attempt++) {
+          const socket = sockets.at(-1)!;
+          socket.open();
+          socket.receive(
+            encodeRoutedMessage("ConnectionAccepted", {
+              selectedProtocolVersion: { major: 1, minor: 0 },
+              connectionSetId: "set-a",
+              channel: "control",
+              legGeneration: attempt + 1,
+              heartbeatTtlMs: 15_000,
+              protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+              capabilities: ["resume"],
+            }),
+          );
+          socket.close(4004, "heartbeat timeout");
+          await vi.advanceTimersByTimeAsync(2_100);
+        }
+        expect(runtime.routedActivation("session-a")).toMatchObject({
+          phase: "unavailable",
+          unavailableReason: "recovery-exhausted",
+          inputAllowed: false,
+        });
+        expect(openTicket).toHaveBeenCalledTimes(6);
+        if (trigger === "visible") runtime.setVisible("11", true, "view-a");
+        else runtime.setFocused("11", "view-a", true, 80, 24);
+        await vi.advanceTimersByTimeAsync(150);
+        expect(openTicket).toHaveBeenCalledTimes(7);
+        expect(runtime.routedActivation("session-a")?.phase).toBe("attaching");
+        expect(runtime.routedViewInputAllowed("view-a")).toBe(false);
+      } finally {
+        runtime.dispose();
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it("re-dials one protocol failure, then makes a persistent failure unavailable", async () => {
     vi.stubGlobal("window", globalThis);
     const worker = new FakeWorker();
@@ -1219,6 +1336,12 @@ describe("routed terminal runtime", () => {
       type: "routed-frames-detach",
       activationId: secondActivationId,
     });
+
+    runtime.setVisible(first.handle, false, "view-a");
+    runtime.setVisible(first.handle, true, "view-a");
+    runtime.setFocused(first.handle, "view-a", true, 80, 24);
+    expect(runtime.routedActivation(first.id)?.phase).toBe("unavailable");
+    expect(openTicket).toHaveBeenCalledTimes(2);
 
     runtime.dispose();
   });
@@ -2116,5 +2239,82 @@ describe("focus and the routed geometry seat (TP-R4)", () => {
     } finally {
       seat.runtime.dispose();
     }
+  });
+});
+
+describe("routed selection clipboard ownership", () => {
+  it("discards an older refusal after a newer copy succeeds", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const selection = { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } };
+    const first = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request1 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    const second = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request2 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request2, type: "SelectionTextResult", text: "newest" }));
+    await expect(second).resolves.toBe("newest");
+    f.socket.receive(JSON.stringify({ ...request1, type: "SelectionTextResult", error: "UNAVAILABLE" }));
+    await expect(first).resolves.toBe("");
+    expect(copied).toEqual(["newest"]);
+    f.runtime.dispose();
+  });
+  it("keeps the newest copy and preserves the clipboard for empty selections", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const selection = { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } };
+    const first = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request1 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    const second = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request2 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request2, type: "SelectionTextResult", text: "newest" }));
+    await expect(second).resolves.toBe("newest");
+    f.socket.receive(JSON.stringify({ ...request1, type: "SelectionTextResult", text: "older" }));
+    await expect(first).resolves.toBe("");
+    const empty = f.runtime.copySelection("session-a", "view-a", selection);
+    await flush();
+    const request3 = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.socket.receive(JSON.stringify({ ...request3, type: "SelectionTextResult", text: "" }));
+    await expect(empty).resolves.toBe("");
+    expect(copied).toEqual(["newest"]);
+    f.runtime.dispose();
+  });
+  it("copies a read-only pane without acquiring input or geometry", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({
+      rights: ["read"],
+      capabilities: ["selection-text"],
+      copy: (text) => copied.push(text),
+    });
+    const pending = f.runtime.copySelection(
+      "session-a",
+      "view-a",
+      { anchor: { column: 0, row: 0 }, focus: { column: 79, row: 159 } },
+      true,
+    );
+    await flush();
+    const request = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    expect(request.type).toBe("SelectionTextRequest");
+    f.socket.receive(JSON.stringify({ ...request, type: "SelectionTextResult", text: "中 é 👩‍💻 🛙X" }));
+    await expect(pending).resolves.toBe("中 é 👩‍💻 🛙X");
+    expect(copied).toEqual(["中 é 👩‍💻 🛙X"]);
+    expect(f.verbs()).toEqual([]);
+    f.runtime.dispose();
+  });
+  it("does not overwrite the clipboard when the runtime closes before a response", async () => {
+    const copied: string[] = [];
+    const f = await routedSeat({ capabilities: ["selection-text"], copy: (text) => copied.push(text) });
+    const pending = expect(
+      f.runtime.copySelection("session-a", "view-a", { anchor: { column: 0, row: 0 }, focus: { column: 4, row: 0 } }),
+    ).rejects.toThrow();
+    await flush();
+    const request = JSON.parse(f.socket.sent.at(-1)!) as Record<string, unknown>;
+    f.runtime.dispose();
+    f.socket.receive(JSON.stringify({ ...request, type: "SelectionTextResult", text: "late" }));
+    await pending;
+    expect(copied).toEqual([]);
   });
 });

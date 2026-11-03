@@ -10,6 +10,17 @@ struct EgTrackedSelection {
   bool rectangle;
 };
 
+static GhosttyResult eg_mode_get(GhosttyTerminal terminal,
+                                 GhosttyMode mode,
+                                 bool* out_value) {
+  if (out_value == NULL) return GHOSTTY_INVALID_VALUE;
+  GhosttyTerminalModeConfig config = {.mode = mode, .value = false};
+  GhosttyResult result = ghostty_terminal_get(
+      terminal, GHOSTTY_TERMINAL_DATA_MODE, &config);
+  if (result == GHOSTTY_SUCCESS) *out_value = config.value;
+  return result;
+}
+
 static double eg_srgb_to_linear(uint8_t value) {
   double v = value / 255.0;
   return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
@@ -59,7 +70,7 @@ int eg_terminal_set_colors(EgTerminal* state,
   if (scheme == state->color_scheme) return GHOSTTY_SUCCESS;
   state->color_scheme = scheme;
   bool reporting = false;
-  if (ghostty_terminal_mode_get(
+  if (eg_mode_get(
           state->terminal, GHOSTTY_MODE_COLOR_SCHEME_REPORT, &reporting) != GHOSTTY_SUCCESS ||
       !reporting)
     return GHOSTTY_SUCCESS;
@@ -149,7 +160,7 @@ static void eg_pwd_changed(GhosttyTerminal terminal, void* userdata) {
   ((EgTerminal*)userdata)->effects |= EG_EFFECT_PWD;
 }
 
-static GhosttyClipboardWriteResult eg_clipboard_write(
+static GhosttyClipboardWriteResult eg_clipboard_write_result(
     GhosttyTerminal terminal,
     void* userdata,
     const GhosttyClipboardWrite* write) {
@@ -160,6 +171,9 @@ static GhosttyClipboardWriteResult eg_clipboard_write(
     state->effects |= EG_EFFECT_CLIPBOARD;
     return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
   }
+  // Ghosttea currently accepts one text representation. Do not acknowledge
+  // an atomic multi-format request after retaining only one representation.
+  if (write->contents_len != 1) return GHOSTTY_CLIPBOARD_WRITE_RESULT_UNSUPPORTED;
   const GhosttyClipboardContent* selected = NULL;
   for (size_t index = 0; index < write->contents_len; index++) {
     const GhosttyClipboardContent* content = &write->contents[index];
@@ -179,15 +193,24 @@ static GhosttyClipboardWriteResult eg_clipboard_write(
   return GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
 }
 
+static void eg_clipboard_write(GhosttyTerminal terminal,
+                               void* userdata,
+                               const GhosttyClipboardWrite* write) {
+  if (write == NULL ||
+      write->size < offsetof(GhosttyClipboardWrite, reply) + sizeof(write->reply) ||
+      write->reply == NULL) return;
+  GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
+  reply.result = eg_clipboard_write_result(terminal, userdata, write);
+  reply.remember = false;
+  write->reply(write, &reply);
+}
+
 EgTerminal* eg_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback) {
   EgTerminal* state = calloc(1, sizeof(EgTerminal));
   if (state == NULL) return NULL;
-  GhosttyTerminalOptions options = {
-      .cols = cols,
-      .rows = rows,
-      .max_scrollback = max_scrollback,
-  };
-  if (ghostty_terminal_new(NULL, &state->terminal, options) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_terminal_new(NULL, &state->terminal, cols, rows) != GHOSTTY_SUCCESS) goto fail;
+  if (ghostty_terminal_set(state->terminal,
+          GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &max_scrollback) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_render_state_new(NULL, &state->render) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_render_state_row_iterator_new(NULL, &state->rows) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_render_state_row_cells_new(NULL, &state->cells) != GHOSTTY_SUCCESS) goto fail;
@@ -196,13 +219,20 @@ EgTerminal* eg_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback)
   if (ghostty_mouse_encoder_new(NULL, &state->mouse_encoder) != GHOSTTY_SUCCESS) goto fail;
   if (ghostty_mouse_event_new(NULL, &state->mouse_event) != GHOSTTY_SUCCESS) goto fail;
 
+  // Check callback signatures before the generic option setter erases types.
+  GhosttyTerminalWritePtyFn write_pty = eg_write_pty;
+  GhosttyTerminalBellFn bell = eg_bell;
+  GhosttyTerminalTitleChangedFn title_changed = eg_title_changed;
+  GhosttyTerminalPwdChangedFn pwd_changed = eg_pwd_changed;
+  GhosttyTerminalClipboardWriteFn clipboard_write = eg_clipboard_write;
+  GhosttyTerminalColorSchemeFn color_scheme = eg_color_scheme;
   ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_USERDATA, state);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, (const void*)eg_write_pty);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_BELL, (const void*)eg_bell);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)eg_title_changed);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED, (const void*)eg_pwd_changed);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, (const void*)eg_clipboard_write);
-  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME, (const void*)eg_color_scheme);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, (const void*)write_pty);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_BELL, (const void*)bell);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)title_changed);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_PWD_CHANGED, (const void*)pwd_changed);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE, (const void*)clipboard_write);
+  ghostty_terminal_set(state->terminal, GHOSTTY_TERMINAL_OPT_COLOR_SCHEME, (const void*)color_scheme);
   if (eg_terminal_set_colors(
           state,
           255, 255, 255,
@@ -220,7 +250,10 @@ EgTerminal* eg_terminal_new(uint16_t cols, uint16_t rows, size_t max_scrollback)
   bool default_cursor_blink = true;
   ghostty_terminal_set(
       state->terminal, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &default_cursor_blink);
-  ghostty_terminal_mode_set(state->terminal, GHOSTTY_MODE_CURSOR_BLINKING, true);
+  GhosttyTerminalModeConfig cursor_blink = {
+      .mode = GHOSTTY_MODE_CURSOR_BLINKING, .value = true};
+  if (ghostty_terminal_set(state->terminal,
+          GHOSTTY_TERMINAL_OPT_MODE, &cursor_blink) != GHOSTTY_SUCCESS) goto fail;
   return state;
 
 fail:
@@ -261,7 +294,7 @@ int eg_terminal_encode_paste(EgTerminal* state,
   if (state == NULL || out_len == NULL || (data == NULL && data_len != 0) ||
       (out == NULL && cap != 0)) return GHOSTTY_INVALID_VALUE;
   bool bracketed = false;
-  GhosttyResult result = ghostty_terminal_mode_get(
+  GhosttyResult result = eg_mode_get(
       state->terminal, GHOSTTY_MODE_BRACKETED_PASTE, &bracketed);
   if (result != GHOSTTY_SUCCESS) return result;
   char* copy = data_len == 0 ? NULL : malloc(data_len);
@@ -334,7 +367,7 @@ bool eg_terminal_alternate_scroll(EgTerminal* state) {
   if (ghostty_terminal_get(
           state->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS)
     return false;
-  if (ghostty_terminal_mode_get(
+  if (eg_mode_get(
           state->terminal, GHOSTTY_MODE_ALT_SCROLL, &alternate_scroll) != GHOSTTY_SUCCESS)
     return false;
   return screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE && alternate_scroll;
@@ -346,7 +379,7 @@ int eg_terminal_mode_get_raw(EgTerminal* state,
                              bool* out_value) {
   if (state == NULL || out_value == NULL || value > 0x7fff)
     return GHOSTTY_INVALID_VALUE;
-  return ghostty_terminal_mode_get(
+  return eg_mode_get(
       state->terminal, ghostty_mode_new(value, ansi), out_value);
 }
 
@@ -1176,7 +1209,7 @@ int eg_terminal_encode_focus(EgTerminal* state,
                              size_t* out_len) {
   if (state == NULL || out_len == NULL) return GHOSTTY_INVALID_VALUE;
   bool reporting = false;
-  if (ghostty_terminal_mode_get(
+  if (eg_mode_get(
           state->terminal, GHOSTTY_MODE_FOCUS_EVENT, &reporting) != GHOSTTY_SUCCESS ||
       !reporting) {
     *out_len = 0;

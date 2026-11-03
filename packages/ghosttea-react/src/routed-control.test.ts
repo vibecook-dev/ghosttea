@@ -145,6 +145,34 @@ describe("main-thread routed control transport", () => {
     return { transport, events, open, connect, accepted, attaches };
   }
 
+  it("correlates demand acknowledgements across sessions sharing a control connection", () => {
+    const h = replacementFixture();
+    try {
+      h.open("activation-a");
+      const socket = h.connect();
+      h.accepted(socket, "activation-a", 1);
+      h.transport.attach({
+        cellBootId,
+        controlUrl: "ws://127.0.0.1/control",
+        transportGrant,
+        attachGrant: { ...attachGrant, claims: { ...attachGrant.claims, sessionId: "session-b" } },
+        activationId: "activation-b",
+        initialDemand: { mode: "live" },
+      });
+      h.transport.declareDemand("activation-a", { mode: "none" });
+      const a = h.transport.declareDemand("activation-a", { mode: "live" })!;
+      h.transport.declareDemand("activation-b", { mode: "none" });
+      const b = h.transport.declareDemand("activation-b", { mode: "live" })!;
+      expect(a).not.toBe(b);
+      socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: b }));
+      expect(h.events.at(-1)).toEqual({ type: "demand-accepted", activationId: "activation-b", demandSequence: b });
+      socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: a }));
+      expect(h.events.at(-1)).toEqual({ type: "demand-accepted", activationId: "activation-a", demandSequence: a });
+    } finally {
+      h.transport.dispose();
+    }
+  });
+
   it("replaces the native attachment after the last local view detached", () => {
     const h = replacementFixture();
     try {

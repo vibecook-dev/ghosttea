@@ -256,8 +256,13 @@ try {
 
   const rustCrates = join(fixture, "rust-crates");
   mkdirSync(rustCrates);
+  // Fresh archives must belong to this fixture, even when Cargo's configured
+  // target is shared by other checkouts or lives on an external drive.
+  const cargoTarget = join(fixture, "rust-package-target");
   run("cargo", [
     "package",
+    "--target-dir",
+    cargoTarget,
     "--workspace",
     "--exclude",
     "ghosttead",
@@ -273,7 +278,7 @@ try {
     "--no-verify",
   ]);
   for (const crate of rustPackages) {
-    run(tar, ["-xzf", join(root, `target/package/${crate}-${version}.crate`), "-C", rustCrates]);
+    run(tar, ["-xzf", join(cargoTarget, `package/${crate}-${version}.crate`), "-C", rustCrates]);
   }
 
   const embeddingConsumer = join(fixture, "rust-embedding-consumer");

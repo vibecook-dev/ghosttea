@@ -1,0 +1,32 @@
+[
+  {
+    "path": "packages/screenshot/test/tool.test.ts",
+    "candidateSha256": "473da502f13b294b20e42c57c0b148c9fc5b6cb381173c30481d8108ae412ead",
+    "baselineSha256": "473da502f13b294b20e42c57c0b148c9fc5b6cb381173c30481d8108ae412ead",
+    "identical": true
+  },
+  {
+    "path": "packages/electron-shell/test/smoke-profile.test.ts",
+    "candidateSha256": "c6450e2f9f070e759a5c3651eee5d81fc630da94f4e9ef66958ca4a048866c79",
+    "baselineSha256": "c6450e2f9f070e759a5c3651eee5d81fc630da94f4e9ef66958ca4a048866c79",
+    "identical": true
+  },
+  {
+    "path": "packages/electron-shell/test/typed-agent.test.ts",
+    "candidateSha256": "99ec59cad7ffcc56f50ed151560680d7f8db73d9ce767a4906e569e17740772e",
+    "baselineSha256": "99ec59cad7ffcc56f50ed151560680d7f8db73d9ce767a4906e569e17740772e",
+    "identical": true
+  },
+  {
+    "path": "apps/desktop/packaging/run-smoke.mjs",
+    "candidateSha256": "2aeb3c5b60374b4d68349331abd6e17dd6166271e435bdf2705b47e667a457cd",
+    "baselineSha256": "2aeb3c5b60374b4d68349331abd6e17dd6166271e435bdf2705b47e667a457cd",
+    "identical": true
+  },
+  {
+    "path": "packages/electron-shell/src/testing/typed-agent.ts",
+    "candidateSha256": "d6d86b01ec44490f87db08ba7e0c3e629cedc9f90891f8c50f7f1e247c3c03e3",
+    "baselineSha256": "d6d86b01ec44490f87db08ba7e0c3e629cedc9f90891f8c50f7f1e247c3c03e3",
+    "identical": true
+  }
+]

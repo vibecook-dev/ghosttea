@@ -188,6 +188,7 @@ interface ViewRuntimeState {
   visible: boolean;
   inputSequence: number;
   resizeSequence: number;
+  copySequence?: number;
   controlEpoch: number | undefined;
   desiredCols: number | undefined;
   desiredRows: number | undefined;
@@ -1802,6 +1803,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     entry.ticket = ticket;
     entry.clientId = ticket.attachGrant.claims.clientId;
     this.#transitionRouted(entry, { type: "transport-ready" });
+    this.#transitionRouted(entry, { type: "demand-declared", mode: this.#routedDemand(entry).mode });
     this.#routedControl!.attach({
       cellBootId: ticket.route.cellBootId,
       controlUrl: ticket.endpoints.controlUrl,
@@ -1983,6 +1985,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
           event.code === "STALE_ROUTE" || event.code === "FENCED" ? "route-stale" : "retry",
         );
       }
+      return;
+    }
+    if (event.type === "demand-accepted") {
+      const entry = event.activationId ? this.#routedByActivation.get(event.activationId) : undefined;
+      if (entry) this.#transitionRouted(entry, { type: "demand-accepted", sequence: event.demandSequence });
       return;
     }
     if (event.type === "cell-status") {
@@ -2438,7 +2445,23 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   #declareRoutedDemand(entry: RoutedActivationRuntime): void {
-    this.#routedControl?.declareDemand(entry.state.activationId, this.#routedDemand(entry));
+    const demand = this.#routedDemand(entry);
+    const sequence = this.#routedControl?.declareDemand(entry.state.activationId, demand);
+    this.#transitionRouted(entry, {
+      type: "demand-declared",
+      mode: demand.mode,
+      ...(sequence === undefined ? {} : { sequence }),
+    });
+  }
+
+  /** A new foreground interaction gets a fresh bounded recovery attempt.
+   * Background timer throttling can exhaust retries while nobody can use the
+   * pane. Keep protocol/refusal failures final, and never replay dropped input. */
+  #retryExhaustedRoutedActivation(entry: RoutedActivationRuntime): void {
+    if (entry.state.phase !== "unavailable" || entry.state.unavailableReason !== "recovery-exhausted") return;
+    entry.recoveryAttempts = 0;
+    this.#transitionRouted(entry, { type: "retry" });
+    this.#recoverRoutedActivation(entry, "retry");
   }
 
   #releaseRoutedView(sessionId: string, viewId: string): void {
@@ -3044,6 +3067,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (this.#routedHost) {
       const session = this.#sessionByHandle.get(sessionHandle);
       if (!session) return;
+      const entry = this.#routedBySession.get(session.id);
+      const wasLive = entry !== undefined && this.#routedDemand(entry).mode === "live";
       if (surfaceId) {
         const view = this.#views.get(surfaceId);
         if (view) view.visible = visible;
@@ -3052,8 +3077,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
           if (view.sessionId === session.id) view.visible = visible;
         }
       }
-      const entry = this.#routedBySession.get(session.id);
-      if (entry) this.#declareRoutedDemand(entry);
+      if (entry) {
+        if (visible && !wasLive) this.#retryExhaustedRoutedActivation(entry);
+        this.#declareRoutedDemand(entry);
+      }
     }
   }
 
@@ -3327,6 +3354,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (this.#routedHost) {
       const entry = this.#routedBySession.get(session.id);
       if (!entry) return;
+      if (focused) this.#retryExhaustedRoutedActivation(entry);
       // The focus that asked for a take still waiting on the leg has ended.
       if (!focused && entry.queuedTake?.viewId === viewId) delete entry.queuedTake;
       this.#declareRoutedDemand(entry);
@@ -3350,7 +3378,39 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   async copySelection(sessionId: string, viewId: string, selection: CellSelection, selectAll = false): Promise<string> {
     await this.connect();
-    if (this.#routedHost) return "";
+    if (this.#routedHost) {
+      const view = this.#views.get(viewId);
+      const entry = this.#routedBySession.get(sessionId);
+      if (!view || view.sessionId !== sessionId || !entry?.state.controlAttached || !entry.viewIds.has(viewId))
+        return "";
+      const activationId = entry.state.activationId;
+      const copySequence = (view.copySequence ?? 0) + 1;
+      view.copySequence = copySequence;
+      const text = await this.#routedControl!.selectionText(activationId, {
+        startColumn: selection.anchor.column,
+        startRow: selection.anchor.row,
+        endColumn: selection.focus.column,
+        endRow: selection.focus.row,
+        selectAll,
+      }).catch((error: unknown) => {
+        // A superseded refusal must not replace feedback from a newer copy.
+        if (view.copySequence !== copySequence) return "";
+        throw error;
+      });
+      // A delayed answer must not overwrite the clipboard after its pane was
+      // closed, moved, or attached to a replacement activation.
+      if (
+        this.#disposed ||
+        this.#views.get(viewId) !== view ||
+        view.copySequence !== copySequence ||
+        !entry.viewIds.has(viewId) ||
+        this.#routedBySession.get(sessionId) !== entry ||
+        entry.state.activationId !== activationId
+      )
+        return "";
+      if (text) this.#platform.writeClipboard(text);
+      return text;
+    }
     const view = this.#views.get(viewId);
     if (!view || view.sessionId !== sessionId) return "";
     // A frozen replica stays copyable: offline the daemon answers from the

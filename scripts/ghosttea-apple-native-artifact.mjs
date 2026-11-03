@@ -197,6 +197,7 @@ export const nativeSourceInputs = [
   "Cargo.toml",
   "native/ghosttea/Cargo.toml",
   "scripts/build-ghosttea-apple-native.mjs",
+  "scripts/cargo-target-directory.mjs",
   "scripts/build-ghostty-vt-apple.mjs",
   "scripts/ghostty-vt-target.mjs",
   "scripts/build-ssh-candidate-apple.mjs",

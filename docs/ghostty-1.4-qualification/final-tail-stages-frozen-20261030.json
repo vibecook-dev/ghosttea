@@ -1,0 +1,33 @@
+{
+  "command": [
+    "node",
+    "scripts/gate-landing.mjs",
+    "--only",
+    "test:rust,gen:check",
+    "--logs",
+    "/private/tmp/vibefield-libghostty-migration-2026-10-29/evidence/final-tail-stages-frozen-20261030"
+  ],
+  "exitCode": 0,
+  "elapsedSeconds": 313.14,
+  "gates": [
+    "GATE test:rust ok exit=0 308s load 20/21/17\u219222/22/19",
+    "GATE gen:check ok exit=0 5s load 22/22/19\u219221/22/19"
+  ],
+  "final": {
+    "sha": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+    "ok": true,
+    "red": [],
+    "at": "2026-10-30T18:26:16.596Z"
+  },
+  "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+  "automaticDependencyReinstallDisabled": true,
+  "buildOnlyOfflineFlagAbsent": true,
+  "originalVerifyExitCodeUnchanged": 1,
+  "log": "final-tail-stages-frozen-20261030.log",
+  "rustTestTotals": {
+    "passed": 498,
+    "failed": 0,
+    "ignoredIncludingDocTests": 15
+  },
+  "generatedFilesCurrent": true
+}

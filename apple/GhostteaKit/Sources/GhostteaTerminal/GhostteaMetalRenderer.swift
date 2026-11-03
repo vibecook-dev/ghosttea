@@ -418,6 +418,8 @@ final class GhostteaMetalRenderer {
   let shaderFunctionNames: Set<String>
   let cellWidth: Float
   let lineHeight: Float
+  private let glyphScaleX: Float
+  private let glyphScaleY: Float
   private let rectanglePipeline: any MTLRenderPipelineState
   private let alphaGlyphPipeline: any MTLRenderPipelineState
   private let colorGlyphPipeline: any MTLRenderPipelineState
@@ -455,6 +457,8 @@ final class GhostteaMetalRenderer {
     colorAtlasSize: Int = 2048,
     cellWidth: Float = GhostteaTerminalLayout.cellWidth,
     lineHeight: Float = GhostteaTerminalLayout.lineHeight,
+    sourceCellWidth: Float? = nil,
+    sourceLineHeight: Float? = nil,
     encodedGeometryReuseEnabled: Bool = true,
     instancedSubmissionEnabled: Bool = true,
     rowGeometryReuseEnabled: Bool = true,
@@ -466,6 +470,15 @@ final class GhostteaMetalRenderer {
         lineHeight: lineHeight
       )
     }
+    let sourceWidth = sourceCellWidth ?? cellWidth
+    let sourceHeight = sourceLineHeight ?? lineHeight
+    guard sourceWidth.isFinite, sourceWidth > 0, sourceHeight.isFinite, sourceHeight > 0,
+      (cellWidth / sourceWidth).isFinite, (lineHeight / sourceHeight).isFinite
+    else {
+      throw GhostteaMetalError.invalidTextMetrics(cellWidth: sourceWidth, lineHeight: sourceHeight)
+    }
+    glyphScaleX = cellWidth / sourceWidth
+    glyphScaleY = lineHeight / sourceHeight
     self.runtime = runtime
     self.cellWidth = cellWidth
     self.lineHeight = lineHeight
@@ -1066,12 +1079,19 @@ final class GhostteaMetalRenderer {
     styles: GhostteaMetalStyleResolver
   ) throws -> GhostteaMetalRowMesh {
     var mesh = GhostteaMetalRowMesh()
+    var nativeCellEnd: Int {
+      row.glyphs.reduce(0) { max($0, Int($1.cellStart) + Int($1.cellSpan)) }
+    }
+    let blocks = GhostteaMetalBlockElements.cells(in: row.text, nativeCellEnd: nativeCellEnd)
     // Graphics (box drawing, block elements) keep the raw foreground rather
     // than the contrast-adjusted text color, as in Ghostty; block elements
     // are areas, so light adaptation maps them as surfaces. Only computed
     // when those colors can differ.
     let graphics =
-      styles.distinguishesGraphics ? GhostteaMetalGraphicCells.cells(in: row.text) : [:]
+      styles.distinguishesGraphics
+      ? GhostteaMetalGraphicCells.cells(
+        in: row.text,
+        nativeCellEnd: nativeCellEnd) : [:]
     for run in row.styles {
       let style = styles[run.styleID]
       if let background = style.background {
@@ -1099,6 +1119,32 @@ final class GhostteaMetalRenderer {
         } ?? false
       let selected = selectionContains(selection, row: rowIndex, column: glyphStart)
       let foreground = selected ? theme.selectionForeground : style.foreground
+      if definition.format == .alpha8, instance.cellSpan == 1,
+        let rectangles = blocks[glyphStart]
+      {
+        let left = (originX + Float(glyphStart) * cellWidth) * scale
+        let right = (originX + Float(glyphStart + 1) * cellWidth) * scale
+        let top = (originY + Float(rowIndex) * lineHeight) * scale
+        let bottom = (originY + Float(rowIndex + 1) * lineHeight) * scale
+        for rectangle in rectangles {
+          // Adjacent cells and quadrants share the same rounded boundary, so
+          // neither line spacing nor linear atlas filtering can open a seam.
+          let x0 = floor(left + (right - left) * rectangle.x + 0.5)
+          let x1 = floor(left + (right - left) * rectangle.z + 0.5)
+          let y0 = floor(top + (bottom - top) * rectangle.y + 0.5)
+          let y1 = floor(top + (bottom - top) * rectangle.w + 0.5)
+          pushRectangle(
+            into: &mesh.decorations, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+            color: selected ? foreground : style.fill,
+            viewportWidth: width, viewportHeight: height)
+          if cursorCoversGlyph {
+            pushRectangle(
+              into: &mesh.cursorDecorations, x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+              color: theme.cursorText, viewportWidth: width, viewportHeight: height)
+          }
+        }
+        continue
+      }
       guard let location = atlases.location(for: definition) else {
         throw TRF1DecodingError("visible glyph \(definition.id) is absent from its atlas")
       }
@@ -1115,10 +1161,10 @@ final class GhostteaMetalRenderer {
         }
         pushGlyph(
           into: &mesh.alphaGlyphs,
-          x: (originX + instance.x) * scale,
-          y: (originY + Float(rowIndex) * lineHeight + instance.y) * scale,
-          width: instance.width * scale,
-          height: instance.height * scale,
+          x: (originX + instance.x * glyphScaleX) * scale,
+          y: (originY + Float(rowIndex) * lineHeight + instance.y * glyphScaleY) * scale,
+          width: instance.width * glyphScaleX * scale,
+          height: instance.height * glyphScaleY * scale,
           location: location,
           color: glyphColor,
           viewportWidth: width,
@@ -1127,10 +1173,10 @@ final class GhostteaMetalRenderer {
         if cursorCoversGlyph {
           pushGlyph(
             into: &mesh.cursorAlphaGlyphs,
-            x: (originX + instance.x) * scale,
-            y: (originY + Float(rowIndex) * lineHeight + instance.y) * scale,
-            width: instance.width * scale,
-            height: instance.height * scale,
+            x: (originX + instance.x * glyphScaleX) * scale,
+            y: (originY + Float(rowIndex) * lineHeight + instance.y * glyphScaleY) * scale,
+            width: instance.width * glyphScaleX * scale,
+            height: instance.height * glyphScaleY * scale,
             location: location,
             color: theme.cursorText,
             viewportWidth: width,
@@ -1140,10 +1186,10 @@ final class GhostteaMetalRenderer {
       } else {
         pushGlyph(
           into: &mesh.colorGlyphs,
-          x: (originX + instance.x) * scale,
-          y: (originY + Float(rowIndex) * lineHeight + instance.y) * scale,
-          width: instance.width * scale,
-          height: instance.height * scale,
+          x: (originX + instance.x * glyphScaleX) * scale,
+          y: (originY + Float(rowIndex) * lineHeight + instance.y * glyphScaleY) * scale,
+          width: instance.width * glyphScaleX * scale,
+          height: instance.height * glyphScaleY * scale,
           location: location,
           color: foreground,
           viewportWidth: width,
@@ -1154,10 +1200,10 @@ final class GhostteaMetalRenderer {
           // must be replayed after the block background so they remain visible.
           pushGlyph(
             into: &mesh.cursorColorGlyphs,
-            x: (originX + instance.x) * scale,
-            y: (originY + Float(rowIndex) * lineHeight + instance.y) * scale,
-            width: instance.width * scale,
-            height: instance.height * scale,
+            x: (originX + instance.x * glyphScaleX) * scale,
+            y: (originY + Float(rowIndex) * lineHeight + instance.y * glyphScaleY) * scale,
+            width: instance.width * glyphScaleX * scale,
+            height: instance.height * glyphScaleY * scale,
             location: location,
             color: foreground,
             viewportWidth: width,
@@ -2010,7 +2056,7 @@ private final class GhostteaMetalStyleResolver {
   }
 }
 
-private enum GhostteaMetalGraphicCell {
+enum GhostteaMetalGraphicCell {
   case box
   case block
 }
@@ -2018,8 +2064,17 @@ private enum GhostteaMetalGraphicCell {
 enum GhostteaMetalGraphicCells {
   /// Columns holding box-drawing (U+2500–257F) or block-element (U+2580–259F)
   /// characters, found by walking the row text with the desktop's cell widths.
-  fileprivate static func cells(in text: String) -> [Int: GhostteaMetalGraphicCell] {
+  static func cells(in text: String, nativeCellEnd: Int? = nil) -> [Int: GhostteaMetalGraphicCell] {
     if text.utf8.allSatisfy({ $0 < 0x80 }) { return [:] }
+    // The host grid owns placement. TRF1 has no text-to-cell mapping, so do
+    // not assign graphics colors to an unrelated letter after a ZWJ or when
+    // the host's Unicode widths differ. The native glyph's own style remains.
+    if let nativeCellEnd {
+      let measured = text.reversed().drop(while: { $0.isWhitespace })
+        .reduce(0) { $0 + cellWidth($1) }
+      guard !text.unicodeScalars.contains(where: { $0.value == 0x200D }), measured == nativeCellEnd
+      else { return [:] }
+    }
     var cells: [Int: GhostteaMetalGraphicCell] = [:]
     var column = 0
     for character in text {

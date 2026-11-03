@@ -1,0 +1,252 @@
+{
+  "sourceRevision": "363fdf08c9e4859f52a2671c06aa6327171376d5",
+  "ghostteaSourceRevision": "f535d6f679affe274aa49997f63125c5ce9c5213",
+  "command": [
+    "pnpm",
+    "verify"
+  ],
+  "exitCode": 1,
+  "elapsedSeconds": 971.26,
+  "log": "vibefield-final-verify-frozen-20261030.log",
+  "projectsSerial": true,
+  "maxVitestWorkers": 2,
+  "frozenDependencyGraphVerifiedBeforeAndAfter": true,
+  "automaticDependencyReinstallDisabled": true,
+  "buildOnlyOfflineFlagAbsent": true,
+  "timeoutsChanged": false,
+  "assertionsChanged": false,
+  "projects": [
+    {
+      "project": "@vibefield/contracts",
+      "summary": "Tests  1214 passed (1214)",
+      "passed": 1214,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/trust",
+      "summary": "Tests  3 passed (3)",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-build",
+      "summary": "Tests  77 passed (77)",
+      "passed": 77,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-sdk",
+      "summary": "Tests  80 passed (80)",
+      "passed": 80,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/logging",
+      "summary": "Tests  54 passed | 1 skipped (55)",
+      "passed": 54,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/fieldd",
+      "summary": "Tests  1 failed | 2607 passed | 11 skipped (2619)",
+      "passed": 2607,
+      "failed": 1,
+      "skipped": 11,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/fieldd-client",
+      "summary": "Tests  47 passed (47)",
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/users",
+      "summary": "Tests  40 passed | 1 skipped (41)",
+      "passed": 40,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-example-kv",
+      "summary": "Tests  5 passed (5)",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-runtime",
+      "summary": "Tests  55 passed (55)",
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/audit",
+      "summary": "Tests  6 passed | 1 skipped (7)",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/test-env",
+      "summary": "Tests  5 passed (5)",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-browser-pane",
+      "summary": "Tests  151 passed (151)",
+      "passed": 151,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-example-desk-clock",
+      "summary": "Tests  36 passed (36)",
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-comment-pad",
+      "summary": "Tests  37 passed (37)",
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/live-surfaces",
+      "summary": "Tests  38 passed (38)",
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-browser",
+      "summary": "Tests  9 passed (9)",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-behavior-conformance",
+      "summary": "Tests  4 passed (4)",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/field-app",
+      "summary": "Tests  2807 passed (2807)",
+      "passed": 2807,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/fieldd-supervisor",
+      "summary": "Tests  74 passed (74)",
+      "passed": 74,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/screenshot",
+      "summary": "Tests  38 passed (38)",
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/terminal-perf",
+      "summary": "Tests  92 passed (92)",
+      "passed": 92,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/electron-shell",
+      "summary": "Tests  1983 passed | 3 skipped (1986)",
+      "passed": 1983,
+      "failed": 0,
+      "skipped": 3,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/plugin-playground",
+      "summary": "Tests  68 passed (68)",
+      "passed": 68,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/dev-runner",
+      "passed": 257,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "project": "@vibefield/plugin-cli",
+      "summary": "Tests  115 passed (115)",
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "project": "@vibefield/create-plugin",
+      "summary": "Tests  80 passed (80)",
+      "passed": 80,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    }
+  ],
+  "failedProjects": [
+    "@vibefield/fieldd"
+  ],
+  "singleFailure": {
+    "test": "agent-session.test.ts item 87 cleanup-pending warning",
+    "expectedPendingMsAtLeast": 2000,
+    "observedPendingMs": 1999,
+    "behaviorChecksBeforeTimingAssertionPassed": true
+  },
+  "remainingChainStagesNotRun": [
+    "test:rust",
+    "gen:check"
+  ],
+  "testTotals": {
+    "passed": 9982,
+    "failed": 1,
+    "skipped": 17
+  }
+}
