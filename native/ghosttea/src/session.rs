@@ -2098,6 +2098,9 @@ impl Session {
         self.attach_view_with_access(view_id, client_id, ViewAccess::ReadWrite)
     }
 
+    /// Attach a view and publish a full, catalog-reset frame for it, so a
+    /// client reading the session's frames is seeded by the attach itself.
+    /// [`Session::attach_view_without_snapshot`] attaches without that render.
     pub fn attach_view_with_access(
         &self,
         view_id: &str,
@@ -2114,6 +2117,30 @@ impl Session {
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
         self.execute_update(update, _operation);
         Ok(attachment_epoch)
+    }
+
+    /// Attach a view without rendering for it: the same release seal and view
+    /// authority as [`Session::attach_view_with_access`], with no wait on the
+    /// model and no forced full render.
+    ///
+    /// Like [`Session::take_over_view`], this publishes no snapshot; the caller
+    /// forces the frame its consumer needs, with [`Session::refresh`] once that
+    /// consumer is subscribed. An attach then costs one full render rather than
+    /// two, and every other viewer of the session receives one catalog-reset
+    /// frame rather than two. Until that refresh the session may publish damage
+    /// frames for the view, which a consumer skips until its full frame.
+    pub fn attach_view_without_snapshot(
+        &self,
+        view_id: &str,
+        client_id: &str,
+        access: ViewAccess,
+    ) -> Result<u64> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.refuse_after_release()?;
+        self.authority
+            .lock()
+            .unwrap()
+            .attach(view_id, client_id, access)
     }
 
     /// Attach with takeover semantics: a fresh attachment epoch even for a

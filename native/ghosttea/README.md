@@ -96,6 +96,13 @@ subscribe-before-snapshot pattern for that fold.
 Use public `Session::spawn_with_private_env_prefixes` only when the embedder
 deliberately owns those service policies itself.
 
+`Session::attach_view` publishes a full, catalog-reset frame for the new view,
+which is the packet the example receives. A host whose consumer subscribes and
+then forces its own seed with `Session::refresh` attaches with
+`Session::attach_view_without_snapshot` instead: the same release seal and view
+authority with no render, so each attach costs the one full render its consumer
+needs rather than two.
+
 ## Local endpoints by platform
 
 | Platform     | Control            | Frames                    |
