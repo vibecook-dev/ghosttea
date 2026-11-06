@@ -1260,6 +1260,47 @@ mod tests {
     }
 
     #[test]
+    fn a_read_is_fenced_on_the_attachment_and_open_to_a_read_only_view() {
+        let mut authority = ViewAuthority::new(80, 24);
+        let first = authority
+            .take_over(attempt("a", "client", 1))
+            .unwrap()
+            .attachment_epoch;
+        assert!(authority.authorize_read("a", "client", first).is_ok());
+        assert!(authority.authorize_read("a", "other", first).is_err());
+        assert!(authority.authorize_read("b", "client", first).is_err());
+
+        // A takeover supersedes the incarnation that read, and the epoch is
+        // all that separates the two.
+        let second = authority
+            .take_over(attempt("a", "client", 2))
+            .unwrap()
+            .attachment_epoch;
+        assert!(
+            authority.authorize_read("a", "client", first).is_err(),
+            "a superseded incarnation must not read"
+        );
+        assert!(authority.authorize_read("a", "client", second).is_ok());
+
+        assert!(authority.detach_view_if_epoch("a", "client", second));
+        assert!(
+            authority.authorize_read("a", "client", second).is_err(),
+            "a detached view must not read"
+        );
+
+        // A selection is a read, not input: a read-only view may read.
+        let watching = authority
+            .attach("w", "viewer", ViewAccess::ReadOnly)
+            .unwrap();
+        assert!(authority.authorize_read("w", "viewer", watching).is_ok());
+        assert!(
+            authority
+                .authorize_input("w", "viewer", watching, 1)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn detaching_controller_keeps_size_and_clears_controller() {
         let mut authority = ViewAuthority::new(80, 24);
         authority

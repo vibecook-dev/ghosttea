@@ -4126,6 +4126,190 @@ mod tests {
             .unwrap();
     }
 
+    /// Writes `output` into the session's model as the frame thread would.
+    #[cfg(unix)]
+    fn feed_model(session: &Session, output: &[u8]) {
+        let _operation = session.model_operation.lock().unwrap();
+        let update = session
+            .model
+            .lock()
+            .unwrap()
+            .feed(output, RenderRequest::None)
+            .unwrap();
+        session.execute_update(update, _operation);
+    }
+
+    /// Whether the session holds a selection publisher for `view_id`, which
+    /// every later frame announces.
+    #[cfg(unix)]
+    fn publishes_selection(session: &Session, view_id: &str) -> bool {
+        session.selection_txs.lock().unwrap().contains_key(view_id)
+    }
+
+    /// A selection read fenced on its attachment (RV #94): a detached or
+    /// superseded incarnation reads nothing, and its refused read tracks no
+    /// selection and recreates no publisher for a view that is gone. The
+    /// unfenced read is the hazard, and is the last witness here.
+    #[cfg(unix)]
+    #[test]
+    fn a_fenced_selection_read_refuses_a_detached_or_superseded_view_and_never_resurrects_it() {
+        let session = shell_session("exec sleep 30");
+        feed_model(&session, b"first\r\nsecond");
+
+        let first = session.attach_view("pane", "desktop").unwrap();
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .unwrap(),
+            "second"
+        );
+        assert!(session.selection_snapshot("pane").is_some());
+        assert!(publishes_selection(&session, "pane"));
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "phone", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "another client must not read through this view"
+        );
+
+        // Detached: the read is refused, and leaves nothing behind.
+        assert!(session.detach_view("pane", "desktop"));
+        assert_eq!(session.selection_snapshot("pane"), None);
+        assert!(!publishes_selection(&session, "pane"));
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "a detached view must not read"
+        );
+        assert_eq!(
+            session.selection_snapshot("pane"),
+            None,
+            "a refused read must not track a selection for a detached view"
+        );
+        assert!(
+            !publishes_selection(&session, "pane"),
+            "a refused read must not recreate a detached view's publisher"
+        );
+
+        // Re-attached: only the new incarnation's epoch reads.
+        let second = session.attach_view("pane", "desktop").unwrap();
+        assert_ne!(second, first);
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "a detached incarnation's epoch must not read through its successor"
+        );
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", second, 0, 0, 4, 0, false)
+                .unwrap(),
+            "first"
+        );
+
+        // Superseded by a takeover while still attached: only the live
+        // incarnation reads.
+        let third = session
+            .take_over_view("pane", "desktop", ViewAccess::ReadWrite, 1, 1, None)
+            .unwrap()
+            .attachment_epoch;
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", second, 0, 0, 4, 0, false)
+                .is_err(),
+            "a superseded incarnation must not read"
+        );
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", third, 0, 0, 4, 0, false)
+                .unwrap(),
+            "first"
+        );
+
+        // A selection is a read, not input: a read-only view reads.
+        let watching = session
+            .attach_view_with_access("mirror", "phone", ViewAccess::ReadOnly)
+            .unwrap();
+        assert_eq!(
+            session
+                .selection_text_for_attachment("mirror", "phone", watching, 0, 1, 5, 1, false)
+                .unwrap(),
+            "second"
+        );
+
+        // The hazard the fence closes: the unfenced read tracks a selection,
+        // and recreates the publisher, of a view that is gone.
+        assert!(session.detach_view("pane", "desktop"));
+        assert_eq!(
+            session.selection_text("pane", 0, 1, 5, 1, false).unwrap(),
+            "second"
+        );
+        assert!(session.selection_snapshot("pane").is_some());
+        assert!(publishes_selection(&session, "pane"));
+        stop(&session);
+    }
+
+    /// The fenced read takes the authority before `model_operation`, as a
+    /// checked claim does, so the two complete together on one session. A
+    /// claim that resizes holds the authority while it waits for the model; a
+    /// read that took the model first would then wait for the authority while
+    /// holding the model, and neither could return.
+    #[cfg(unix)]
+    #[test]
+    fn a_fenced_read_and_a_checked_claim_on_one_session_both_complete() {
+        let session = shell_session("exec sleep 30");
+        feed_model(&session, b"first");
+        let pane = session.attach_view("pane", "desktop").unwrap();
+        let mirror = session
+            .attach_view_with_access("mirror", "phone", ViewAccess::ReadOnly)
+            .unwrap();
+
+        // Hold the model, as the frame thread does through each batch.
+        let operation = session.model_operation.lock().unwrap();
+        let claiming = Arc::clone(&session);
+        let claim = thread::spawn(move || {
+            claiming.claim_control_checked("pane", "desktop", pane, 100, 30, None)
+        });
+        // The claim resizes, so it holds the authority and waits for the model.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.authority.try_lock().is_ok() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            session.authority.try_lock().is_err(),
+            "the claim must hold the authority while it waits for the model"
+        );
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let reading = Arc::clone(&session);
+        let ready = Arc::clone(&barrier);
+        let read = thread::spawn(move || {
+            ready.wait();
+            reading.selection_text_for_attachment("mirror", "phone", mirror, 0, 0, 4, 0, false)
+        });
+        barrier.wait();
+        drop(operation);
+
+        // Bounded only to report a deadlock rather than hang on it.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !(claim.is_finished() && read.is_finished()) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            claim.is_finished() && read.is_finished(),
+            "a fenced read and a checked claim on one session must both complete"
+        );
+        let ControlClaim::Granted(changed) = claim.join().unwrap().unwrap() else {
+            panic!("a claim with no expected revision must be granted");
+        };
+        assert_eq!(
+            (changed.cols, changed.rows, changed.size_changed),
+            (100, 30, true)
+        );
+        assert_eq!(read.join().unwrap().unwrap(), "first");
+        stop(&session);
+    }
+
     /// The repair path exists to fix a consumer that missed a change — a
     /// rejected resize, a lagged state stream. Publishing it only to the
     /// legacy channel cannot repair the revisioned one that actually lagged.
