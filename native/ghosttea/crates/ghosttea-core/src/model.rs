@@ -348,9 +348,14 @@ impl TerminalModel {
         action: u8,
         option_as_alt: bool,
     ) -> Result<Vec<u8>> {
-        Ok(self
-            .terminal
-            .encode_key(code, text, unshifted_codepoint, mods, action, option_as_alt)?)
+        Ok(self.terminal.encode_key(
+            code,
+            text,
+            unshifted_codepoint,
+            mods,
+            action,
+            option_as_alt,
+        )?)
     }
 
     #[allow(clippy::too_many_arguments)]
