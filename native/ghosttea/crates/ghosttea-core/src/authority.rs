@@ -757,6 +757,24 @@ impl ViewAuthority {
         Ok(true)
     }
 
+    /// Authorize a read of the terminal by one attachment incarnation: the view
+    /// is attached, by `client_id`, at `attachment_epoch`. Unlike
+    /// [`ViewAuthority::authorize_input`] a read-only view passes, because a
+    /// read is not input, and nothing is recorded, because a read carries no
+    /// sequence to deduplicate.
+    pub fn authorize_read(
+        &self,
+        view_id: &str,
+        client_id: &str,
+        attachment_epoch: u64,
+    ) -> Result<()> {
+        let view = self.require_view(view_id, client_id)?;
+        if view.attachment_epoch != attachment_epoch {
+            bail!("stale attachment epoch");
+        }
+        Ok(())
+    }
+
     pub fn controller(&self) -> Option<&ControllerState> {
         self.controller.as_ref()
     }

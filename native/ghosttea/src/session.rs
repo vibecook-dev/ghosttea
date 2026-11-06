@@ -2034,6 +2034,12 @@ impl Session {
         SessionMetadata::of(&self.summary.lock().unwrap())
     }
 
+    /// Format a view's selection, and track and announce it as that view's.
+    ///
+    /// Unfenced: nothing checks that `view_id` is still attached, so a read
+    /// that races the view's detach tracks a selection for a view that is gone
+    /// and recreates its publisher, which every later frame then announces.
+    /// [`Session::selection_text_for_attachment`] is the fenced read.
     pub fn selection_text(
         &self,
         view_id: &str,
@@ -2043,16 +2049,77 @@ impl Session {
         end_row: u32,
         select_all: bool,
     ) -> Result<String> {
-        let _operation = self.model_operation.lock().unwrap();
+        let operation = self.model_operation.lock().unwrap();
+        self.track_view_selection(
+            operation,
+            view_id,
+            (start_column, start_row),
+            (end_column, end_row),
+            select_all,
+        )
+    }
+
+    /// [`Session::selection_text`] fenced on the reader's attachment: the view
+    /// must be attached, by `client_id`, at `attachment_epoch`, or the read is
+    /// refused and nothing is formatted, tracked or announced. A read-only view
+    /// may read; a selection is not input.
+    ///
+    /// Lock order: the authority, then `model_operation`. That is the one order
+    /// this session takes them in (`claim_control`, `claim_control_checked`,
+    /// `resize_view` and `resize_view_checked` hold the authority across
+    /// `apply_resize`'s `model_operation`), so taking `model_operation` first
+    /// would deadlock against a resizing claim on the same session. The read
+    /// holds the authority only while it waits for `model_operation`, and drops
+    /// it before formatting: this session's attaches, detaches, claims and
+    /// input wait behind a read for at most the model's current batch, as they
+    /// already do behind a resizing claim.
+    ///
+    /// That hand-over is also what keeps a detached view's selection gone. A
+    /// detach takes the authority, then `model_operation` to remove the view's
+    /// selection and publisher. A read authorized before the detach already
+    /// holds `model_operation` when the detach can take the authority, so the
+    /// removal runs after the read and removes what it tracked; a read after
+    /// the detach is refused.
+    #[allow(clippy::too_many_arguments)]
+    pub fn selection_text_for_attachment(
+        &self,
+        view_id: &str,
+        client_id: &str,
+        attachment_epoch: u64,
+        start_column: u16,
+        start_row: u32,
+        end_column: u16,
+        end_row: u32,
+        select_all: bool,
+    ) -> Result<String> {
+        let authority = self.authority.lock().unwrap();
+        authority.authorize_read(view_id, client_id, attachment_epoch)?;
+        let operation = self.model_operation.lock().unwrap();
+        drop(authority);
+        self.track_view_selection(
+            operation,
+            view_id,
+            (start_column, start_row),
+            (end_column, end_row),
+            select_all,
+        )
+    }
+
+    /// Format `view_id`'s selection, then track and announce it as that view's,
+    /// under the caller's `model_operation`, so the announcement keeps its
+    /// order among the session's frames.
+    fn track_view_selection(
+        &self,
+        _operation: MutexGuard<'_, ()>,
+        view_id: &str,
+        start: (u16, u32),
+        end: (u16, u32),
+        select_all: bool,
+    ) -> Result<String> {
         let (text, selection) = {
             let mut model = self.model.lock().unwrap();
             let text = model
-                .selection_text_for(
-                    view_id,
-                    (start_column, start_row),
-                    (end_column, end_row),
-                    select_all,
-                )
+                .selection_text_for(view_id, start, end, select_all)
                 .context("format terminal selection")?;
             (text, model.selection_for(view_id))
         };
