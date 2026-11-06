@@ -2446,7 +2446,7 @@ mod tests {
                         unshifted_codepoint: random as u32,
                         modifiers: random as u16,
                         action: random.rotate_left(7) as u8,
-                        flags: 0,
+                        flags: random.rotate_left(29) as u8 & GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT,
                     };
                     let mut bytes = GhostteaOwnedBytes::EMPTY;
                     let status = ghosttea_terminal_encode_key(terminal, &event, &mut bytes);

@@ -1051,14 +1051,56 @@ static uint32_t eg_single_codepoint(const uint8_t* text, size_t text_len) {
 // map a keycode back through the layout inserts `/`. Shift is consumed exactly
 // when the layout translated it into different text, which is the same test
 // Ghostty's own apprts perform against the platform keymap.
+//
+// Option that types characters is spent the same way: a German Option+L is the
+// `@` the layout typed, not Alt+L, and an unconsumed Alt would send it as an
+// Alt chord (`ESC @`, or `CSI 108;3u` under kitty flags). Ghostty's macOS app
+// consumes every modifier the layout translated with except Control and
+// Command (macos/Sources/Ghostty/NSEvent+Extension.swift:26-33 at 83fb956),
+// and Option is among those whenever it is not Alt (src/input/key_mods.zig:131),
+// so Alt is consumed for one printable scalar whatever else is held. When
+// Option is Alt it is the modifier, never consumed.
 static GhosttyMods eg_consumed_mods(const uint8_t* text,
                                     size_t text_len,
                                     uint32_t unshifted_codepoint,
-                                    uint16_t mods) {
-  if ((mods & GHOSTTY_MODS_SHIFT) == 0) return 0;
+                                    uint16_t mods,
+                                    bool option_as_alt) {
   uint32_t produced = eg_single_codepoint(text, text_len);
-  if (produced == 0 || unshifted_codepoint == 0 || produced == unshifted_codepoint) return 0;
-  return GHOSTTY_MODS_SHIFT;
+  bool shift = (mods & GHOSTTY_MODS_SHIFT) != 0 && produced != 0 && unshifted_codepoint != 0 &&
+               produced != unshifted_codepoint;
+  bool alt = !option_as_alt && (mods & GHOSTTY_MODS_ALT) != 0 && produced >= 0x20 &&
+             produced != 0x7F;
+  return (GhosttyMods)((shift ? GHOSTTY_MODS_SHIFT : 0) | (alt ? GHOSTTY_MODS_ALT : 0));
+}
+
+// The text the encoder sees for a key press while Option is Alt.
+//
+// A macOS layout puts characters on Option: a German Mac types `[` on Option+5
+// and `@` on Option+L. When Option is Alt the key is Alt plus the key's own
+// character, so that text must not reach the encoder, which prefixes one-byte
+// text with ESC as it stands (src/input/key_encode.zig:577-581 at 83fb956):
+// Option+5 sent `ESC [`, a CSI opener. Ghostty's macOS app translates the key
+// again with Option released (src/input/key_mods.zig:131, and
+// macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift:1129-1168). A
+// key event cannot be translated again here, but without Shift that
+// translation is the unshifted codepoint, so the text becomes it. With Shift
+// held the shifted base character is unknowable, so the text is dropped and
+// the encoder falls back to the unshifted codepoint: Alt plus the unshifted
+// key, a recorded limit and what a US layout gets. Text that already is the
+// key's own character, and a key with no text or no unshifted codepoint, pass
+// through as they are.
+static size_t eg_option_text(const uint8_t** text,
+                             size_t text_len,
+                             uint32_t unshifted_codepoint,
+                             uint16_t mods,
+                             bool option_as_alt,
+                             uint8_t base[4]) {
+  if (!option_as_alt || (mods & GHOSTTY_MODS_ALT) == 0 || text_len == 0 ||
+      unshifted_codepoint == 0 || eg_single_codepoint(*text, text_len) == unshifted_codepoint)
+    return text_len;
+  if ((mods & GHOSTTY_MODS_SHIFT) != 0) return 0;
+  *text = base;
+  return eg_utf8_encode(unshifted_codepoint, base);
 }
 
 static GhosttyKey eg_key_from_code(const uint8_t* code, size_t code_len) {
@@ -1119,8 +1161,6 @@ int eg_terminal_encode_key(EgTerminal* state,
                            uint8_t* out,
                            size_t cap,
                            size_t* out_len) {
-  // Not read yet: the encoder below still treats Option as Alt for every key.
-  (void)option_as_alt;
   if (state == NULL || out_len == NULL || action > GHOSTTY_KEY_ACTION_REPEAT ||
       unshifted_codepoint > 0x10FFFF ||
       (unshifted_codepoint >= 0xD800 && unshifted_codepoint <= 0xDFFF))
@@ -1135,9 +1175,15 @@ int eg_terminal_encode_key(EgTerminal* state,
     }
   }
   ghostty_key_encoder_setopt_from_terminal(state->key_encoder, state->terminal);
-  GhosttyOptionAsAlt macos_option_as_alt = GHOSTTY_OPTION_AS_ALT_TRUE;
+  // The Option policy belongs to the keyboard that typed this key, not to the
+  // terminal, and setopt_from_terminal resets it, so every key sets its own.
+  GhosttyOptionAsAlt macos_option_as_alt =
+      option_as_alt ? GHOSTTY_OPTION_AS_ALT_TRUE : GHOSTTY_OPTION_AS_ALT_FALSE;
   ghostty_key_encoder_setopt(
       state->key_encoder, GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT, &macos_option_as_alt);
+  uint8_t option_base[4];
+  text_len =
+      eg_option_text(&text, text_len, unshifted_codepoint, mods, option_as_alt, option_base);
   ghostty_key_event_set_action(state->key_event, (GhosttyKeyAction)action);
   ghostty_key_event_set_key(state->key_event, eg_key_from_code(code, code_len));
   ghostty_key_event_set_mods(state->key_event, mods);
@@ -1145,7 +1191,7 @@ int eg_terminal_encode_key(EgTerminal* state,
       state->key_event,
       action == GHOSTTY_KEY_ACTION_RELEASE
           ? 0
-          : eg_consumed_mods(text, text_len, unshifted_codepoint, mods));
+          : eg_consumed_mods(text, text_len, unshifted_codepoint, mods, option_as_alt));
   ghostty_key_event_set_composing(state->key_event, false);
   ghostty_key_event_set_unshifted_codepoint(state->key_event, unshifted_codepoint);
   ghostty_key_event_set_utf8(
