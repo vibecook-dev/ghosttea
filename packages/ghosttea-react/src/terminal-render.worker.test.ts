@@ -612,6 +612,164 @@ describe("terminal render worker surfaces", () => {
     expect(new Set(ids).size).toBe(1);
   });
 
+  it("keeps glyphs of two cells and of a restarted cell apart", async () => {
+    // Every cell process numbers its glyphs from 1. Keyed by that bare number, a second cell's
+    // panes, and a restarted cell's, drew the first cell's bitmaps from the shared catalog and atlas.
+    const scope = {
+      onmessage: null as ((event: MessageEvent) => void) | null,
+      postMessage: vi.fn(),
+      requestAnimationFrame: (callback: FrameRequestCallback): number => {
+        callback(performance.now());
+        return 1;
+      },
+    };
+    const sockets: FakeRoutedSocket[] = [];
+    vi.stubGlobal("self", scope);
+    vi.stubGlobal(
+      "WebSocket",
+      class extends FakeRoutedSocket {
+        constructor(_url: string) {
+          super();
+          sockets.push(this);
+        }
+      },
+    );
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown): void => scope.onmessage?.({ data } as MessageEvent);
+    const settle = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+    const glyph = (id: string) => {
+      const calls = renderer.renderBatch.mock.calls.flatMap(([entries]) => entries);
+      const entry = calls.reverse().find((entry) => entry.id === id)!;
+      return (
+        entry.view as unknown as { glyphDefinitions: Map<number, { id: number; pixels: Uint8Array }> }
+      ).glyphDefinitions.get(1)!;
+    };
+    // One routed session from one cell process, on that cell's own frames socket, whose
+    // first frame defines the cell's glyph 1 with `pixel`.
+    const attach = async (cellBootId: string, handle: bigint, pixel: number): Promise<FakeRoutedSocket> => {
+      const sessionHandle = handle.toString();
+      const sessionId = `session-${sessionHandle}`;
+      const activationId = `activation-${sessionHandle}`;
+      const connectionSetId = `set-${cellBootId}`;
+      const protectedBase = {
+        v: 1 as const,
+        iss: "fieldd" as const,
+        alg: "HS256" as const,
+        kid: { cellBootId, keyGeneration: 1 },
+      };
+      dispatch({
+        type: "mount",
+        surfaceId: sessionHandle,
+        sessionHandle,
+        canvas: {},
+        size: { width: 800, height: 600, dpr: 2 },
+      });
+      await settle();
+      dispatch({
+        type: "routed-frames-attach",
+        request: {
+          cellBootId,
+          sessionHandle,
+          framesUrl: "ws://127.0.0.1/frames",
+          transportGrant: {
+            protected: { ...protectedBase, typ: "CellTransportGrant" as const },
+            claims: {
+              audienceCellBootId: cellBootId,
+              clientId: "window-a",
+              connectionSetId,
+              allowedChannels: ["control", "frames"] as const,
+              transportGrantGeneration: 1,
+              issuedAt: 1,
+              expiresAt: 2,
+              nonce: `nonce-${cellBootId}`,
+            },
+            mac: "opaque",
+          },
+          attachGrant: {
+            protected: { ...protectedBase, typ: "SessionAttachGrant" as const },
+            claims: {
+              audienceCellBootId: cellBootId,
+              clientId: "window-a",
+              sessionId,
+              leaseEpoch: 4,
+              routeRevision: 1,
+              grantGeneration: 1,
+              rights: ["input", "read"] as const,
+              issuedAt: 1,
+              expiresAt: 2,
+            },
+            mac: "opaque",
+          },
+          activationId,
+          capabilities: ["resume"],
+        },
+      });
+      const socket = sockets.at(-1)!;
+      socket.open();
+      socket.receive(
+        encodeRoutedMessage("ConnectionAccepted", {
+          selectedProtocolVersion: { major: 1, minor: 0 },
+          connectionSetId,
+          channel: "frames",
+          legGeneration: 1,
+          heartbeatTtlMs: 15_000,
+          creditEpoch: 1,
+          initialWindows: DEFAULT_ROUTED_RECEIVER_CAPACITIES,
+          protocolLimits: DEFAULT_ROUTED_PROTOCOL_LIMITS,
+          capabilities: ["resume"],
+        }),
+      );
+      socket.receive(
+        encodeRoutedMessage("FramesLegAttached", {
+          sessionId,
+          activationId,
+          resumeToken: `resume-${sessionHandle}`,
+          trfIdentity: { sessionHandle, viewHandle: sessionHandle },
+          outcome: { kind: "seed-required", reason: "no-cursor" },
+        }),
+      );
+      socket.receive(
+        encodeRoutedPresentationEnvelope(
+          {
+            creditEpoch: 1,
+            activationSequence: 1,
+            sessionId,
+            activationId,
+            leaseEpoch: 4,
+            kind: "trf1-frame",
+            baseContent: null,
+            resultContent: { sceneEpoch: { cellBootId, modelGeneration: 1 }, sceneRevision: 1 },
+          },
+          new Uint8Array(oneGlyphFrame(handle, pixel)),
+        ).buffer as ArrayBuffer,
+      );
+      await settle();
+      return socket;
+    };
+
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    const cellA = await attach("cell-a", 11n, 17);
+    await attach("cell-b", 12n, 231);
+    const first = glyph("11");
+    const second = glyph("12");
+    expect(first.pixels[0]).toBe(17);
+    expect(second.pixels[0]).toBe(231);
+    expect(second.id).not.toBe(first.id);
+
+    // cell-a exits: its activation is detached and its session dropped. The restarted
+    // process has a new boot id and numbers its glyphs from 1 again.
+    cellA.close();
+    dispatch({ type: "routed-frames-detach", activationId: "activation-11" });
+    dispatch({ type: "drop-session", sessionHandle: "11" });
+    await attach("cell-a2", 13n, 99);
+    const restarted = glyph("13");
+    expect(restarted.pixels[0]).toBe(99);
+    expect(restarted.id).not.toBe(first.id);
+    expect(restarted.id).not.toBe(second.id);
+    for (const socket of sockets) socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
   it("says a routed session's mouse modes when a committed frame changes them", async () => {
     const scope = {
       onmessage: null as ((event: MessageEvent) => void) | null,
