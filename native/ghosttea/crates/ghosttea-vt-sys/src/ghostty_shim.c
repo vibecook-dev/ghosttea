@@ -1114,10 +1114,13 @@ int eg_terminal_encode_key(EgTerminal* state,
                            size_t text_len,
                            uint32_t unshifted_codepoint,
                            uint16_t mods,
+                           bool option_as_alt,
                            uint8_t action,
                            uint8_t* out,
                            size_t cap,
                            size_t* out_len) {
+  // Not read yet: the encoder below still treats Option as Alt for every key.
+  (void)option_as_alt;
   if (state == NULL || out_len == NULL || action > GHOSTTY_KEY_ACTION_REPEAT ||
       unshifted_codepoint > 0x10FFFF ||
       (unshifted_codepoint >= 0xD800 && unshifted_codepoint <= 0xDFFF))
@@ -1132,9 +1135,9 @@ int eg_terminal_encode_key(EgTerminal* state,
     }
   }
   ghostty_key_encoder_setopt_from_terminal(state->key_encoder, state->terminal);
-  GhosttyOptionAsAlt option_as_alt = GHOSTTY_OPTION_AS_ALT_TRUE;
+  GhosttyOptionAsAlt macos_option_as_alt = GHOSTTY_OPTION_AS_ALT_TRUE;
   ghostty_key_encoder_setopt(
-      state->key_encoder, GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT, &option_as_alt);
+      state->key_encoder, GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT, &macos_option_as_alt);
   ghostty_key_event_set_action(state->key_event, (GhosttyKeyAction)action);
   ghostty_key_event_set_key(state->key_event, eg_key_from_code(code, code_len));
   ghostty_key_event_set_mods(state->key_event, mods);

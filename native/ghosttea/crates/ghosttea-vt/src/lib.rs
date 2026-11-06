@@ -263,6 +263,7 @@ unsafe extern "C" {
         text_len: usize,
         unshifted_codepoint: u32,
         mods: u16,
+        option_as_alt: bool,
         action: u8,
         out: *mut u8,
         cap: usize,
@@ -1426,6 +1427,13 @@ impl GhosttyTerminalCore {
         Ok(bytes)
     }
 
+    /// Encodes one key event for the PTY under the terminal's current modes.
+    ///
+    /// `option_as_alt` is the viewer's macOS Option policy, Ghostty's
+    /// `macos-option-as-alt`, for this one event. It belongs to the keyboard
+    /// that typed the key, not to the terminal: a phone and a desktop can type
+    /// into one PTY. `true` treats Option as Alt; `false` lets Option type the
+    /// layout's characters, so a German Option+L sends the `@` it typed.
     pub fn encode_key(
         &mut self,
         code: &str,
@@ -1433,6 +1441,7 @@ impl GhosttyTerminalCore {
         unshifted_codepoint: u32,
         mods: u16,
         action: u8,
+        option_as_alt: bool,
     ) -> Result<Vec<u8>, GhosttyError> {
         let mut bytes = vec![0_u8; 128];
         let mut written = 0;
@@ -1445,6 +1454,7 @@ impl GhosttyTerminalCore {
                 text.len(),
                 unshifted_codepoint,
                 mods,
+                option_as_alt,
                 action,
                 bytes.as_mut_ptr(),
                 bytes.len(),
@@ -1462,6 +1472,7 @@ impl GhosttyTerminalCore {
                     text.len(),
                     unshifted_codepoint,
                     mods,
+                    option_as_alt,
                     action,
                     bytes.as_mut_ptr(),
                     bytes.len(),
@@ -2322,17 +2333,17 @@ mod tests {
     fn encodes_keys_from_terminal_modes() {
         let mut terminal = GhosttyTerminalCore::new(20, 4, 100).unwrap();
         assert_eq!(
-            terminal.encode_key("ArrowUp", "", 0, 0, 1).unwrap(),
+            terminal.encode_key("ArrowUp", "", 0, 0, 1, true).unwrap(),
             b"\x1b[A"
         );
         terminal.feed(b"\x1b[?1h");
         assert_eq!(
-            terminal.encode_key("ArrowUp", "", 0, 0, 1).unwrap(),
+            terminal.encode_key("ArrowUp", "", 0, 0, 1, true).unwrap(),
             b"\x1bOA"
         );
         assert_eq!(
             terminal
-                .encode_key("KeyC", "c", 'c'.into(), 1 << 1, 1)
+                .encode_key("KeyC", "c", 'c'.into(), 1 << 1, 1, true)
                 .unwrap(),
             b"\x03"
         );
@@ -2341,8 +2352,12 @@ mod tests {
     #[test]
     fn suppresses_release_events_without_kitty_event_reporting() {
         let mut terminal = GhosttyTerminalCore::new(20, 4, 100).unwrap();
-        let press = terminal.encode_key("KeyW", "w", 'w'.into(), 0, 1).unwrap();
-        let release = terminal.encode_key("KeyW", "w", 'w'.into(), 0, 0).unwrap();
+        let press = terminal
+            .encode_key("KeyW", "w", 'w'.into(), 0, 1, true)
+            .unwrap();
+        let release = terminal
+            .encode_key("KeyW", "w", 'w'.into(), 0, 0, true)
+            .unwrap();
         assert_eq!(press, b"w");
         assert!(release.is_empty());
     }
@@ -2351,14 +2366,19 @@ mod tests {
     fn reports_printable_releases_without_repeating_text_in_kitty_mode() {
         let mut terminal = GhosttyTerminalCore::new(20, 4, 100).unwrap();
         terminal.feed(b"\x1b[>7u");
-        let press = terminal.encode_key("KeyW", "w", 'w'.into(), 0, 1).unwrap();
-        let release = terminal.encode_key("KeyW", "w", 'w'.into(), 0, 0).unwrap();
+        let press = terminal
+            .encode_key("KeyW", "w", 'w'.into(), 0, 1, true)
+            .unwrap();
+        let release = terminal
+            .encode_key("KeyW", "w", 'w'.into(), 0, 0, true)
+            .unwrap();
         assert_eq!(press, b"w");
         assert_eq!(release, b"\x1b[119;1:3u");
     }
 
     const MODS_SHIFT: u16 = 1 << 0;
     const MODS_CTRL: u16 = 1 << 1;
+    const MODS_ALT: u16 = 1 << 2;
 
     /// A shifted key sends the text the layout produced, not the unshifted key
     /// plus a shift modifier.
@@ -2377,7 +2397,7 @@ mod tests {
             let mut terminal = GhosttyTerminalCore::new(20, 4, 100).unwrap();
             terminal.feed(flags.as_bytes());
             let encoded = terminal
-                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT, 1)
+                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT, 1, true)
                 .unwrap();
             assert_eq!(
                 encoded,
@@ -2387,12 +2407,14 @@ mod tests {
             );
             assert_eq!(
                 terminal
-                    .encode_key("KeyW", "W", 'w'.into(), MODS_SHIFT, 1)
+                    .encode_key("KeyW", "W", 'w'.into(), MODS_SHIFT, 1, true)
                     .unwrap(),
                 b"W"
             );
             assert_eq!(
-                terminal.encode_key("Slash", "/", '/'.into(), 0, 1).unwrap(),
+                terminal
+                    .encode_key("Slash", "/", '/'.into(), 0, 1, true)
+                    .unwrap(),
                 b"/"
             );
         }
@@ -2408,7 +2430,7 @@ mod tests {
         terminal.feed(b"\x1b[>31u");
         assert_eq!(
             terminal
-                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT, 1)
+                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT, 1, true)
                 .unwrap(),
             b"\x1b[47:63;2;63u"
         );
@@ -2423,9 +2445,151 @@ mod tests {
         terminal.feed(b"\x1b[>1u");
         assert_eq!(
             terminal
-                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT | MODS_CTRL, 1)
+                .encode_key("Slash", "?", '/'.into(), MODS_SHIFT | MODS_CTRL, 1, true)
                 .unwrap(),
             b"\x1b[47;6u"
+        );
+    }
+
+    /// Encodes one key press on a fresh terminal that negotiated `flags`.
+    fn encode_press(
+        flags: &str,
+        code: &str,
+        text: &str,
+        unshifted_codepoint: u32,
+        mods: u16,
+        option_as_alt: bool,
+    ) -> Vec<u8> {
+        let mut terminal = GhosttyTerminalCore::new(20, 4, 100).unwrap();
+        terminal.feed(flags.as_bytes());
+        terminal
+            .encode_key(code, text, unshifted_codepoint, mods, 1, option_as_alt)
+            .unwrap()
+    }
+
+    /// Option acting as Alt sends Alt plus the key's own character, never Alt
+    /// plus the character Option typed on the layout.
+    ///
+    /// A German Mac's Option types `[` on 5, `@` on L and, with Shift, `\` on
+    /// 7. The encoder prefixed that text with ESC, so Option+5 sent `ESC [`, a
+    /// CSI opener that eats whatever the reader is sent next, Option+L sent
+    /// `ESC @` where a shell binds `ESC l`, Ctrl+Option+L sent `ESC NUL`, and
+    /// Shift+Option+7 sent `ESC \`, a string terminator. Ghostty's macOS app
+    /// translates the key again with Option released before it encodes; the
+    /// shim does the same from the unshifted codepoint. With Shift held the
+    /// shifted base character is unknowable from a DOM event, so the text is
+    /// dropped and the key goes as Alt plus its unshifted character: a recorded
+    /// limit, and what a US layout gets.
+    ///
+    /// The bytes are Ghostty's at the pinned 83fb956, src/input/key_encode.zig:
+    /// one-byte text is ESC-prefixed as it stands (:577-581), which is where
+    /// `ESC [` came from; on macOS longer text already gave way to the unshifted
+    /// codepoint (:588-596), so US Option+B was `ESC b` there before; with no
+    /// text the unshifted codepoint is prefixed (:469-475, then :588-596 on
+    /// macOS and :604-610 elsewhere); Ctrl plus one byte is that byte's C0
+    /// control behind ESC (:450-461, :732, `'l' => 12` at :829, `'@' => 0` at
+    /// :814); and under kitty flags a key that keeps its Alt is `CSI code;3u`
+    /// (:199-202 refuse the text, :1052-1062).
+    #[test]
+    fn option_as_alt_sends_the_base_key_not_the_option_text() {
+        // Option+5 is Alt+5, never the CSI opener.
+        assert_eq!(
+            encode_press("", "Digit5", "[", '5'.into(), MODS_ALT, true),
+            b"\x1b5"
+        );
+        // Option+L is Alt+L, as a shell binds it.
+        assert_eq!(
+            encode_press("", "KeyL", "@", 'l'.into(), MODS_ALT, true),
+            b"\x1bl"
+        );
+        // Ctrl+Option+L is Ctrl+L behind ESC.
+        assert_eq!(
+            encode_press("", "KeyL", "@", 'l'.into(), MODS_CTRL | MODS_ALT, true),
+            b"\x1b\x0c"
+        );
+        // Shift+Option+7 is Alt+7, never the string terminator.
+        assert_eq!(
+            encode_press("", "Digit7", "\\", '7'.into(), MODS_SHIFT | MODS_ALT, true),
+            b"\x1b7"
+        );
+        // US Option+B types `∫` and stays Alt+B.
+        assert_eq!(
+            encode_press("", "KeyB", "∫", 'b'.into(), MODS_ALT, true),
+            b"\x1bb"
+        );
+        // Under kitty flags Option+L stays the L key with Alt.
+        assert_eq!(
+            encode_press("\x1b[>1u", "KeyL", "@", 'l'.into(), MODS_ALT, true),
+            b"\x1b[108;3u"
+        );
+    }
+
+    /// Option that types characters sends the character it typed under every
+    /// keyboard protocol, and keys that type nothing keep their Alt.
+    ///
+    /// The layout spent Option on the text, so Option is a consumed modifier,
+    /// as Shift is when it turns `/` into `?`. Ghostty's macOS app reports it
+    /// consumed, and its encoders send text as it stands only once no binding
+    /// modifier is left. At the pinned 83fb956: src/input/key.zig:52-55 takes
+    /// the consumed modifiers away, then src/input/key_encode.zig sends the
+    /// text under kitty flags (:199-219) and in legacy mode, where no ESC is
+    /// prefixed without Alt (:560) and the text is written as it is (:549).
+    ///
+    /// Keys that type nothing have no text to spend Option on, so Option+Left
+    /// is Alt+Left under either policy: `CSI 1;3D` (src/input/function_keys.zig
+    /// :84), `CSI 1;3:1D` once kitty reports events (key_encode.zig
+    /// :1095-1105). Option+Enter is Alt+Enter: `ESC CR` in legacy mode
+    /// (function_keys.zig:218) and `CSI 13;3u` under kitty flags
+    /// (src/input/kitty.zig:46, key_encode.zig:1052-1062).
+    #[test]
+    fn option_that_types_characters_sends_the_layouts_text() {
+        // (code, text, unshifted, mods): the German Option layer, then US
+        // Option+B, whose `∫` is not ASCII.
+        let rows = [
+            ("KeyL", "@", 'l', MODS_ALT),
+            ("Digit5", "[", '5', MODS_ALT),
+            ("Digit7", "\\", '7', MODS_SHIFT | MODS_ALT),
+            ("KeyB", "∫", 'b', MODS_ALT),
+        ];
+        for flags in ["", "\x1b[>1u", "\x1b[>5u", "\x1b[>7u"] {
+            for (code, text, unshifted, mods) in rows {
+                let encoded = encode_press(flags, code, text, unshifted.into(), mods, false);
+                assert_eq!(
+                    encoded,
+                    text.as_bytes(),
+                    "{code} {text:?} under kitty flags {flags:?}: {:?}",
+                    String::from_utf8_lossy(&encoded)
+                );
+            }
+        }
+
+        for (flags, left, enter) in [
+            ("", "\x1b[1;3D", "\x1b\r"),
+            ("\x1b[>1u", "\x1b[1;3D", "\x1b[13;3u"),
+            ("\x1b[>5u", "\x1b[1;3D", "\x1b[13;3u"),
+            ("\x1b[>7u", "\x1b[1;3:1D", "\x1b[13;3u"),
+        ] {
+            for option_as_alt in [true, false] {
+                assert_eq!(
+                    encode_press(flags, "ArrowLeft", "", 0, MODS_ALT, option_as_alt),
+                    left.as_bytes(),
+                    "Option+Left under kitty flags {flags:?}, option-as-alt {option_as_alt}"
+                );
+                assert_eq!(
+                    encode_press(flags, "Enter", "", 0, MODS_ALT, option_as_alt),
+                    enter.as_bytes(),
+                    "Option+Enter under kitty flags {flags:?}, option-as-alt {option_as_alt}"
+                );
+            }
+        }
+
+        // With every kitty flag the text rides beside the key as associated
+        // text, which Ghostty allows past Alt only on macOS and only when
+        // Option is not Alt (key_encode.zig:300-312): Alt+L carrying `@`.
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            encode_press("\x1b[>31u", "KeyL", "@", 'l'.into(), MODS_ALT, false),
+            b"\x1b[108;3;64u"
         );
     }
 

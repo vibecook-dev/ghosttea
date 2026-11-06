@@ -336,6 +336,9 @@ impl TerminalModel {
         Ok(self.terminal.encode_paste(text)?)
     }
 
+    /// Encodes one key event. `option_as_alt` is the Option policy of the
+    /// keyboard that typed it, Ghostty's `macos-option-as-alt`; `true` keeps
+    /// Option acting as Alt.
     pub fn encode_key(
         &mut self,
         code: &str,
@@ -343,10 +346,11 @@ impl TerminalModel {
         unshifted_codepoint: u32,
         mods: u16,
         action: u8,
+        option_as_alt: bool,
     ) -> Result<Vec<u8>> {
         Ok(self
             .terminal
-            .encode_key(code, text, unshifted_codepoint, mods, action)?)
+            .encode_key(code, text, unshifted_codepoint, mods, action, option_as_alt)?)
     }
 
     #[allow(clippy::too_many_arguments)]

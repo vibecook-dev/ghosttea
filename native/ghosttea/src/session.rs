@@ -401,6 +401,17 @@ pub struct KeyInput {
     pub meta: bool,
     #[serde(default)]
     pub unshifted_codepoint: u32,
+    /// The typing keyboard's macOS Option policy, Ghostty's
+    /// `macos-option-as-alt`: `false` lets Option type the layout's characters.
+    /// It rides each key because it belongs to the viewer, and several viewers
+    /// can type into one session. An event without it keeps Option as Alt, the
+    /// encoding every earlier client got.
+    #[serde(default = "option_is_alt")]
+    pub option_as_alt: bool,
+}
+
+fn option_is_alt() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2732,7 +2743,7 @@ impl Session {
                 let mut model = self.model.lock().unwrap();
                 let mut bytes = model.encode_paste(&text)?;
                 if submit {
-                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
+                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1, true)?);
                 }
                 Ok(bytes)
             }
@@ -2773,6 +2784,7 @@ impl Session {
             input.unshifted_codepoint,
             mods,
             action,
+            input.option_as_alt,
         )
     }
 
@@ -2823,7 +2835,7 @@ impl Session {
                 let code = if rows < 0 { "ArrowUp" } else { "ArrowDown" };
                 let mut input = Vec::new();
                 for _ in 0..rows.unsigned_abs().min(100) {
-                    input.extend_from_slice(&model.encode_key(code, "", 0, 0, 1)?);
+                    input.extend_from_slice(&model.encode_key(code, "", 0, 0, 1, true)?);
                 }
                 (None, input)
             } else {
@@ -3513,6 +3525,32 @@ mod tests {
         let maximum: SpawnOptions =
             serde_json::from_value(spawn_options_json(MAX_JSON_SAFE_INTEGER.into())).unwrap();
         assert_eq!(maximum.scrollback_bytes, Some(MAX_JSON_SAFE_INTEGER));
+    }
+
+    /// The Option policy rides each key, and a key that does not name it keeps
+    /// Option acting as Alt, the encoding every client got before the field.
+    #[test]
+    fn key_input_reads_option_as_alt_and_defaults_to_alt() {
+        let key = |option_as_alt: Option<bool>| -> KeyInput {
+            let mut json = serde_json::json!({
+                "type": "down",
+                "key": "@",
+                "code": "KeyL",
+                "repeat": false,
+                "shift": false,
+                "control": false,
+                "alt": true,
+                "meta": false,
+                "unshiftedCodepoint": 108,
+            });
+            if let Some(option_as_alt) = option_as_alt {
+                json["optionAsAlt"] = option_as_alt.into();
+            }
+            serde_json::from_value(json).unwrap()
+        };
+        assert!(key(None).option_as_alt);
+        assert!(key(Some(true)).option_as_alt);
+        assert!(!key(Some(false)).option_as_alt);
     }
 
     #[test]
