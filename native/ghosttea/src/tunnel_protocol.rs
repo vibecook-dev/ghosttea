@@ -13,7 +13,7 @@ use serde::{
 use crate::session::{KeyInput, MouseInput, SessionActivity};
 
 pub const PROTOCOL_MAJOR: u16 = 1;
-pub const PROTOCOL_MINOR: u16 = 8;
+pub const PROTOCOL_MINOR: u16 = 9;
 pub const SESSION_ACTIVITY_PROTOCOL_MINOR: u16 = 4;
 pub const TERMINAL_PRESENTATION_PROTOCOL_MINOR: u16 = 5;
 /// Gates every remote-reconnect behaviour: resume takeover, heartbeats,
@@ -26,6 +26,15 @@ pub const TRACKED_SELECTION_PROTOCOL_MINOR: u16 = 7;
 /// Carries terminal-default and palette-index cell colors without baking the
 /// host presentation into a replica's logical state.
 pub const SEMANTIC_CELL_COLOR_PROTOCOL_MINOR: u16 = 8;
+/// `optionAsAlt` inside a [`TunnelInput::Key`]: the typing viewer's Option
+/// policy, Ghostty's `macos-option-as-alt`, which the host's key encoder
+/// honours. A key without the field keeps Option as Alt at every minor.
+///
+/// It has its own minor for the reason the control protocol gives its
+/// `OPTION_AS_ALT_PROTOCOL_MINOR` (`service.rs`): serde ignores fields it does
+/// not know, so a minor-8 host drops the field and encodes Option as Alt, and
+/// only the negotiated minor tells a viewer that the host reads it.
+pub const OPTION_AS_ALT_PROTOCOL_MINOR: u16 = 9;
 pub const MAX_PREFACE_METADATA_BYTES: usize = 4 * 1024;
 pub const MAX_CONTROL_MESSAGE_BYTES: usize = 1024 * 1024;
 pub const MAX_STATE_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
@@ -1843,6 +1852,52 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// A key's Option policy crosses the mesh inside the key, at a minor of its
+    /// own: a minor-8 host drops `optionAsAlt` unread. A key that names no
+    /// policy keeps Option as Alt, and a relay states that default to the host
+    /// rather than leaving it out.
+    #[test]
+    fn key_input_carries_the_option_policy_at_its_own_minor() {
+        assert_eq!(OPTION_AS_ALT_PROTOCOL_MINOR, 9);
+        let input = |option_as_alt: Option<bool>| {
+            let mut key = serde_json::json!({
+                "type": "down",
+                "key": "@",
+                "code": "KeyL",
+                "repeat": false,
+                "shift": false,
+                "control": false,
+                "alt": true,
+                "meta": false,
+                "unshiftedCodepoint": 108,
+            });
+            if let Some(option_as_alt) = option_as_alt {
+                key["optionAsAlt"] = serde_json::json!(option_as_alt);
+            }
+            serde_json::from_value::<SessionControlMessage>(serde_json::json!({
+                "type": "input",
+                "viewId": "view",
+                "attachmentEpoch": 7,
+                "inputSequence": 11,
+                "operation": { "type": "key", "value": key },
+            }))
+            .unwrap()
+        };
+
+        for (value, expected) in [(Some(false), false), (Some(true), true), (None, true)] {
+            let message = input(value);
+            match &message {
+                SessionControlMessage::Input {
+                    operation: TunnelInput::Key(key),
+                    ..
+                } => assert_eq!(key.option_as_alt, expected),
+                _ => panic!("expected key input"),
+            }
+            let relayed = serde_json::to_value(&message).unwrap();
+            assert_eq!(relayed["operation"]["value"]["optionAsAlt"], expected);
+        }
     }
 
     #[test]

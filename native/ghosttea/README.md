@@ -223,3 +223,19 @@ adds `release-session` (`unused` or `exited`) and `session-release`. `attached`,
 `busy`, and `running` defer cleanup; `used` and `not-shell` retain the session;
 `released` and `gone` complete it. The client refuses correlated creation and
 conditional release against an older daemon.
+
+# Key input: the Option policy
+
+A key event may carry `optionAsAlt`, the typing keyboard's Option policy (Ghostty's
+`macos-option-as-alt`). It rides each key rather than the session, because several viewers
+can type into one session. `true`, and an event without the field, keep Option as Alt:
+Option sends Alt with the key's own character. `false` lets Option type the layout's
+character, so a German Option+L sends `@`.
+
+Control protocol 1.19 says `send-key` reads the field, and Truffle terminal protocol 1.9
+says a host reads it inside `TunnelInput::Key`. Serde ignores fields it does not know, so an
+older daemon or host drops it and keeps Option as Alt; the negotiated minor is the only way
+to tell. A daemon relays a remote session's key as it arrived, so for a remote session the
+minor its mesh negotiated with the host decides, and a control client does not see that
+minor. The C ABI carries the same choice as `GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT`; it is
+linked into its caller, so it has nothing to negotiate.
