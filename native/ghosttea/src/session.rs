@@ -3260,6 +3260,11 @@ mod tests {
         assert!(session.attach_view("late", "phone").is_err());
         assert!(
             session
+                .attach_view_without_snapshot("late", "phone", ViewAccess::ReadWrite)
+                .is_err()
+        );
+        assert!(
+            session
                 .automation_input(
                     0,
                     AutomationInputOperation::Text {
@@ -4026,6 +4031,87 @@ mod tests {
             ),
             "the legacy frame structurally cannot say 'no controller'"
         );
+
+        session
+            .terminate(TerminationSource::ServiceShutdown)
+            .unwrap();
+    }
+
+    /// Drains every packet waiting for `packets` and counts the forced full
+    /// renders among them: the full, catalog-reset frames that an attach or a
+    /// [`Session::refresh`] publishes.
+    #[cfg(unix)]
+    fn forced_full_renders(packets: &mut broadcast::Receiver<crate::FramePacket>) -> usize {
+        let forced = ghosttea_core::frame::FULL_SNAPSHOT | ghosttea_core::frame::CATALOG_RESET;
+        let mut count = 0;
+        loop {
+            match packets.try_recv() {
+                Ok(packet) => {
+                    let flags = u16::from_le_bytes(packet[6..8].try_into().unwrap());
+                    if (flags & forced) == forced {
+                        count += 1;
+                    }
+                }
+                Err(broadcast::error::TryRecvError::Empty) => return count,
+                Err(error) => panic!("the frame hub lost packets: {error}"),
+            }
+        }
+    }
+
+    /// A host whose consumer forces its own seed attaches without a render, so
+    /// the attach costs that one forced full render and not two (RV #92). The
+    /// classic attach keeps seeding ghosttea's own clients with its snapshot.
+    #[cfg(unix)]
+    #[test]
+    fn attach_without_snapshot_publishes_nothing_and_attaches_the_view() {
+        let frames = FrameHub::new(8);
+        let session = Session::spawn(
+            SpawnOptions {
+                creation_id: None,
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            frames.clone(),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(move |_, _| {}),
+        )
+        .unwrap();
+        // `sleep` writes nothing, so every frame counted below is a forced one.
+        let (mut packets, _) = frames.subscribe();
+        let before = frames.current_ordinal();
+
+        let epoch = session
+            .attach_view_without_snapshot("pane", "desktop", ViewAccess::ReadWrite)
+            .unwrap();
+        assert_eq!(
+            frames.current_ordinal(),
+            before,
+            "a quiet attach must publish no frame"
+        );
+        assert_eq!(forced_full_renders(&mut packets), 0);
+        assert_eq!(session.view_attachment_epoch("pane"), Some(epoch));
+        assert!(session.has_active_views());
+
+        // The consumer's own seed is the one full render this attach costs.
+        session.refresh().unwrap();
+        assert_eq!(forced_full_renders(&mut packets), 1);
+        assert_eq!(frames.current_ordinal(), before + 1);
+
+        // ghosttea's own clients keep the attach that seeds them.
+        session.attach_view("mirror", "phone").unwrap();
+        assert_eq!(forced_full_renders(&mut packets), 1);
+        assert_eq!(frames.current_ordinal(), before + 2);
 
         session
             .terminate(TerminationSource::ServiceShutdown)
