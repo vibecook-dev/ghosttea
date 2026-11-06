@@ -40,8 +40,8 @@ pub use service::{
     TerminalServiceConfig, TerminalServiceListeners,
 };
 pub use session::{
-    AutomationInputOperation, AutomationInputResult, ExitCallback, ExitOutcome, Persistence,
-    Session, SessionActivity, SessionActivityConfidence, SessionActivityKind,
+    AutomationInputOperation, AutomationInputResult, ControlFailure, ExitCallback, ExitOutcome,
+    Persistence, Session, SessionActivity, SessionActivityConfidence, SessionActivityKind,
     SessionActivitySource, SessionEndCause, SessionEndEvidence, SessionEnvironment, SessionExit,
     SessionMetadata, SessionProgramKind, SessionStatus, SessionSummary, SessionTombstone,
     SessionTombstones, SpawnOptions, TerminationSource, TombstoneClock,

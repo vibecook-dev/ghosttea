@@ -3510,9 +3510,9 @@ async fn handle_command(
             let metadata = error.downcast_ref::<session::ControlFailure>();
             ResponseBody::Error {
                 message: error.to_string(),
-                stage: metadata.map(|metadata| metadata.stage),
-                code: metadata.and_then(|metadata| metadata.code),
-                os_error: metadata.and_then(|metadata| metadata.os_error),
+                stage: metadata.map(|metadata| metadata.stage()),
+                code: metadata.and_then(|metadata| metadata.code()),
+                os_error: metadata.and_then(|metadata| metadata.os_error()),
             }
         }),
     }

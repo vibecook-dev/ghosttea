@@ -59,15 +59,35 @@ where
     Ok(Some(value))
 }
 
-/// Stable control-wire metadata attached at the point where a create failure
-/// still has typed causes. Display deliberately preserves the pre-metadata top
-/// message byte-for-byte.
+/// Stable control-wire metadata for a control failure with typed causes:
+/// create attaches it where a failure still has them, and input past a full or
+/// closed input queue is refused with it. The control envelope downcasts it
+/// onto the wire, and an embedder can downcast a [`Session`] error the same
+/// way. Display deliberately preserves the pre-metadata top message
+/// byte-for-byte.
 #[derive(Debug)]
-pub(crate) struct ControlFailure {
+pub struct ControlFailure {
     message: String,
-    pub(crate) stage: &'static str,
-    pub(crate) code: Option<&'static str>,
-    pub(crate) os_error: Option<i32>,
+    stage: &'static str,
+    code: Option<&'static str>,
+    os_error: Option<i32>,
+}
+
+impl ControlFailure {
+    /// Stable failing operation.
+    pub fn stage(&self) -> &'static str {
+        self.stage
+    }
+
+    /// Stable service classification when the failure site knows one.
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+
+    /// Raw platform error number while a typed OS error is still present.
+    pub fn os_error(&self) -> Option<i32> {
+        self.os_error
+    }
 }
 
 impl fmt::Display for ControlFailure {
@@ -75,6 +95,8 @@ impl fmt::Display for ControlFailure {
         formatter.write_str(&self.message)
     }
 }
+
+impl std::error::Error for ControlFailure {}
 
 fn typed_io_error(error: &anyhow::Error) -> Option<&std::io::Error> {
     error
@@ -125,6 +147,23 @@ fn spawn_error_code(error: Option<&std::io::Error>) -> Option<&'static str> {
         std::io::ErrorKind::OutOfMemory => Some("resource-exhausted"),
         _ => None,
     }
+}
+
+/// Input the input queue cannot take, refused with the typed carrier:
+/// `input-queue-full` while the actor is behind (most often held in a write the
+/// program does not read), `input-closed` once the actor has ended. The message
+/// keeps the untyped refusal's words byte-for-byte.
+fn input_queue_refusal(error: mpsc::TrySendError<InputOperation>) -> anyhow::Error {
+    let code = match &error {
+        mpsc::TrySendError::Full(_) => "input-queue-full",
+        mpsc::TrySendError::Disconnected(_) => "input-closed",
+    };
+    anyhow::Error::new(ControlFailure {
+        message: format!("terminal input queue unavailable: {error}"),
+        stage: "input",
+        code: Some(code),
+        os_error: None,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -2498,7 +2537,7 @@ impl Session {
         let mut order = self.input_order.lock().unwrap();
         self.input_tx
             .try_send(operation)
-            .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+            .map_err(input_queue_refusal)?;
         if consumes {
             self.mark_input_used();
         }
@@ -2588,7 +2627,7 @@ impl Session {
         }
         self.input_tx
             .try_send(InputOperation::Automation(operation))
-            .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+            .map_err(input_queue_refusal)?;
         if consumes {
             self.mark_input_used();
         }
