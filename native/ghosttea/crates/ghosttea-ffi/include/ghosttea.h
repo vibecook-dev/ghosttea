@@ -121,6 +121,14 @@ typedef struct ghosttea_text_engine_performance {
   uint64_t hold_nanoseconds;
 } ghosttea_text_engine_performance_t;
 
+/* Bits of ghosttea_key_event_t.flags. Zero keeps Option acting as Alt; a bit
+ * not defined here is GHOSTTEA_STATUS_INVALID_ARGUMENT. */
+typedef enum ghosttea_key_flag {
+  /* macOS Option types the keyboard layout's characters instead of acting as
+   * Alt, for this one key: Ghostty's macos-option-as-alt = false. */
+  GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT = 1 << 0,
+} ghosttea_key_flag_t;
+
 typedef struct ghosttea_key_event {
   uint32_t abi_version;
   uint32_t struct_size;
@@ -129,7 +137,7 @@ typedef struct ghosttea_key_event {
   uint32_t unshifted_codepoint;
   uint16_t modifiers;
   uint8_t action;
-  uint8_t reserved;
+  uint8_t flags; /* ghosttea_key_flag_t bits */
 } ghosttea_key_event_t;
 
 typedef struct ghosttea_mouse_event {

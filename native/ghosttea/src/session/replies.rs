@@ -9,6 +9,14 @@ const DRAIN_CAP_BYTES: usize = 64 * 1024;
 /// One queued batch plus the writer's in-flight batch. Slow PTY readers apply
 /// backpressure after model publication, never while a model lock is held.
 ///
+/// Replies share the PTY writer with user input, so a paste the program never
+/// reads holds it too. While that write is blocked, the in-flight batch waits
+/// for the writer, the next reply fills the queued batch, and the producer
+/// after it parks in `send`. That producer is most often the reader, which then
+/// stops taking the program's output until the program reads its input or
+/// termination stops the waiting. This is the bound at work, not a lost reply:
+/// the model stays free, and outside a draining queue no reply is dropped.
+///
 /// Termination stops that waiting, never the delivery. The terminal may itself
 /// be waiting on an answer: ConPTY asks for the cursor position as it starts
 /// and waits for the reply. So a draining queue takes every later reply into

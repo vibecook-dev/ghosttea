@@ -1,9 +1,17 @@
 export const PROTOCOL_MAJOR = 1;
-export const PROTOCOL_MINOR = 18;
+export const PROTOCOL_MINOR = 19;
 export const SESSION_LIFECYCLE_PROTOCOL_MINOR = 18;
 export const SESSION_SCROLLBACK_PROTOCOL_MINOR = 15;
 export const STRUCTURED_ERROR_PROTOCOL_MINOR = 16;
 export const METADATA_EVENT_PROTOCOL_MINOR = 17;
+/**
+ * The daemon reads `optionAsAlt` on a `send-key` event from this minor: the typing keyboard's Option policy,
+ * Ghostty's `macos-option-as-alt`. An older daemon ignores the field and encodes Option as Alt, and an event
+ * without it keeps Option as Alt at every minor. For a remote session the daemon relays the key as it arrived,
+ * and its host honours the field only at Truffle terminal protocol 1.9 (`OPTION_AS_ALT_PROTOCOL_MINOR` in
+ * tunnel_protocol.rs), which this minor does not report.
+ */
+export const OPTION_AS_ALT_PROTOCOL_MINOR = 19;
 export const CONFIG_SCHEMA_VERSION = 1;
 export const CONFIG_DOCUMENT_SCHEMA_VERSION = 1;
 

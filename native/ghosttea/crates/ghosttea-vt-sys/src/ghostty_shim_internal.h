@@ -35,6 +35,9 @@ struct EgTerminal {
 
 bool eg_buffer_reserve(EgBuffer* buffer, size_t required);
 bool eg_buffer_append(EgBuffer* buffer, const uint8_t* data, size_t len);
+// Encodes one Unicode scalar value into `out` and returns its length. A
+// surrogate or a value above U+10FFFF is the caller's to rule out.
+size_t eg_utf8_encode(uint32_t codepoint, uint8_t out[4]);
 void eg_terminal_style(GhosttyStyle source, EgTerminalStyle* out);
 int eg_emit_hyperlink_uri(EgTerminal* state,
                           const GhosttyGridRef* ref,

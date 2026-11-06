@@ -73,7 +73,7 @@ Electron main never forwards frames, PTY bytes never reach the renderer, and Rea
 
 **Local planes:** the daemon serves two, each authenticated by the same bearer token sent as the first packet:
 
-- Control: u32 little-endian length-prefixed JSON, protocol 1.16.
+- Control: u32 little-endian length-prefixed JSON, protocol 1.19 (`CONTROL_PROTOCOL_MINOR` at the top of `service.rs` is the authority).
 - Frames: TRF1.
 
 On macOS and Linux they are Unix sockets. On Windows they are named pipes with a user-only DACL.

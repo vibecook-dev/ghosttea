@@ -18,7 +18,7 @@ static EgCharsetState eg_charset_state(GhosttyTerminalCharsetState source) {
   return result;
 }
 
-static size_t eg_utf8_encode(uint32_t codepoint, uint8_t out[4]) {
+size_t eg_utf8_encode(uint32_t codepoint, uint8_t out[4]) {
   if (codepoint <= 0x7f) {
     out[0] = (uint8_t)codepoint;
     return 1;

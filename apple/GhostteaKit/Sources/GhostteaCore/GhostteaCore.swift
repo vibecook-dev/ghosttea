@@ -199,19 +199,23 @@ public struct GhostteaKeyEvent: Sendable {
   public var unshiftedCodepoint: UInt32
   public var modifiers: UInt16
   public var action: UInt8
+  /// `ghosttea_key_flag_t` bits. Zero, the default, keeps Option acting as Alt.
+  public var flags: UInt8
 
   public init(
     code: String,
     text: String = "",
     unshiftedCodepoint: UInt32 = 0,
     modifiers: UInt16 = 0,
-    action: UInt8 = 1
+    action: UInt8 = 1,
+    flags: UInt8 = 0
   ) {
     self.code = code
     self.text = text
     self.unshiftedCodepoint = unshiftedCodepoint
     self.modifiers = modifiers
     self.action = action
+    self.flags = flags
   }
 }
 
@@ -480,7 +484,7 @@ public actor GhostteaTerminal {
           unshifted_codepoint: event.unshiftedCodepoint,
           modifiers: event.modifiers,
           action: event.action,
-          reserved: 0
+          flags: event.flags
         )
         return try performBytes { output in ghosttea_terminal_encode_key(handle, &native, &output) }
       }

@@ -43,7 +43,7 @@ const MAX_CLOSED_OWNER_TOMBSTONES: usize = 16_384;
 const CLOSED_OWNER_BLOOM_BITS: usize = 1 << 23;
 const CLOSED_OWNER_BLOOM_HASHES: u64 = 4;
 const CONTROL_PROTOCOL_MAJOR: u16 = 1;
-const CONTROL_PROTOCOL_MINOR: u16 = 18;
+const CONTROL_PROTOCOL_MINOR: u16 = 19;
 const ACTIVITY_EVENT_PROTOCOL_MINOR: u16 = 6;
 const EVENTS_LOST_PROTOCOL_MINOR: u16 = 8;
 const SESSION_CREATED_PROTOCOL_MINOR: u16 = 9;
@@ -86,6 +86,22 @@ const STRUCTURED_ERROR_PROTOCOL_MINOR: u16 = 16;
 /// prompts send each time they draw. It is a hint; `list-sessions` stays the
 /// reconciliation path, as it is after `events-lost`.
 const METADATA_EVENT_PROTOCOL_MINOR: u16 = 17;
+/// `optionAsAlt` on `send-key`'s event: the typing keyboard's Option policy,
+/// Ghostty's `macos-option-as-alt`, which the session's key encoder honours.
+/// An event without the field keeps Option as Alt at every minor.
+///
+/// A field on an existing command, and still a minor of its own, for the reason
+/// `CONTROL_REVISION_CAS_PROTOCOL_MINOR` gives: serde ignores fields it does
+/// not know. A minor-18 daemon handed `optionAsAlt: false` encodes Option as
+/// Alt anyway, so a German Option+L leaves as `ESC @` rather than `@`, and the
+/// client is never told its choice was dropped. The negotiated minor is what
+/// tells a client this daemon reads Option as the viewer's option-as-alt.
+///
+/// A remote session's key crosses the mesh as it arrived, and whether that
+/// host reads the field is the mesh's own minor (`OPTION_AS_ALT_PROTOCOL_MINOR`
+/// in `tunnel_protocol`), negotiated between the mesh peers; this minor does
+/// not report it.
+const OPTION_AS_ALT_PROTOCOL_MINOR: u16 = 19;
 // A gate above the advertised minor would be unreachable: no client could ever
 // negotiate high enough to receive the event it guards.
 const _: () = assert!(SESSION_CREATED_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
@@ -99,6 +115,7 @@ const _: () = assert!(SESSION_OWNER_TRANSFER_PROTOCOL_MINOR <= CONTROL_PROTOCOL_
 const _: () = assert!(SESSION_SCROLLBACK_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(STRUCTURED_ERROR_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(METADATA_EVENT_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
+const _: () = assert!(OPTION_AS_ALT_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const ACTIVITY_SAMPLE_INTERVAL: Duration = Duration::from_millis(200);
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// How long an accepted connection may take to present its token before the
@@ -3510,9 +3527,9 @@ async fn handle_command(
             let metadata = error.downcast_ref::<session::ControlFailure>();
             ResponseBody::Error {
                 message: error.to_string(),
-                stage: metadata.map(|metadata| metadata.stage),
-                code: metadata.and_then(|metadata| metadata.code),
-                os_error: metadata.and_then(|metadata| metadata.os_error),
+                stage: metadata.map(|metadata| metadata.stage()),
+                code: metadata.and_then(|metadata| metadata.code()),
+                os_error: metadata.and_then(|metadata| metadata.os_error()),
             }
         }),
     }
@@ -4544,6 +4561,69 @@ mod protocol_tests {
         assert!(response["osError"].is_number());
     }
 
+    /// Input past a full queue is refused on the wire with the typed fields
+    /// that the envelope's one `ControlFailure` downcast carries, and keeps
+    /// its message. The child never reads, so the paste blocks the input actor
+    /// in its write and nothing queued behind it drains: the first refused
+    /// request is the full queue, however soon the actor took the paste.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn automation_input_past_a_full_queue_is_refused_with_typed_fields() {
+        let service = start_test_service("full-input-queue");
+        let access = tokio::time::timeout(Duration::from_secs(10), service.handle.sessions())
+            .await
+            .expect("session access did not become ready")
+            .unwrap();
+        let mut options = long_running_spawn_options();
+        options.args = vec!["-c".to_owned(), "stty -echo; exec sleep 30".to_owned()];
+        let session = access.spawn(options).await.unwrap();
+        // Lines, as in session.rs's blocked-paste test: a line with no end
+        // never fills a macOS PTY.
+        session
+            .automation_input(
+                0,
+                AutomationInputOperation::Paste {
+                    text: format!("{}\n", "x".repeat(1023)).repeat(1024),
+                    submit: false,
+                },
+            )
+            .unwrap();
+        let mut client = connect_control(&service).await;
+        let mut refused = None;
+        for request_id in 1..=4096 {
+            let response = request(
+                &mut client,
+                json!({
+                    "requestId": request_id,
+                    "type": "automation-input",
+                    "sessionId": session.id(),
+                    "expectedHumanInputEpoch": 0,
+                    "operation": { "kind": "text", "text": "x" },
+                }),
+            )
+            .await;
+            if response["type"] == "error" {
+                refused = Some(response);
+                break;
+            }
+            assert_eq!(response["accepted"], json!(true));
+        }
+        let refused = refused.expect("the input queue never filled behind a blocked write");
+        assert_eq!(
+            refused["message"],
+            "terminal input queue unavailable: sending on a full channel"
+        );
+        assert_eq!(refused["stage"], "input");
+        assert_eq!(refused["code"], "input-queue-full");
+        assert!(refused.get("osError").is_none());
+        service
+            .handle
+            .shutdown(Duration::from_secs(5))
+            .await
+            .unwrap();
+        service.serving.await.unwrap().unwrap();
+    }
+
     #[tokio::test]
     async fn session_summary_echoes_effective_scrollback_cap() {
         let service = start_test_service("scrollback-summary");
@@ -5179,6 +5259,48 @@ mod protocol_tests {
         for (value, expected) in [(Some(u32::from('w')), u32::from('w')), (None, 0)] {
             match key_command(value).command {
                 Command::SendKey { event, .. } => assert_eq!(event.unshifted_codepoint, expected),
+                _ => panic!("expected send-key command"),
+            }
+        }
+    }
+
+    /// `send-key` reads the typing keyboard's Option policy, at a minor of its
+    /// own: a minor-18 daemon drops `optionAsAlt` unread, so only a client that
+    /// negotiated 19 knows its choice reaches the encoder. A key that names no
+    /// policy keeps Option as Alt.
+    #[test]
+    fn send_key_reads_the_option_policy_at_its_own_minor() {
+        assert_eq!(OPTION_AS_ALT_PROTOCOL_MINOR, 19);
+        let key_command = |option_as_alt: Option<bool>| {
+            let mut event = json!({
+                "type": "down",
+                "key": "@",
+                "code": "KeyL",
+                "repeat": false,
+                "shift": false,
+                "control": false,
+                "alt": true,
+                "meta": false,
+                "unshiftedCodepoint": 108,
+            });
+            if let Some(option_as_alt) = option_as_alt {
+                event["optionAsAlt"] = json!(option_as_alt);
+            }
+            serde_json::from_value::<Envelope>(json!({
+                "requestId": 14,
+                "type": "send-key",
+                "sessionId": "session",
+                "viewId": "view",
+                "attachmentEpoch": 3,
+                "inputSequence": 1,
+                "event": event,
+            }))
+            .unwrap()
+        };
+
+        for (value, expected) in [(Some(false), false), (Some(true), true), (None, true)] {
+            match key_command(value).command {
+                Command::SendKey { event, .. } => assert_eq!(event.option_as_alt, expected),
                 _ => panic!("expected send-key command"),
             }
         }

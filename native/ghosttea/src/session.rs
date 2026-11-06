@@ -59,15 +59,35 @@ where
     Ok(Some(value))
 }
 
-/// Stable control-wire metadata attached at the point where a create failure
-/// still has typed causes. Display deliberately preserves the pre-metadata top
-/// message byte-for-byte.
+/// Stable control-wire metadata for a control failure with typed causes:
+/// create attaches it where a failure still has them, and input past a full or
+/// closed input queue is refused with it. The control envelope downcasts it
+/// onto the wire, and an embedder can downcast a [`Session`] error the same
+/// way. Display deliberately preserves the pre-metadata top message
+/// byte-for-byte.
 #[derive(Debug)]
-pub(crate) struct ControlFailure {
+pub struct ControlFailure {
     message: String,
-    pub(crate) stage: &'static str,
-    pub(crate) code: Option<&'static str>,
-    pub(crate) os_error: Option<i32>,
+    stage: &'static str,
+    code: Option<&'static str>,
+    os_error: Option<i32>,
+}
+
+impl ControlFailure {
+    /// Stable failing operation.
+    pub fn stage(&self) -> &'static str {
+        self.stage
+    }
+
+    /// Stable service classification when the failure site knows one.
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+
+    /// Raw platform error number while a typed OS error is still present.
+    pub fn os_error(&self) -> Option<i32> {
+        self.os_error
+    }
 }
 
 impl fmt::Display for ControlFailure {
@@ -75,6 +95,8 @@ impl fmt::Display for ControlFailure {
         formatter.write_str(&self.message)
     }
 }
+
+impl std::error::Error for ControlFailure {}
 
 fn typed_io_error(error: &anyhow::Error) -> Option<&std::io::Error> {
     error
@@ -125,6 +147,23 @@ fn spawn_error_code(error: Option<&std::io::Error>) -> Option<&'static str> {
         std::io::ErrorKind::OutOfMemory => Some("resource-exhausted"),
         _ => None,
     }
+}
+
+/// Input the input queue cannot take, refused with the typed carrier:
+/// `input-queue-full` while the actor is behind (most often held in a write the
+/// program does not read), `input-closed` once the actor has ended. The message
+/// keeps the untyped refusal's words byte-for-byte.
+fn input_queue_refusal(error: mpsc::TrySendError<InputOperation>) -> anyhow::Error {
+    let code = match &error {
+        mpsc::TrySendError::Full(_) => "input-queue-full",
+        mpsc::TrySendError::Disconnected(_) => "input-closed",
+    };
+    anyhow::Error::new(ControlFailure {
+        message: format!("terminal input queue unavailable: {error}"),
+        stage: "input",
+        code: Some(code),
+        os_error: None,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -401,6 +440,17 @@ pub struct KeyInput {
     pub meta: bool,
     #[serde(default)]
     pub unshifted_codepoint: u32,
+    /// The typing keyboard's macOS Option policy, Ghostty's
+    /// `macos-option-as-alt`: `false` lets Option type the layout's characters.
+    /// It rides each key because it belongs to the viewer, and several viewers
+    /// can type into one session. An event without it keeps Option as Alt, the
+    /// encoding every earlier client got.
+    #[serde(default = "option_is_alt")]
+    pub option_as_alt: bool,
+}
+
+fn option_is_alt() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1984,6 +2034,12 @@ impl Session {
         SessionMetadata::of(&self.summary.lock().unwrap())
     }
 
+    /// Format a view's selection, and track and announce it as that view's.
+    ///
+    /// Unfenced: nothing checks that `view_id` is still attached, so a read
+    /// that races the view's detach tracks a selection for a view that is gone
+    /// and recreates its publisher, which every later frame then announces.
+    /// [`Session::selection_text_for_attachment`] is the fenced read.
     pub fn selection_text(
         &self,
         view_id: &str,
@@ -1993,16 +2049,77 @@ impl Session {
         end_row: u32,
         select_all: bool,
     ) -> Result<String> {
-        let _operation = self.model_operation.lock().unwrap();
+        let operation = self.model_operation.lock().unwrap();
+        self.track_view_selection(
+            operation,
+            view_id,
+            (start_column, start_row),
+            (end_column, end_row),
+            select_all,
+        )
+    }
+
+    /// [`Session::selection_text`] fenced on the reader's attachment: the view
+    /// must be attached, by `client_id`, at `attachment_epoch`, or the read is
+    /// refused and nothing is formatted, tracked or announced. A read-only view
+    /// may read; a selection is not input.
+    ///
+    /// Lock order: the authority, then `model_operation`. That is the one order
+    /// this session takes them in (`claim_control`, `claim_control_checked`,
+    /// `resize_view` and `resize_view_checked` hold the authority across
+    /// `apply_resize`'s `model_operation`), so taking `model_operation` first
+    /// would deadlock against a resizing claim on the same session. The read
+    /// holds the authority only while it waits for `model_operation`, and drops
+    /// it before formatting: this session's attaches, detaches, claims and
+    /// input wait behind a read for at most the model's current batch, as they
+    /// already do behind a resizing claim.
+    ///
+    /// That hand-over is also what keeps a detached view's selection gone. A
+    /// detach takes the authority, then `model_operation` to remove the view's
+    /// selection and publisher. A read authorized before the detach already
+    /// holds `model_operation` when the detach can take the authority, so the
+    /// removal runs after the read and removes what it tracked; a read after
+    /// the detach is refused.
+    #[allow(clippy::too_many_arguments)]
+    pub fn selection_text_for_attachment(
+        &self,
+        view_id: &str,
+        client_id: &str,
+        attachment_epoch: u64,
+        start_column: u16,
+        start_row: u32,
+        end_column: u16,
+        end_row: u32,
+        select_all: bool,
+    ) -> Result<String> {
+        let authority = self.authority.lock().unwrap();
+        authority.authorize_read(view_id, client_id, attachment_epoch)?;
+        let operation = self.model_operation.lock().unwrap();
+        drop(authority);
+        self.track_view_selection(
+            operation,
+            view_id,
+            (start_column, start_row),
+            (end_column, end_row),
+            select_all,
+        )
+    }
+
+    /// Format `view_id`'s selection, then track and announce it as that view's,
+    /// under the caller's `model_operation`, so the announcement keeps its
+    /// order among the session's frames.
+    fn track_view_selection(
+        &self,
+        _operation: MutexGuard<'_, ()>,
+        view_id: &str,
+        start: (u16, u32),
+        end: (u16, u32),
+        select_all: bool,
+    ) -> Result<String> {
         let (text, selection) = {
             let mut model = self.model.lock().unwrap();
             let text = model
-                .selection_text_for(
-                    view_id,
-                    (start_column, start_row),
-                    (end_column, end_row),
-                    select_all,
-                )
+                .selection_text_for(view_id, start, end, select_all)
                 .context("format terminal selection")?;
             (text, model.selection_for(view_id))
         };
@@ -2087,6 +2204,9 @@ impl Session {
         self.attach_view_with_access(view_id, client_id, ViewAccess::ReadWrite)
     }
 
+    /// Attach a view and publish a full, catalog-reset frame for it, so a
+    /// client reading the session's frames is seeded by the attach itself.
+    /// [`Session::attach_view_without_snapshot`] attaches without that render.
     pub fn attach_view_with_access(
         &self,
         view_id: &str,
@@ -2103,6 +2223,30 @@ impl Session {
         let update = self.model.lock().unwrap().refresh(RenderRequest::Full)?;
         self.execute_update(update, _operation);
         Ok(attachment_epoch)
+    }
+
+    /// Attach a view without rendering for it: the same release seal and view
+    /// authority as [`Session::attach_view_with_access`], with no wait on the
+    /// model and no forced full render.
+    ///
+    /// Like [`Session::take_over_view`], this publishes no snapshot; the caller
+    /// forces the frame its consumer needs, with [`Session::refresh`] once that
+    /// consumer is subscribed. An attach then costs one full render rather than
+    /// two, and every other viewer of the session receives one catalog-reset
+    /// frame rather than two. Until that refresh the session may publish damage
+    /// frames for the view, which a consumer skips until its full frame.
+    pub fn attach_view_without_snapshot(
+        &self,
+        view_id: &str,
+        client_id: &str,
+        access: ViewAccess,
+    ) -> Result<u64> {
+        let _lifecycle = self.lifecycle.lock().unwrap();
+        self.refuse_after_release()?;
+        self.authority
+            .lock()
+            .unwrap()
+            .attach(view_id, client_id, access)
     }
 
     /// Attach with takeover semantics: a fresh attachment epoch even for a
@@ -2460,7 +2604,7 @@ impl Session {
         let mut order = self.input_order.lock().unwrap();
         self.input_tx
             .try_send(operation)
-            .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+            .map_err(input_queue_refusal)?;
         if consumes {
             self.mark_input_used();
         }
@@ -2550,7 +2694,7 @@ impl Session {
         }
         self.input_tx
             .try_send(InputOperation::Automation(operation))
-            .map_err(|error| anyhow::anyhow!("terminal input queue unavailable: {error}"))?;
+            .map_err(input_queue_refusal)?;
         if consumes {
             self.mark_input_used();
         }
@@ -2732,7 +2876,7 @@ impl Session {
                 let mut model = self.model.lock().unwrap();
                 let mut bytes = model.encode_paste(&text)?;
                 if submit {
-                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1)?);
+                    bytes.extend_from_slice(&model.encode_key("Enter", "", 0, 0, 1, true)?);
                 }
                 Ok(bytes)
             }
@@ -2773,6 +2917,7 @@ impl Session {
             input.unshifted_codepoint,
             mods,
             action,
+            input.option_as_alt,
         )
     }
 
@@ -2823,7 +2968,7 @@ impl Session {
                 let code = if rows < 0 { "ArrowUp" } else { "ArrowDown" };
                 let mut input = Vec::new();
                 for _ in 0..rows.unsigned_abs().min(100) {
-                    input.extend_from_slice(&model.encode_key(code, "", 0, 0, 1)?);
+                    input.extend_from_slice(&model.encode_key(code, "", 0, 0, 1, true)?);
                 }
                 (None, input)
             } else {
@@ -3248,6 +3393,11 @@ mod tests {
         assert!(session.attach_view("late", "phone").is_err());
         assert!(
             session
+                .attach_view_without_snapshot("late", "phone", ViewAccess::ReadWrite)
+                .is_err()
+        );
+        assert!(
+            session
                 .automation_input(
                     0,
                     AutomationInputOperation::Text {
@@ -3366,6 +3516,103 @@ mod tests {
                 Instant::now() + Duration::from_secs(1),
             )
             .unwrap();
+    }
+
+    /// Enqueue until the session refuses, at most 4,096 times, and return the
+    /// refusal.
+    #[cfg(unix)]
+    fn first_refusal(mut enqueue: impl FnMut() -> Result<()>) -> anyhow::Error {
+        for _ in 0..4096 {
+            if let Err(refusal) = enqueue() {
+                return refusal;
+            }
+        }
+        panic!("the input queue never filled behind a write the program never reads");
+    }
+
+    /// `refusal` is G17's typed carrier for the input stage, with `code` and
+    /// the message this refusal had before it was typed.
+    #[cfg(unix)]
+    fn assert_input_refusal(refusal: &anyhow::Error, code: &str, message: &str) {
+        let failure = refusal
+            .downcast_ref::<ControlFailure>()
+            .unwrap_or_else(|| panic!("an untyped input refusal: {refusal:#}"));
+        assert_eq!(
+            (failure.stage, failure.code, failure.os_error),
+            ("input", Some(code), None)
+        );
+        assert_eq!(refusal.to_string(), message);
+    }
+
+    /// Input past a full queue is refused with G17's typed carrier on both
+    /// enqueue paths, automation and a view's own input, and keeps its
+    /// message. The child never reads, so the paste blocks the input actor in
+    /// its write and nothing queued behind it drains: the first refusal on
+    /// each path is the full queue, however soon the actor took the paste.
+    #[cfg(unix)]
+    #[test]
+    fn a_full_input_queue_refuses_with_a_typed_code() {
+        let session = shell_session("stty -echo; exec sleep 30");
+        let epoch = session.attach_view("pane", "desktop").unwrap();
+        // Lines, as in the blocked-paste test above: a line with no end never
+        // fills a macOS PTY.
+        session
+            .automation_input(
+                0,
+                AutomationInputOperation::Paste {
+                    text: format!("{}\n", "x".repeat(1023)).repeat(1024),
+                    submit: false,
+                },
+            )
+            .unwrap();
+        let automation = first_refusal(|| {
+            let text = AutomationInputOperation::Text { text: "x".into() };
+            session.automation_input(0, text).map(drop)
+        });
+        let mut sequence = 0;
+        let human = first_refusal(|| {
+            sequence += 1;
+            session.send_text("pane", "desktop", epoch, sequence, "x".into())
+        });
+        stop(&session);
+        for refusal in [&automation, &human] {
+            assert_input_refusal(
+                refusal,
+                "input-queue-full",
+                "terminal input queue unavailable: sending on a full channel",
+            );
+        }
+    }
+
+    /// The input actor ends with its session, and input after it is refused as
+    /// closed with the same typed carrier.
+    #[cfg(unix)]
+    #[test]
+    fn a_closed_input_queue_refuses_with_a_typed_code() {
+        let session = shell_session("exec sleep 30");
+        stop(&session);
+        // The actor drops the queue's receiver once it takes the Shutdown the
+        // reader sends at end of file. A probe queues at most one operation,
+        // so one every 10 ms for 5 s stays far inside the queue's 1,024 slots.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(
+            session.input_tx.try_send(InputOperation::Shutdown),
+            Err(mpsc::TrySendError::Disconnected(_))
+        ) {
+            assert!(
+                Instant::now() < deadline,
+                "the input actor outlived its session"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let refusal = session
+            .automation_input(0, AutomationInputOperation::Interrupt)
+            .expect_err("a closed input queue must refuse");
+        assert_input_refusal(
+            &refusal,
+            "input-closed",
+            "terminal input queue unavailable: sending on a closed channel",
+        );
     }
 
     /// The summary records everything the terminal reports, but a reader of
@@ -3513,6 +3760,32 @@ mod tests {
         let maximum: SpawnOptions =
             serde_json::from_value(spawn_options_json(MAX_JSON_SAFE_INTEGER.into())).unwrap();
         assert_eq!(maximum.scrollback_bytes, Some(MAX_JSON_SAFE_INTEGER));
+    }
+
+    /// The Option policy rides each key, and a key that does not name it keeps
+    /// Option acting as Alt, the encoding every client got before the field.
+    #[test]
+    fn key_input_reads_option_as_alt_and_defaults_to_alt() {
+        let key = |option_as_alt: Option<bool>| -> KeyInput {
+            let mut json = serde_json::json!({
+                "type": "down",
+                "key": "@",
+                "code": "KeyL",
+                "repeat": false,
+                "shift": false,
+                "control": false,
+                "alt": true,
+                "meta": false,
+                "unshiftedCodepoint": 108,
+            });
+            if let Some(option_as_alt) = option_as_alt {
+                json["optionAsAlt"] = option_as_alt.into();
+            }
+            serde_json::from_value(json).unwrap()
+        };
+        assert!(key(None).option_as_alt);
+        assert!(key(Some(true)).option_as_alt);
+        assert!(!key(Some(false)).option_as_alt);
     }
 
     #[test]
@@ -3920,6 +4193,190 @@ mod tests {
             .unwrap();
     }
 
+    /// Writes `output` into the session's model as the frame thread would.
+    #[cfg(unix)]
+    fn feed_model(session: &Session, output: &[u8]) {
+        let _operation = session.model_operation.lock().unwrap();
+        let update = session
+            .model
+            .lock()
+            .unwrap()
+            .feed(output, RenderRequest::None)
+            .unwrap();
+        session.execute_update(update, _operation);
+    }
+
+    /// Whether the session holds a selection publisher for `view_id`, which
+    /// every later frame announces.
+    #[cfg(unix)]
+    fn publishes_selection(session: &Session, view_id: &str) -> bool {
+        session.selection_txs.lock().unwrap().contains_key(view_id)
+    }
+
+    /// A selection read fenced on its attachment (RV #94): a detached or
+    /// superseded incarnation reads nothing, and its refused read tracks no
+    /// selection and recreates no publisher for a view that is gone. The
+    /// unfenced read is the hazard, and is the last witness here.
+    #[cfg(unix)]
+    #[test]
+    fn a_fenced_selection_read_refuses_a_detached_or_superseded_view_and_never_resurrects_it() {
+        let session = shell_session("exec sleep 30");
+        feed_model(&session, b"first\r\nsecond");
+
+        let first = session.attach_view("pane", "desktop").unwrap();
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .unwrap(),
+            "second"
+        );
+        assert!(session.selection_snapshot("pane").is_some());
+        assert!(publishes_selection(&session, "pane"));
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "phone", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "another client must not read through this view"
+        );
+
+        // Detached: the read is refused, and leaves nothing behind.
+        assert!(session.detach_view("pane", "desktop"));
+        assert_eq!(session.selection_snapshot("pane"), None);
+        assert!(!publishes_selection(&session, "pane"));
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "a detached view must not read"
+        );
+        assert_eq!(
+            session.selection_snapshot("pane"),
+            None,
+            "a refused read must not track a selection for a detached view"
+        );
+        assert!(
+            !publishes_selection(&session, "pane"),
+            "a refused read must not recreate a detached view's publisher"
+        );
+
+        // Re-attached: only the new incarnation's epoch reads.
+        let second = session.attach_view("pane", "desktop").unwrap();
+        assert_ne!(second, first);
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", first, 0, 1, 5, 1, false)
+                .is_err(),
+            "a detached incarnation's epoch must not read through its successor"
+        );
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", second, 0, 0, 4, 0, false)
+                .unwrap(),
+            "first"
+        );
+
+        // Superseded by a takeover while still attached: only the live
+        // incarnation reads.
+        let third = session
+            .take_over_view("pane", "desktop", ViewAccess::ReadWrite, 1, 1, None)
+            .unwrap()
+            .attachment_epoch;
+        assert!(
+            session
+                .selection_text_for_attachment("pane", "desktop", second, 0, 0, 4, 0, false)
+                .is_err(),
+            "a superseded incarnation must not read"
+        );
+        assert_eq!(
+            session
+                .selection_text_for_attachment("pane", "desktop", third, 0, 0, 4, 0, false)
+                .unwrap(),
+            "first"
+        );
+
+        // A selection is a read, not input: a read-only view reads.
+        let watching = session
+            .attach_view_with_access("mirror", "phone", ViewAccess::ReadOnly)
+            .unwrap();
+        assert_eq!(
+            session
+                .selection_text_for_attachment("mirror", "phone", watching, 0, 1, 5, 1, false)
+                .unwrap(),
+            "second"
+        );
+
+        // The hazard the fence closes: the unfenced read tracks a selection,
+        // and recreates the publisher, of a view that is gone.
+        assert!(session.detach_view("pane", "desktop"));
+        assert_eq!(
+            session.selection_text("pane", 0, 1, 5, 1, false).unwrap(),
+            "second"
+        );
+        assert!(session.selection_snapshot("pane").is_some());
+        assert!(publishes_selection(&session, "pane"));
+        stop(&session);
+    }
+
+    /// The fenced read takes the authority before `model_operation`, as a
+    /// checked claim does, so the two complete together on one session. A
+    /// claim that resizes holds the authority while it waits for the model; a
+    /// read that took the model first would then wait for the authority while
+    /// holding the model, and neither could return.
+    #[cfg(unix)]
+    #[test]
+    fn a_fenced_read_and_a_checked_claim_on_one_session_both_complete() {
+        let session = shell_session("exec sleep 30");
+        feed_model(&session, b"first");
+        let pane = session.attach_view("pane", "desktop").unwrap();
+        let mirror = session
+            .attach_view_with_access("mirror", "phone", ViewAccess::ReadOnly)
+            .unwrap();
+
+        // Hold the model, as the frame thread does through each batch.
+        let operation = session.model_operation.lock().unwrap();
+        let claiming = Arc::clone(&session);
+        let claim = thread::spawn(move || {
+            claiming.claim_control_checked("pane", "desktop", pane, 100, 30, None)
+        });
+        // The claim resizes, so it holds the authority and waits for the model.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while session.authority.try_lock().is_ok() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            session.authority.try_lock().is_err(),
+            "the claim must hold the authority while it waits for the model"
+        );
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let reading = Arc::clone(&session);
+        let ready = Arc::clone(&barrier);
+        let read = thread::spawn(move || {
+            ready.wait();
+            reading.selection_text_for_attachment("mirror", "phone", mirror, 0, 0, 4, 0, false)
+        });
+        barrier.wait();
+        drop(operation);
+
+        // Bounded only to report a deadlock rather than hang on it.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !(claim.is_finished() && read.is_finished()) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            claim.is_finished() && read.is_finished(),
+            "a fenced read and a checked claim on one session must both complete"
+        );
+        let ControlClaim::Granted(changed) = claim.join().unwrap().unwrap() else {
+            panic!("a claim with no expected revision must be granted");
+        };
+        assert_eq!(
+            (changed.cols, changed.rows, changed.size_changed),
+            (100, 30, true)
+        );
+        assert_eq!(read.join().unwrap().unwrap(), "first");
+        stop(&session);
+    }
+
     /// The repair path exists to fix a consumer that missed a change — a
     /// rejected resize, a lagged state stream. Publishing it only to the
     /// legacy channel cannot repair the revisioned one that actually lagged.
@@ -3988,6 +4445,87 @@ mod tests {
             ),
             "the legacy frame structurally cannot say 'no controller'"
         );
+
+        session
+            .terminate(TerminationSource::ServiceShutdown)
+            .unwrap();
+    }
+
+    /// Drains every packet waiting for `packets` and counts the forced full
+    /// renders among them: the full, catalog-reset frames that an attach or a
+    /// [`Session::refresh`] publishes.
+    #[cfg(unix)]
+    fn forced_full_renders(packets: &mut broadcast::Receiver<crate::FramePacket>) -> usize {
+        let forced = ghosttea_core::frame::FULL_SNAPSHOT | ghosttea_core::frame::CATALOG_RESET;
+        let mut count = 0;
+        loop {
+            match packets.try_recv() {
+                Ok(packet) => {
+                    let flags = u16::from_le_bytes(packet[6..8].try_into().unwrap());
+                    if (flags & forced) == forced {
+                        count += 1;
+                    }
+                }
+                Err(broadcast::error::TryRecvError::Empty) => return count,
+                Err(error) => panic!("the frame hub lost packets: {error}"),
+            }
+        }
+    }
+
+    /// A host whose consumer forces its own seed attaches without a render, so
+    /// the attach costs that one forced full render and not two (RV #92). The
+    /// classic attach keeps seeding ghosttea's own clients with its snapshot.
+    #[cfg(unix)]
+    #[test]
+    fn attach_without_snapshot_publishes_nothing_and_attaches_the_view() {
+        let frames = FrameHub::new(8);
+        let session = Session::spawn(
+            SpawnOptions {
+                creation_id: None,
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+            },
+            frames.clone(),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(move |_, _| {}),
+        )
+        .unwrap();
+        // `sleep` writes nothing, so every frame counted below is a forced one.
+        let (mut packets, _) = frames.subscribe();
+        let before = frames.current_ordinal();
+
+        let epoch = session
+            .attach_view_without_snapshot("pane", "desktop", ViewAccess::ReadWrite)
+            .unwrap();
+        assert_eq!(
+            frames.current_ordinal(),
+            before,
+            "a quiet attach must publish no frame"
+        );
+        assert_eq!(forced_full_renders(&mut packets), 0);
+        assert_eq!(session.view_attachment_epoch("pane"), Some(epoch));
+        assert!(session.has_active_views());
+
+        // The consumer's own seed is the one full render this attach costs.
+        session.refresh().unwrap();
+        assert_eq!(forced_full_renders(&mut packets), 1);
+        assert_eq!(frames.current_ordinal(), before + 1);
+
+        // ghosttea's own clients keep the attach that seeds them.
+        session.attach_view("mirror", "phone").unwrap();
+        assert_eq!(forced_full_renders(&mut packets), 1);
+        assert_eq!(frames.current_ordinal(), before + 2);
 
         session
             .terminate(TerminationSource::ServiceShutdown)

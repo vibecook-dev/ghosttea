@@ -29,6 +29,9 @@ pub const GHOSTTEA_STATUS_INVALID_ARGUMENT: i32 = 1;
 pub const GHOSTTEA_STATUS_INVALID_STATE: i32 = 2;
 pub const GHOSTTEA_STATUS_INTERNAL: i32 = 3;
 pub const GHOSTTEA_STATUS_PANIC: i32 = 4;
+/// `GhostteaKeyEvent::flags`: macOS Option types the layout's characters
+/// instead of acting as Alt (Ghostty's `macos-option-as-alt = false`).
+pub const GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT: u8 = 1 << 0;
 
 const MAX_FONT_COUNT: usize = 64;
 const MAX_FONT_BYTES: usize = 64 * 1024 * 1024;
@@ -180,7 +183,9 @@ pub struct GhostteaKeyEvent {
     pub unshifted_codepoint: u32,
     pub modifiers: u16,
     pub action: u8,
-    pub reserved: u8,
+    /// `GHOSTTEA_KEY_FLAG_*` bits. Zero keeps Option acting as Alt; a bit the
+    /// ABI does not define is `GHOSTTEA_STATUS_INVALID_ARGUMENT`.
+    pub flags: u8,
 }
 
 #[repr(C)]
@@ -1580,6 +1585,11 @@ pub extern "C" fn ghosttea_terminal_encode_key(
         set_error(message);
         return status;
     }
+    if (event.flags & !GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT) != 0 {
+        set_error("key event flags carry a bit this ABI does not define");
+        return GHOSTTEA_STATUS_INVALID_ARGUMENT;
+    }
+    let option_as_alt = (event.flags & GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT) == 0;
     let code = match unsafe { view_utf8(event.code_utf8, "key code") } {
         Ok(value) => value,
         Err((status, message)) => {
@@ -1604,6 +1614,7 @@ pub extern "C" fn ghosttea_terminal_encode_key(
                 event.unshifted_codepoint,
                 event.modifiers,
                 event.action,
+                option_as_alt,
             )
             .map_err(|error| error.to_string())
     })
@@ -1948,6 +1959,59 @@ mod tests {
         assert!(update.storage.data.is_null());
         assert!(update.effects.is_null());
         assert_eq!(update.effect_count, 0);
+    }
+
+    /// The key event's last byte was `reserved` and ignored. One bit of it now
+    /// chooses the Option policy, so a bit the ABI does not define is refused
+    /// rather than read as a policy the caller never chose.
+    #[test]
+    fn key_event_flags_choose_the_option_policy_and_refuse_undefined_bits() {
+        let mut terminal = test_terminal();
+        let pointer = terminal.as_mut() as *mut GhostteaTerminalHandle;
+        // German Option+L: the layout types `@` on the L key.
+        let encode = |flags: u8| -> (i32, Vec<u8>) {
+            let code = "KeyL";
+            let text = "@";
+            let event = GhostteaKeyEvent {
+                abi_version: GHOSTTEA_ABI_VERSION,
+                struct_size: size_of::<GhostteaKeyEvent>() as u32,
+                code_utf8: GhostteaBytesView {
+                    data: code.as_ptr(),
+                    len: code.len(),
+                },
+                text_utf8: GhostteaBytesView {
+                    data: text.as_ptr(),
+                    len: text.len(),
+                },
+                unshifted_codepoint: u32::from('l'),
+                modifiers: 1 << 2,
+                action: 1,
+                flags,
+            };
+            let mut bytes = GhostteaOwnedBytes::EMPTY;
+            let status = ghosttea_terminal_encode_key(pointer, &event, &mut bytes);
+            let encoded = if bytes.data.is_null() {
+                Vec::new()
+            } else {
+                unsafe { slice::from_raw_parts(bytes.data, bytes.len) }.to_vec()
+            };
+            ghosttea_owned_bytes_free(bytes);
+            (status, encoded)
+        };
+        // No flag: Option acts as Alt, so the key is Alt+L.
+        assert_eq!(encode(0), (GHOSTTEA_STATUS_OK, b"\x1bl".to_vec()));
+        // The flag: Option types the layout's `@`.
+        assert_eq!(
+            encode(GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT),
+            (GHOSTTEA_STATUS_OK, b"@".to_vec())
+        );
+        for flags in [1 << 1, 1 << 7, u8::MAX] {
+            assert_eq!(
+                encode(flags),
+                (GHOSTTEA_STATUS_INVALID_ARGUMENT, Vec::new()),
+                "flags {flags:#010b}"
+            );
+        }
     }
 
     #[test]
@@ -2382,7 +2446,7 @@ mod tests {
                         unshifted_codepoint: random as u32,
                         modifiers: random as u16,
                         action: random.rotate_left(7) as u8,
-                        reserved: 0,
+                        flags: random.rotate_left(29) as u8 & GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT,
                     };
                     let mut bytes = GhostteaOwnedBytes::EMPTY;
                     let status = ghosttea_terminal_encode_key(terminal, &event, &mut bytes);

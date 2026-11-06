@@ -226,3 +226,120 @@ fn ffi_matches_direct_model_and_survives_repeated_lifecycles() {
         ghosttea_runtime_destroy(runtime);
     }
 }
+
+/// The C ABI's Option flag reaches the encoder the model path uses, and the
+/// two agree byte for byte under either policy.
+///
+/// German Option+L: the layout types `@` and the key's own character is `l`.
+/// With no flag Option acts as Alt and the key is Alt+L, `ESC l`; with
+/// `GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT` Option types the `@`. The bytes are
+/// Ghostty's at the pinned 83fb956, src/input/key_encode.zig: ESC before
+/// one-byte text (:577-581), and the text as it stands once no binding
+/// modifier is left (:560, :549).
+#[test]
+#[ignore = "requires GHOSTTEA_FONT_DIR; run through the Phase 3 parity script"]
+fn ffi_key_flags_match_the_model_option_policy() {
+    let directory = env::var("GHOSTTEA_FONT_DIR").expect("GHOSTTEA_FONT_DIR is required");
+    let regular = bytes(Path::new(&directory), "JetBrainsMonoNerdFont-Regular.ttf");
+
+    let direct_fonts = FontResources::new(FontResource::new("regular", regular.clone()));
+    let direct_runtime = std::sync::Arc::new(TerminalRuntime::new(
+        TextEngine::from_fonts(direct_fonts, TextMetrics::default(), RASTER_SCALE).unwrap(),
+    ));
+    let mut direct = TerminalModel::new(
+        direct_runtime,
+        TerminalModelOptions {
+            session_handle: 42,
+            session_epoch: 7,
+            layout_epoch: 3,
+            cols: 80,
+            rows: 24,
+            scrollback_bytes: 1_000_000,
+        },
+    )
+    .unwrap();
+    let alt = direct
+        .encode_key("KeyL", "@", 'l'.into(), 1 << 2, 1, true)
+        .unwrap();
+    let typed = direct
+        .encode_key("KeyL", "@", 'l'.into(), 1 << 2, 1, false)
+        .unwrap();
+    assert_eq!(alt, b"\x1bl", "no flag: Option acts as Alt");
+    assert_eq!(typed, b"@", "the flag: Option types the layout's text");
+
+    let ffi_font = GhostteaFont {
+        data: GhostteaBytesView {
+            data: regular.as_ptr(),
+            len: regular.len(),
+        },
+        face_index: 0,
+        role: 0,
+    };
+    let runtime_config = GhostteaRuntimeConfig {
+        abi_version: GHOSTTEA_ABI_VERSION,
+        struct_size: size_of::<GhostteaRuntimeConfig>() as u32,
+        fonts: &ffi_font,
+        font_count: 1,
+        font_size_px: 13.0,
+        cell_width_px: 7.83,
+        line_height_px: 19.0,
+        baseline_px: 14.0,
+        raster_scale: 2.0,
+    };
+    let mut runtime = ptr::null_mut();
+    assert_eq!(
+        ghosttea_runtime_create(&runtime_config, &mut runtime),
+        GHOSTTEA_STATUS_OK
+    );
+    let terminal_config = GhostteaTerminalConfig {
+        abi_version: GHOSTTEA_ABI_VERSION,
+        struct_size: size_of::<GhostteaTerminalConfig>() as u32,
+        session_handle: 42,
+        session_epoch: 7,
+        layout_epoch: 3,
+        scrollback_bytes: 1_000_000,
+        cols: 80,
+        rows: 24,
+        reserved: 0,
+    };
+    let mut terminal = ptr::null_mut();
+    assert_eq!(
+        ghosttea_terminal_create(runtime, &terminal_config, &mut terminal),
+        GHOSTTEA_STATUS_OK
+    );
+    let ffi = |flags: u8| {
+        let event = GhostteaKeyEvent {
+            abi_version: GHOSTTEA_ABI_VERSION,
+            struct_size: size_of::<GhostteaKeyEvent>() as u32,
+            code_utf8: GhostteaBytesView {
+                data: "KeyL".as_ptr(),
+                len: 4,
+            },
+            text_utf8: GhostteaBytesView {
+                data: "@".as_ptr(),
+                len: 1,
+            },
+            unshifted_codepoint: u32::from('l'),
+            modifiers: 1 << 2,
+            action: 1,
+            flags,
+        };
+        let mut bytes = GhostteaOwnedBytes {
+            data: ptr::null_mut(),
+            len: 0,
+            capacity: 0,
+        };
+        assert_eq!(
+            ghosttea_terminal_encode_key(terminal, &event, &mut bytes),
+            GHOSTTEA_STATUS_OK
+        );
+        let encoded = unsafe { slice::from_raw_parts(bytes.data, bytes.len) }.to_vec();
+        ghosttea_owned_bytes_free(bytes);
+        encoded
+    };
+    assert_eq!(ffi(0), alt);
+    assert_eq!(ffi(GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT), typed);
+
+    ghosttea_terminal_destroy(terminal);
+    ghosttea_runtime_destroy(runtime);
+}
