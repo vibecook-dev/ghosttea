@@ -3412,6 +3412,103 @@ mod tests {
             .unwrap();
     }
 
+    /// Enqueue until the session refuses, at most 4,096 times, and return the
+    /// refusal.
+    #[cfg(unix)]
+    fn first_refusal(mut enqueue: impl FnMut() -> Result<()>) -> anyhow::Error {
+        for _ in 0..4096 {
+            if let Err(refusal) = enqueue() {
+                return refusal;
+            }
+        }
+        panic!("the input queue never filled behind a write the program never reads");
+    }
+
+    /// `refusal` is G17's typed carrier for the input stage, with `code` and
+    /// the message this refusal had before it was typed.
+    #[cfg(unix)]
+    fn assert_input_refusal(refusal: &anyhow::Error, code: &str, message: &str) {
+        let failure = refusal
+            .downcast_ref::<ControlFailure>()
+            .unwrap_or_else(|| panic!("an untyped input refusal: {refusal:#}"));
+        assert_eq!(
+            (failure.stage, failure.code, failure.os_error),
+            ("input", Some(code), None)
+        );
+        assert_eq!(refusal.to_string(), message);
+    }
+
+    /// Input past a full queue is refused with G17's typed carrier on both
+    /// enqueue paths, automation and a view's own input, and keeps its
+    /// message. The child never reads, so the paste blocks the input actor in
+    /// its write and nothing queued behind it drains: the first refusal on
+    /// each path is the full queue, however soon the actor took the paste.
+    #[cfg(unix)]
+    #[test]
+    fn a_full_input_queue_refuses_with_a_typed_code() {
+        let session = shell_session("stty -echo; exec sleep 30");
+        let epoch = session.attach_view("pane", "desktop").unwrap();
+        // Lines, as in the blocked-paste test above: a line with no end never
+        // fills a macOS PTY.
+        session
+            .automation_input(
+                0,
+                AutomationInputOperation::Paste {
+                    text: format!("{}\n", "x".repeat(1023)).repeat(1024),
+                    submit: false,
+                },
+            )
+            .unwrap();
+        let automation = first_refusal(|| {
+            let text = AutomationInputOperation::Text { text: "x".into() };
+            session.automation_input(0, text).map(drop)
+        });
+        let mut sequence = 0;
+        let human = first_refusal(|| {
+            sequence += 1;
+            session.send_text("pane", "desktop", epoch, sequence, "x".into())
+        });
+        stop(&session);
+        for refusal in [&automation, &human] {
+            assert_input_refusal(
+                refusal,
+                "input-queue-full",
+                "terminal input queue unavailable: sending on a full channel",
+            );
+        }
+    }
+
+    /// The input actor ends with its session, and input after it is refused as
+    /// closed with the same typed carrier.
+    #[cfg(unix)]
+    #[test]
+    fn a_closed_input_queue_refuses_with_a_typed_code() {
+        let session = shell_session("exec sleep 30");
+        stop(&session);
+        // The actor drops the queue's receiver once it takes the Shutdown the
+        // reader sends at end of file. A probe queues at most one operation,
+        // so one every 10 ms for 5 s stays far inside the queue's 1,024 slots.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(
+            session.input_tx.try_send(InputOperation::Shutdown),
+            Err(mpsc::TrySendError::Disconnected(_))
+        ) {
+            assert!(
+                Instant::now() < deadline,
+                "the input actor outlived its session"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let refusal = session
+            .automation_input(0, AutomationInputOperation::Interrupt)
+            .expect_err("a closed input queue must refuse");
+        assert_input_refusal(
+            &refusal,
+            "input-closed",
+            "terminal input queue unavailable: sending on a closed channel",
+        );
+    }
+
     /// The summary records everything the terminal reports, but a reader of
     /// the working directory hears only about the directory and the title: a
     /// resize and an identical repeat announce nothing.

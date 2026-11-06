@@ -4544,6 +4544,69 @@ mod protocol_tests {
         assert!(response["osError"].is_number());
     }
 
+    /// Input past a full queue is refused on the wire with the typed fields
+    /// that the envelope's one `ControlFailure` downcast carries, and keeps
+    /// its message. The child never reads, so the paste blocks the input actor
+    /// in its write and nothing queued behind it drains: the first refused
+    /// request is the full queue, however soon the actor took the paste.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn automation_input_past_a_full_queue_is_refused_with_typed_fields() {
+        let service = start_test_service("full-input-queue");
+        let access = tokio::time::timeout(Duration::from_secs(10), service.handle.sessions())
+            .await
+            .expect("session access did not become ready")
+            .unwrap();
+        let mut options = long_running_spawn_options();
+        options.args = vec!["-c".to_owned(), "stty -echo; exec sleep 30".to_owned()];
+        let session = access.spawn(options).await.unwrap();
+        // Lines, as in session.rs's blocked-paste test: a line with no end
+        // never fills a macOS PTY.
+        session
+            .automation_input(
+                0,
+                AutomationInputOperation::Paste {
+                    text: format!("{}\n", "x".repeat(1023)).repeat(1024),
+                    submit: false,
+                },
+            )
+            .unwrap();
+        let mut client = connect_control(&service).await;
+        let mut refused = None;
+        for request_id in 1..=4096 {
+            let response = request(
+                &mut client,
+                json!({
+                    "requestId": request_id,
+                    "type": "automation-input",
+                    "sessionId": session.id(),
+                    "expectedHumanInputEpoch": 0,
+                    "operation": { "kind": "text", "text": "x" },
+                }),
+            )
+            .await;
+            if response["type"] == "error" {
+                refused = Some(response);
+                break;
+            }
+            assert_eq!(response["accepted"], json!(true));
+        }
+        let refused = refused.expect("the input queue never filled behind a blocked write");
+        assert_eq!(
+            refused["message"],
+            "terminal input queue unavailable: sending on a full channel"
+        );
+        assert_eq!(refused["stage"], "input");
+        assert_eq!(refused["code"], "input-queue-full");
+        assert!(refused.get("osError").is_none());
+        service
+            .handle
+            .shutdown(Duration::from_secs(5))
+            .await
+            .unwrap();
+        service.serving.await.unwrap().unwrap();
+    }
+
     #[tokio::test]
     async fn session_summary_echoes_effective_scrollback_cap() {
         let service = start_test_service("scrollback-summary");
