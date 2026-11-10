@@ -17,43 +17,57 @@ static EgCharsetState eg_charset_state(GhosttyTerminalCharsetState source) {
   return result;
 }
 
-static GhosttyFormatterTerminalOptions eg_recovery_options(void) {
-  GhosttyFormatterTerminalOptions options =
-      GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalOptions);
-  options.emit = GHOSTTY_FORMATTER_FORMAT_VT;
-  options.unwrap = false;
-  options.trim = false;
-  options.extra = GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalExtra);
-  options.extra.palette = true;
-  options.extra.modes = true;
-  options.extra.scrolling_region = true;
-  options.extra.tabstops = true;
-  options.extra.pwd = true;
-  options.extra.keyboard = true;
-  options.extra.screen = GHOSTTY_INIT_SIZED(GhosttyFormatterScreenExtra);
-  options.extra.screen.cursor = true;
-  options.extra.screen.style = true;
-  options.extra.screen.hyperlink = true;
-  options.extra.screen.protection = true;
-  options.extra.screen.kitty_keyboard = true;
-  options.extra.screen.charsets = true;
-  return options;
+// Every piece of terminal state a recovery stream restores. The extras are
+// named one by one rather than taken as GHOSTTY_FORMATTER_EXTRAS_ALL, so an
+// extra that a later libghostty adds does not join the stream unreviewed.
+static const GhosttyFormatterExtras eg_recovery_extras =
+    GHOSTTY_FORMATTER_EXTRA_PALETTE |
+    GHOSTTY_FORMATTER_EXTRA_MODES |
+    GHOSTTY_FORMATTER_EXTRA_SCROLLING_REGION |
+    GHOSTTY_FORMATTER_EXTRA_TABSTOPS |
+    GHOSTTY_FORMATTER_EXTRA_PWD |
+    GHOSTTY_FORMATTER_EXTRA_KEYBOARD |
+    GHOSTTY_FORMATTER_EXTRA_CURSOR |
+    GHOSTTY_FORMATTER_EXTRA_STYLE |
+    GHOSTTY_FORMATTER_EXTRA_HYPERLINK |
+    GHOSTTY_FORMATTER_EXTRA_PROTECTION |
+    GHOSTTY_FORMATTER_EXTRA_KITTY_KEYBOARD |
+    GHOSTTY_FORMATTER_EXTRA_CHARSETS;
+
+size_t eg_format_recovery(EgTerminal* state,
+                          bool state_only,
+                          uint8_t* out,
+                          size_t cap) {
+  if (state == NULL || (out == NULL && cap != 0)) return SIZE_MAX;
+  GhosttyFormatter formatter = NULL;
+  GhosttyResult result = state_only
+      ? ghostty_formatter_terminal_state_new(NULL, &formatter, state->terminal)
+      : ghostty_formatter_terminal_new(NULL, &formatter, state->terminal);
+  if (result != GHOSTTY_SUCCESS) return SIZE_MAX;
+
+  // VT output that keeps trailing blanks, so the stream fills the same rows
+  // as the screen. Lines stay wrapped as they are, which is the default.
+  const GhosttyFormatterFormat emit = GHOSTTY_FORMATTER_FORMAT_VT;
+  const bool trim = false;
+  result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+  if (result == GHOSTTY_SUCCESS)
+    result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &trim);
+  if (result == GHOSTTY_SUCCESS)
+    result = ghostty_formatter_set(
+        formatter, GHOSTTY_FORMATTER_OPT_EXTRAS, &eg_recovery_extras);
+  size_t written = 0;
+  if (result == GHOSTTY_SUCCESS)
+    result = ghostty_formatter_format_buf(formatter, out, cap, &written);
+  ghostty_formatter_free(formatter);
+  if (result != GHOSTTY_SUCCESS && result != GHOSTTY_OUT_OF_SPACE)
+    return SIZE_MAX;
+  return written;
 }
 
 size_t eg_terminal_recovery_state(EgTerminal* state,
                                   uint8_t* out,
                                   size_t cap) {
-  if (state == NULL || (out == NULL && cap != 0)) return SIZE_MAX;
-  GhosttyFormatter formatter = NULL;
-  GhosttyResult result = ghostty_formatter_terminal_state_new(
-      NULL, &formatter, state->terminal, eg_recovery_options());
-  if (result != GHOSTTY_SUCCESS) return SIZE_MAX;
-  size_t written = 0;
-  result = ghostty_formatter_format_buf(formatter, out, cap, &written);
-  ghostty_formatter_free(formatter);
-  if (result != GHOSTTY_SUCCESS && result != GHOSTTY_OUT_OF_SPACE)
-    return SIZE_MAX;
-  return written;
+  return eg_format_recovery(state, true, out, cap);
 }
 
 int eg_terminal_saved_cursor(EgTerminal* state,

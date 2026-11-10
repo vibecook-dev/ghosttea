@@ -1,12 +1,12 @@
 diff --git a/pkg/highway/build.zig b/pkg/highway/build.zig
-index 18dbf92c2af0ed5e31c11532601be9863585ddf7..58d85cab3c009f6fb36d20e769b0e6decefad73d 100644
+index cdf8d7ecb5ebeab54c8edf0605612b9c7f5bf919..31e865a046220c4276be36e9d2c95904a23060c3 100644
 --- a/pkg/highway/build.zig
 +++ b/pkg/highway/build.zig
 @@ -1,0 +2 @@ const std = @import("std");
 +const MsvcRuntime = enum { static, dll };
 @@ -5,0 +7 @@ pub fn build(b: *std.Build) !void {
 +    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
-@@ -115,0 +118,27 @@ pub fn build(b: *std.Build) !void {
+@@ -123,0 +126,27 @@ pub fn build(b: *std.Build) !void {
 +    if (target.result.abi == .msvc) {
 +        try flags.append(b.allocator, if (msvc_runtime == .dll) "-fms-runtime-lib=dll" else "-fms-runtime-lib=static");
 +    }
@@ -35,16 +35,16 @@ index 18dbf92c2af0ed5e31c11532601be9863585ddf7..58d85cab3c009f6fb36d20e769b0e6de
 +    }
 +
 diff --git a/pkg/simdutf/build.zig b/pkg/simdutf/build.zig
-index 3efc0826344c30e406b6801f669852fcec500fab..e895df610df3dfb7fa99c34c1f50489d5e273bd7 100644
+index 560b076a38d6d8ef86367454d1003271b8f6711e..73e1d310fcd9ced5a4ea93a3537a0454aaf0f060 100644
 --- a/pkg/simdutf/build.zig
 +++ b/pkg/simdutf/build.zig
 @@ -1,0 +2 @@ const std = @import("std");
 +const MsvcRuntime = enum { static, dll };
 @@ -6,0 +8 @@ pub fn build(b: *std.Build) !void {
 +    const msvc_runtime = b.option(MsvcRuntime, "msvc-runtime", "The MSVC C runtime to compile for: static (/MT) or dll (/MD)") orelse .static;
-@@ -71,0 +74 @@ pub fn build(b: *std.Build) !void {
+@@ -74,0 +77 @@ pub fn build(b: *std.Build) !void {
 +        try flags.append(b.allocator, if (msvc_runtime == .dll) "-fms-runtime-lib=dll" else "-fms-runtime-lib=static");
-@@ -81,0 +85,23 @@ pub fn build(b: *std.Build) !void {
+@@ -84,0 +88,23 @@ pub fn build(b: *std.Build) !void {
 +    // Upstream disables autolink on the SIMD objects. Compile a metadata-only
 +    // witness with the SAME flags, enabling autolink only for its pragma. It
 +    // derives the stamp from compiler macros, not the requested option.
@@ -69,19 +69,19 @@ index 3efc0826344c30e406b6801f669852fcec500fab..e895df610df3dfb7fa99c34c1f50489d
 +    }
 +
 diff --git a/src/build/Config.zig b/src/build/Config.zig
-index 24157293b5cb349d519b06f09616c99edd6adc20..16d8238edc0dfecfcd3a1c07b4e3365660d45750 100644
+index 5693bab38f74d5e9fcd8a2f378a8d53bde61b9ee..db870c675602bff6c863d974c0f7479b7cc3bdc6 100644
 --- a/src/build/Config.zig
 +++ b/src/build/Config.zig
-@@ -50,0 +51 @@ strip: bool = false,
+@@ -54,0 +55 @@ strip_lib_vt: bool = false,
 +msvc_runtime: MsvcRuntime = .static,
-@@ -433,0 +435,6 @@ pub fn init(b: *std.Build, appVersion: []const u8, libVersion: []const u8) !Conf
+@@ -464,0 +466,6 @@ pub fn init(b: *std.Build, versions: Versions) !Config {
 +    config.msvc_runtime = b.option(
 +        MsvcRuntime,
 +        "msvc-runtime",
 +        "The MSVC C runtime that C and C++ objects are compiled for: static (/MT) or dll (/MD). Only msvc targets read it.",
 +    ) orelse .static;
 +
-@@ -877,0 +885,16 @@ pub const ExeEntrypoint = enum {
+@@ -981,0 +989,16 @@ pub const ExeEntrypoint = enum {
 +/// The MSVC C runtime that C and C++ objects are compiled for. Every
 +/// object in one link must agree: Rust links `dll` (/MD) unless its
 +/// target enables `crt-static`.
@@ -99,25 +99,25 @@ index 24157293b5cb349d519b06f09616c99edd6adc20..16d8238edc0dfecfcd3a1c07b4e33656
 +};
 +
 diff --git a/src/build/GhosttyZig.zig b/src/build/GhosttyZig.zig
-index 9d987240bf8d09e5497487f71affc577191943ba..53b5c250fc439d9accc31b4de3a2663a2572972c 100644
+index a5f60614abcaa97ba3a59669f1b2247173ffd9fe..8d1579655ef5a724952e58aa0e5265711d918a30 100644
 --- a/src/build/GhosttyZig.zig
 +++ b/src/build/GhosttyZig.zig
-@@ -158 +158 @@ fn initVt(
+@@ -201 +201 @@ fn initVt(
 -        try SharedDeps.addSimd(b, vt, simd_libs);
 +        try SharedDeps.addSimd(b, vt, simd_libs, cfg.msvc_runtime);
 diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
-index 8f4e23954211c1517f0ae96143326cf74ba84937..e78966ec2b14b696d930f056768bacd32aff17b5 100644
+index 41dccb8c798d2aa1ca2d393806236d2f35db97cc..462cc79dd2695556ff5dc82b807f0a47a55dc227 100644
 --- a/src/build/SharedDeps.zig
 +++ b/src/build/SharedDeps.zig
-@@ -431,0 +432 @@ pub fn add(
+@@ -439,0 +440 @@ pub fn add(
 +        self.config.msvc_runtime,
-@@ -883,0 +885 @@ pub fn addSimd(
+@@ -891,0 +893 @@ pub fn addSimd(
 +    msvc_runtime: Config.MsvcRuntime,
-@@ -896,0 +899 @@ pub fn addSimd(
+@@ -904,0 +907 @@ pub fn addSimd(
 +            .@"msvc-runtime" = msvc_runtime,
-@@ -912,0 +916 @@ pub fn addSimd(
+@@ -920,0 +924 @@ pub fn addSimd(
 +            .@"msvc-runtime" = msvc_runtime,
-@@ -983,0 +988,25 @@ pub fn addSimd(
+@@ -997,0 +1002,25 @@ pub fn addSimd(
 +        try flags.appendSlice(b.allocator, msvc_runtime.cFlags(target.result));
 +
 +        // Upstream disables autolink on the SIMD objects. Compile a metadata-only

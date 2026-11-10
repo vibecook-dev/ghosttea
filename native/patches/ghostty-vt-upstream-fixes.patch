@@ -1,0 +1,326 @@
+diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
+index f46d75b684a2496502e34f75003ea2db94089ea1..2c7e95c18a1db90721285109c73fe2545d219f6e 100644
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -1333,0 +1334 @@ pub fn resize(self: *PageList, opts: Resize) Allocator.Error!void {
++            const old_active_top = self.total_rows - self.rows;
+@@ -1339 +1340,12 @@ pub fn resize(self: *PageList, opts: Resize) Allocator.Error!void {
+-            try self.resizeCols(cols, opts);
++
++            // Changing the row count doesn't move any content, only the top of
++            // the active area (e.g. when pulling down scrollback), so the
++            // cursor's row in the active area moves by the opposite amount.
++            var cols_opts = opts;
++            if (cols_opts.cursor) |*c| {
++                const screen_y = old_active_top + c.y;
++                const new_active_top = self.total_rows - self.rows;
++                if (screen_y >= new_active_top) c.y = @intCast(screen_y - new_active_top);
++            }
++
++            try self.resizeCols(cols, cols_opts);
+@@ -3072,0 +3085 @@ fn resizeWithoutReflowGrowCols(
++        const prev_start = prev_page.size.rows;
+@@ -3074 +3087 @@ fn resizeWithoutReflowGrowCols(
+-        const dst_rows = prev_page.rows.ptr(prev_page.memory)[prev_page.size.rows..];
++        const dst_rows = prev_page.rows.ptr(prev_page.memory)[prev_start..];
+@@ -3077 +3089,0 @@ fn resizeWithoutReflowGrowCols(
+-            copied += 1;
+@@ -3083,2 +3095,5 @@ fn resizeWithoutReflowGrowCols(
+-                // If an error happens, we undo our row copy and break out
+-                // into creating a new page.
++                // If an error happens, we undo this row's partial copy
++                // and stop. The rows copied so far stay in prev and the
++                // rest go into new pages below. The retired row must be
++                // left in the default state (see resetRow).
++                prev_page.resetRow(dst_row);
+@@ -3086,2 +3101 @@ fn resizeWithoutReflowGrowCols(
+-                copied -= 1;
+-                break :prev;
++                break;
+@@ -3088,0 +3103 @@ fn resizeWithoutReflowGrowCols(
++            copied += 1;
+@@ -3091 +3106 @@ fn resizeWithoutReflowGrowCols(
+-        assert(copied == len);
++        assert(copied <= len);
+@@ -3094 +3109,4 @@ fn resizeWithoutReflowGrowCols(
+-        // Remap any tracked pins that pointed to rows we just copied to prev.
++        // Remap any tracked pins that pointed to rows we just copied to
++        // prev. This must also run when the copy stopped early, since the
++        // loop below only remaps the rows it copies and the source page
++        // is destroyed at the end.
+@@ -3097 +3115 @@ fn resizeWithoutReflowGrowCols(
+-            if (p.node != chunk.node or p.y >= len) continue;
++            if (p.node != chunk.node or p.y >= copied) continue;
+@@ -3099 +3117 @@ fn resizeWithoutReflowGrowCols(
+-            p.y += prev_page.size.rows - len;
++            p.y += prev_start;
+@@ -20941,0 +20960,101 @@ test "PageList resize (no reflow) more cols remaps pins in backfill path" {
++test "PageList resize (no reflow) more cols remaps viewport pin when backfill stops early" {
++    // Regression test: the backfill in resizeWithoutReflowGrowCols stops
++    // at the first row that doesn't fit in the previous page (here, its
++    // graphemes exceed that page's capacity). The rows copied before it
++    // must still have their tracked pins remapped, or a viewport scrolled
++    // onto one of them is left on the destroyed page.
++    const testing = std.testing;
++    const alloc = testing.allocator;
++
++    const cols: size.CellCountInt = 5;
++    const new_cols: size.CellCountInt = cols + 1;
++    const new_cap = try std_capacity.adjust(.{ .cols = new_cols });
++
++    var s = try init(alloc, .{ .cols = cols, .rows = 10 });
++    defer s.deinit();
++
++    // Three pages with the active area entirely in the last one.
++    while (s.totalPages() < 3) _ = try s.grow();
++    for (0..s.rows) |_| _ = try s.grow();
++    try testing.expectEqual(3, s.totalPages());
++
++    // Leave the first page one row longer than a page at the new width
++    // holds, so its copy ends in a one-row page with spare capacity that
++    // the second page backfills.
++    {
++        const first = s.pages.first.?;
++        try testing.expect(first.rows() > new_cap.rows + 1);
++        s.eraseHistory(.{ .history = .{
++            .y = first.rows() - (new_cap.rows + 1) - 1,
++        } });
++        try testing.expectEqual(first, s.pages.first.?);
++        try testing.expectEqual(new_cap.rows + 1, first.rows());
++    }
++
++    // Give the second page more grapheme capacity than the backfill
++    // target has and fill its row 1 past the target's capacity. Row 0
++    // is plain, so the backfill copies it and then stops at row 1.
++    const cps: [64]u21 = @splat(0x0301);
++    const second = second: {
++        var node = s.pages.first.?.next.?;
++        for (0..3) |_| node = try s.increaseCapacity(node, .grapheme_bytes);
++        break :second node;
++    };
++    {
++        const page = second.page();
++        const rac = page.getRowAndCell(0, 0);
++        rac.cell.* = .{
++            .content_tag = .codepoint,
++            .content = .{ .codepoint = .{ .data = 'X' } },
++        };
++
++        for (0..cols) |x| {
++            const g = page.getRowAndCell(x, 1);
++            g.cell.* = .{
++                .content_tag = .codepoint,
++                .content = .{ .codepoint = .{ .data = 'G' } },
++            };
++            try page.setGraphemes(g.row, g.cell, &cps);
++        }
++    }
++
++    // Scroll the viewport to the row the backfill copies.
++    s.scroll(.{ .pin = .{ .node = second, .y = 0 } });
++    try testing.expect(s.viewport == .pin);
++    const offset = s.scrollbar().offset;
++
++    try s.resize(.{ .cols = new_cols, .reflow = false });
++
++    // The viewport is still on the same row, in a live page.
++    try testing.expect(s.viewport == .pin);
++    try testing.expectEqual(offset, s.scrollbar().offset);
++    {
++        const cell = s.viewport_pin.rowAndCell().cell;
++        try testing.expectEqual('X', cell.content.codepoint.data);
++    }
++
++    // The backfilled page ends at the viewport row. The row that didn't
++    // fit was retired from it in the default state, without leaking the
++    // graphemes it partially copied.
++    {
++        const node = s.viewport_pin.node;
++        const page = node.page();
++        try testing.expectEqual(s.viewport_pin.y + 1, node.rows());
++        const retired = &page.rows.ptr(page.memory)[node.rows()];
++        try testing.expect(!retired.managedMemory());
++        try testing.expectEqual(0, page.graphemeCount());
++    }
++
++    // The row that didn't fit keeps its graphemes in the next page.
++    {
++        const p = s.viewport_pin.down(1).?;
++        try testing.expect(p.node != s.viewport_pin.node);
++        const rac = p.rowAndCell();
++        try testing.expectEqual('G', rac.cell.content.codepoint.data);
++        try testing.expectEqual(
++            cps.len,
++            p.node.page().lookupGrapheme(rac.cell).?.len,
++        );
++    }
++}
++
+diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
+index ba4604fab15add6cdd6ebb81e272a3e1fa6ccf77..ee2689f7c587424d20ceb9b6a10d7b20d7162909 100644
+--- a/src/terminal/Screen.zig
++++ b/src/terminal/Screen.zig
+@@ -9031,0 +9032,28 @@ test "Screen: resize more rows, less cols with reflow with scrollback" {
++test "Screen: resize more rows, less cols pulls scrollback like separate resizes" {
++    const testing = std.testing;
++    const alloc = testing.allocator;
++    const io = testing.io;
++
++    var s = try init(io, alloc, .{ .cols = 5, .rows = 2, .max_scrollback_bytes = null });
++    defer s.deinit();
++    try s.testWriteString("1A\n2B\n3C\n");
++    {
++        const contents = try s.dumpStringAlloc(alloc, .{ .viewport = .{} });
++        defer alloc.free(contents);
++        try testing.expectEqualStrings("3C", contents);
++    }
++    try testing.expectEqual(@as(size.CellCountInt, 1), s.cursor.y);
++
++    // Growing the rows pulls the scrollback down because the cursor is at
++    // the bottom, and shrinking the cols in the same resize must not push
++    // it back.
++    try s.resize(.{ .cols = 4, .rows = 4 });
++
++    {
++        const contents = try s.dumpStringAlloc(alloc, .{ .viewport = .{} });
++        defer alloc.free(contents);
++        try testing.expectEqualStrings("1A\n2B\n3C", contents);
++    }
++    try testing.expectEqual(@as(size.CellCountInt, 3), s.cursor.y);
++}
++
+diff --git a/src/terminal/lib.zig b/src/terminal/lib.zig
+index a58bbe254ab74b52e7dc59bf15972732229ddf7d..372c3bc9b82a7b8b2644a77cb1422cc97340f95c 100644
+--- a/src/terminal/lib.zig
++++ b/src/terminal/lib.zig
+@@ -95 +95,33 @@ pub fn enumFromC(comptime E: type, value: CEnum(E)) ?E {
+-    return std.enums.fromInt(E, @backingInt(value));
++    const info = @typeInfo(E).@"enum";
++    if (comptime info.mode == .nonexhaustive) return @fromBackingInt(@backingInt(value));
++    if (comptime info.field_values.len == 0) return null;
++
++    const min: i128, const max: i128 = comptime range: {
++        var min: i128 = info.field_values[0];
++        var max: i128 = min;
++        for (info.field_values) |v| {
++            min = @min(min, v);
++            max = @max(max, v);
++        }
++        break :range .{ min, max };
++    };
++
++    const int = @backingInt(value);
++    if (int < min or int > max) return null;
++
++    // Enum values are unique, so the values are contiguous exactly when
++    // there are as many of them as there are integers in the range.
++    const span = max - min + 1;
++    if (comptime span == info.field_values.len) return @fromBackingInt(int);
++
++    // A sparse enum with a wide range would need a huge table. None of
++    // the C API enums are like this today.
++    if (comptime span > 1024) return std.enums.fromInt(E, int);
++
++    const valid: [span]bool = comptime valid: {
++        var result: [span]bool = @splat(false);
++        for (info.field_values) |v| result[v - min] = true;
++        break :valid result;
++    };
++    if (!valid[@intCast(int - min)]) return null;
++    return @fromBackingInt(int);
+@@ -112,0 +145,39 @@ pub fn enumFromPtr(comptime E: type, ptr: *const E) ?E {
++
++test "enumFromC matches std.enums.fromInt" {
++    const testing = std.testing;
++
++    const Contiguous = enum(c_int) { a, b, c, d };
++    const Negative = enum(c_int) { a = -2, b = -1, c = 0, d = 1 };
++    const Sparse = enum(c_int) { a = 1, b = 3, c = 4, d = 10 };
++    const Wide = enum(c_int) { a = -3, b = 5000 };
++    const Single = enum(c_int) { a = 7 };
++    const Byte = enum(u8) { a = 0, b = 254, c = 255 };
++
++    inline for (.{ Contiguous, Negative, Sparse, Wide, Single, Byte }) |E| {
++        const Tag = @typeInfo(E).@"enum".tag_type;
++        const values = std.enums.values(E);
++        var min: i64 = @backingInt(values[0]);
++        var max: i64 = min;
++        for (values) |v| {
++            min = @min(min, @backingInt(v));
++            max = @max(max, @backingInt(v));
++        }
++
++        // Every integer in the range, two past each end, and the ends of
++        // the backing type.
++        var i: i64 = min - 2;
++        while (i <= max + 2) : (i += 1) {
++            const int = std.math.cast(Tag, i) orelse continue;
++            try testing.expectEqual(
++                std.enums.fromInt(E, int),
++                enumFromC(E, @fromBackingInt(int)),
++            );
++        }
++        for ([_]Tag{ std.math.minInt(Tag), std.math.maxInt(Tag) }) |int| {
++            try testing.expectEqual(
++                std.enums.fromInt(E, int),
++                enumFromC(E, @fromBackingInt(int)),
++            );
++        }
++    }
++}
+diff --git a/src/terminal/render.zig b/src/terminal/render.zig
+index b76f0d3bb25ada77346b39eddea8b63d1fe5db7d..546ad8a68fd475bb379fe05255dd1ae915b3a6c5 100644
+--- a/src/terminal/render.zig
++++ b/src/terminal/render.zig
+@@ -1254 +1253,0 @@ pub const RenderState = struct {
+-                        page_row.dirty = false;
+@@ -1256,0 +1256 @@ pub const RenderState = struct {
++                        page_row.dirty = false;
+@@ -1262 +1261,0 @@ pub const RenderState = struct {
+-                    page_row.dirty = false;
+@@ -1264,0 +1264 @@ pub const RenderState = struct {
++                    page_row.dirty = false;
+@@ -1269,0 +1270,7 @@ pub const RenderState = struct {
++                    builder.row(p, page_row, y + i) catch |err| {
++                        // A failed row and every row not yet rebuilt must stay
++                        // dirty so the next update cannot skip them and expose
++                        // partially initialized managed cell data.
++                        for (page_rows[i..]) |*remaining| remaining.dirty = true;
++                        return err;
++                    };
+@@ -1271 +1277,0 @@ pub const RenderState = struct {
+-                    try builder.row(p, page_row, y + i);
+@@ -2689 +2695,2 @@ const RowBuilder = struct {
+-        // Copy our raw row data
++        // Copy our raw row data. The terminal row stays dirty until the
++        // build succeeds, but the render-state snapshot is always rebuilt.
+@@ -2690,0 +2698 @@ const RowBuilder = struct {
++        b.raws[vy].dirty = false;
+@@ -6045,0 +6054,27 @@ test "placements_generation: changes on a region scroll that moves a fixed place
++
++test "render update retries rows after OOM" {
++    const testing = std.testing;
++    const alloc = testing.allocator;
++    const io = testing.io;
++
++    var t = try Terminal.init(io, alloc, .{ .cols = 2, .rows = 1 });
++    defer t.deinit(alloc);
++
++    var stream = t.vtStream();
++    defer stream.deinit();
++    stream.nextSlice("x");
++
++    var state: RenderState = .empty;
++    defer state.deinit(alloc);
++    try state.update(alloc, &t);
++    state.clean();
++    stream.nextSlice("e\xcc\x81");
++
++    // The next render-state allocation is the grapheme copy.
++    var failing = testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
++    try testing.expectError(error.OutOfMemory, state.update(failing.allocator(), &t));
++    try state.update(alloc, &t);
++
++    const cells = state.row_data.items(.cells)[0].slice();
++    try testing.expectEqualSlices(u21, &.{0x301}, cells.items(.grapheme)[1]);
++}

@@ -61,7 +61,7 @@ int eg_terminal_screen_hyperlink_identities(
   uint64_t row = 0;
   int status = -1;
   for (;;) {
-    GhosttyGridRef row_ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    GhosttyGridRef row_ref = {0};
     bool has_row = false;
     result = ghostty_terminal_screen_row_iterator_next(
         iterator, &row_ref, &has_row);

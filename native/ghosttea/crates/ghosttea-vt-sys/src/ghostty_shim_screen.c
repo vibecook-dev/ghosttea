@@ -111,7 +111,7 @@ static int eg_screen_cell(EgTerminal* state,
   const bool non_default = has_text || has_styling || has_hyperlink ||
       protected_cell || semantic != GHOSTTY_CELL_SEMANTIC_OUTPUT ||
       content_tag != GHOSTTY_CELL_CONTENT_CODEPOINT;
-  GhosttyStyle raw_style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+  GhosttyStyle raw_style = {0};
   if (has_styling) {
     result = ghostty_grid_ref_style(ref, &raw_style);
     if (result != GHOSTTY_SUCCESS) return result;
@@ -194,7 +194,7 @@ int eg_terminal_screen_snapshot(EgTerminal* state,
   uint64_t row = 0;
   int status = -1;
   for (;;) {
-    GhosttyGridRef row_ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    GhosttyGridRef row_ref = {0};
     bool has_row = false;
     result = ghostty_terminal_screen_row_iterator_next(
         iterator, &row_ref, &has_row);

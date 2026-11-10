@@ -71,14 +71,14 @@ int eg_terminal_set_colors(EgTerminal* state,
   state->color_scheme = scheme;
   bool reporting = false;
   if (eg_mode_get(
-          state->terminal, GHOSTTY_MODE_COLOR_SCHEME_REPORT, &reporting) != GHOSTTY_SUCCESS ||
+          state->terminal, GHOSTTY_MODE_REPORT_COLOR_SCHEME, &reporting) != GHOSTTY_SUCCESS ||
       !reporting)
     return GHOSTTY_SUCCESS;
-  char report[32];
+  uint8_t report[32];
   size_t written = 0;
   if (ghostty_color_scheme_report_encode(scheme, report, sizeof report, &written) ==
       GHOSTTY_SUCCESS)
-    (void)eg_buffer_append(&state->response, (const uint8_t*)report, written);
+    (void)eg_buffer_append(&state->response, report, written);
   return GHOSTTY_SUCCESS;
 }
 
@@ -196,9 +196,8 @@ static GhosttyClipboardWriteResult eg_clipboard_write_result(
 static void eg_clipboard_write(GhosttyTerminal terminal,
                                void* userdata,
                                const GhosttyClipboardWrite* write) {
-  if (write == NULL ||
-      write->size < offsetof(GhosttyClipboardWrite, reply) + sizeof(write->reply) ||
-      write->reply == NULL) return;
+  // The request has a frozen layout, so there is no size to check.
+  if (write == NULL || write->reply == NULL) return;
   GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
   reply.result = eg_clipboard_write_result(terminal, userdata, write);
   reply.remember = false;
@@ -300,7 +299,7 @@ int eg_terminal_encode_paste(EgTerminal* state,
   char* copy = data_len == 0 ? NULL : malloc(data_len);
   if (data_len != 0 && copy == NULL) return GHOSTTY_OUT_OF_MEMORY;
   if (data_len != 0) memcpy(copy, data, data_len);
-  result = ghostty_paste_encode(copy, data_len, bracketed, (char*)out, cap, out_len);
+  result = ghostty_paste_encode(copy, data_len, bracketed, out, cap, out_len);
   free(copy);
   return result;
 }
@@ -313,19 +312,20 @@ int eg_terminal_resize(EgTerminal* state, uint16_t cols, uint16_t rows) {
 void eg_terminal_scroll(EgTerminal* state, intptr_t rows) {
   if (state == NULL || rows == 0) return;
   GhosttyTerminalScrollViewport behavior = {
-      .tag = GHOSTTY_SCROLL_VIEWPORT_DELTA,
+      .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA,
       .value.delta = rows,
   };
-  ghostty_terminal_scroll_viewport(state->terminal, behavior);
+  // Both tags are valid and the handle is live, so this cannot fail.
+  (void)ghostty_terminal_scroll_viewport(state->terminal, behavior);
 }
 
 void eg_terminal_scroll_to(EgTerminal* state, size_t row) {
   if (state == NULL) return;
   GhosttyTerminalScrollViewport behavior = {
-      .tag = GHOSTTY_SCROLL_VIEWPORT_ROW,
+      .tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW,
       .value.row = row,
   };
-  ghostty_terminal_scroll_viewport(state->terminal, behavior);
+  (void)ghostty_terminal_scroll_viewport(state->terminal, behavior);
 }
 
 int eg_terminal_compress_scrollback_full(EgTerminal* state) {
@@ -368,7 +368,7 @@ bool eg_terminal_alternate_scroll(EgTerminal* state) {
           state->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS)
     return false;
   if (eg_mode_get(
-          state->terminal, GHOSTTY_MODE_ALT_SCROLL, &alternate_scroll) != GHOSTTY_SUCCESS)
+          state->terminal, GHOSTTY_MODE_MOUSE_ALTERNATE_SCROLL, &alternate_scroll) != GHOSTTY_SUCCESS)
     return false;
   return screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE && alternate_scroll;
 }
@@ -400,7 +400,7 @@ EgTrackedSelection* eg_terminal_track_selection(EgTerminal* state,
   if (ghostty_terminal_get(
           state->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS)
     return NULL;
-  GhosttySelection selection = GHOSTTY_INIT_SIZED(GhosttySelection);
+  GhosttySelection selection = {0};
   GhosttyResult result;
   if (select_all) {
     result = ghostty_terminal_select_all(state->terminal, &selection);
@@ -502,7 +502,7 @@ size_t eg_terminal_tracked_selection_text(
           state->terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS)
     return SIZE_MAX;
   if (screen != tracked->screen) return 0;
-  GhosttySelection selection = GHOSTTY_INIT_SIZED(GhosttySelection);
+  GhosttySelection selection = {0};
   GhosttyResult result = ghostty_tracked_grid_ref_snapshot(
       tracked->start, &selection.start);
   if (result == GHOSTTY_NO_VALUE) return 0;
@@ -512,17 +512,22 @@ size_t eg_terminal_tracked_selection_text(
   if (result != GHOSTTY_SUCCESS) return SIZE_MAX;
   selection.rectangle = tracked->rectangle;
 
-  GhosttyTerminalSelectionFormatOptions options =
-      GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
-  options.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
-  options.unwrap = true;
-  options.trim = true;
-  options.selection = &selection;
+  // The text Ghostty copies to the clipboard: plain, unwrapped and trimmed.
+  // Plain and trimmed are the formatter's defaults.
+  GhosttyFormatter formatter = NULL;
+  if (ghostty_formatter_terminal_new(NULL, &formatter, state->terminal) !=
+      GHOSTTY_SUCCESS)
+    return SIZE_MAX;
+  const bool unwrap = true;
+  result = ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &unwrap);
+  if (result == GHOSTTY_SUCCESS)
+    result = ghostty_formatter_set(
+        formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
   size_t written = 0;
-  result = ghostty_terminal_selection_format_buf(
-      state->terminal, options, out, cap, &written);
+  if (result == GHOSTTY_SUCCESS)
+    result = ghostty_formatter_format_buf(formatter, out, cap, &written);
+  ghostty_formatter_free(formatter);
   if (result == GHOSTTY_SUCCESS || result == GHOSTTY_OUT_OF_SPACE) return written;
-  if (result == GHOSTTY_NO_VALUE) return 0;
   return SIZE_MAX;
 }
 
@@ -673,15 +678,17 @@ static EgStyleColor eg_style_color(GhosttyStyleColor source) {
 
 void eg_terminal_style(GhosttyStyle source, EgTerminalStyle* out) {
   memset(out, 0, sizeof(*out));
-  out->flags = (source.bold ? 1u : 0u) |
-               (source.italic ? 2u : 0u) |
-               (source.faint ? 4u : 0u) |
-               (source.blink ? 8u : 0u) |
-               (source.inverse ? 16u : 0u) |
-               (source.invisible ? 32u : 0u) |
-               (source.strikethrough ? 64u : 0u) |
-               (source.overline ? 128u : 0u);
-  out->underline = source.underline;
+  // The shim's own bit order, which its consumers decode. It is not
+  // Ghostty's flag layout, so each attribute is mapped by name.
+  out->flags = ((source.flags & GHOSTTY_STYLE_FLAG_BOLD) ? 1u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_ITALIC) ? 2u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 4u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_BLINK) ? 8u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_INVERSE) ? 16u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_INVISIBLE) ? 32u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 64u : 0u) |
+               ((source.flags & GHOSTTY_STYLE_FLAG_OVERLINE) ? 128u : 0u);
+  out->underline = GHOSTTY_STYLE_UNDERLINE(source);
   out->foreground = eg_style_color(source.fg_color);
   out->background = eg_style_color(source.bg_color);
   out->underline_color = eg_style_color(source.underline_color);
@@ -716,17 +723,17 @@ static void eg_cell_style(GhosttyRenderStateRowCells cells,
                           GhosttyCell raw,
                           const EgColorState* colors,
                           EgCellStyle* compact) {
-  GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+  GhosttyStyle style = {0};
   memset(compact, 0, sizeof(*compact));
   ghostty_render_state_row_cells_get(
       cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
-  compact->flags = (style.bold ? 1 : 0) |
-                   (style.italic ? 2 : 0) |
-                   (style.faint ? 4 : 0) |
-                   (style.inverse ? 8 : 0) |
-                   (style.invisible ? 16 : 0) |
-                   (style.strikethrough ? 32 : 0) |
-                   (style.underline ? 64 : 0);
+  compact->flags = ((style.flags & GHOSTTY_STYLE_FLAG_BOLD) ? 1 : 0) |
+                   ((style.flags & GHOSTTY_STYLE_FLAG_ITALIC) ? 2 : 0) |
+                   ((style.flags & GHOSTTY_STYLE_FLAG_FAINT) ? 4 : 0) |
+                   ((style.flags & GHOSTTY_STYLE_FLAG_INVERSE) ? 8 : 0) |
+                   ((style.flags & GHOSTTY_STYLE_FLAG_INVISIBLE) ? 16 : 0) |
+                   ((style.flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) ? 32 : 0) |
+                   (GHOSTTY_STYLE_UNDERLINE(style) ? 64 : 0);
   GhosttyColorRgb foreground = {0};
   const bool has_foreground = ghostty_render_state_row_cells_get(
       cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR,
@@ -790,7 +797,7 @@ int eg_terminal_snapshot(EgTerminal* state,
   ghostty_render_state_get(state->render, GHOSTTY_RENDER_STATE_DATA_ROWS, &meta->rows);
   ghostty_render_state_get(state->render, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
   ghostty_render_state_get(state->render, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &meta->cursor_visible);
-  GhosttyRenderStateCursorVisualStyle cursor_style = GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK;
+  GhosttyCursorStyle cursor_style = GHOSTTY_CURSOR_STYLE_BLOCK;
   ghostty_render_state_get(state->render, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE, &cursor_style);
   meta->cursor_style = (uint8_t)cursor_style;
   ghostty_render_state_get(state->render, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &meta->cursor_blinking);
@@ -909,7 +916,7 @@ int eg_terminal_snapshot(EgTerminal* state,
             .tag = GHOSTTY_POINT_TAG_VIEWPORT,
             .value.coordinate = {.x = column, .y = row_index},
         };
-        GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+        GhosttyGridRef ref = {0};
         result = ghostty_terminal_grid_ref(state->terminal, point, &ref);
         if (result != GHOSTTY_SUCCESS) return result;
         result = eg_emit_hyperlink_uri(
@@ -923,49 +930,19 @@ int eg_terminal_snapshot(EgTerminal* state,
     row_fn(userdata, row_index, state->row.ptr, state->row.len, row_dirty,
            wrap, wrap_continuation, (uint8_t)semantic_prompt);
     bool clean = false;
-    ghostty_render_state_row_set(state->rows, GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY, &clean);
+    ghostty_render_state_row_set(state->rows, GHOSTTY_RENDER_STATE_ROW_OPT_DIRTY, &clean);
     row_index += 1;
   }
 
   GhosttyRenderStateDirty clean = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
-  ghostty_render_state_set(state->render, GHOSTTY_RENDER_STATE_OPTION_DIRTY, &clean);
+  ghostty_render_state_set(state->render, GHOSTTY_RENDER_STATE_OPT_DIRTY, &clean);
   return GHOSTTY_SUCCESS;
 }
 
 size_t eg_terminal_recovery_fragment(EgTerminal* state,
                                      uint8_t* out,
                                      size_t cap) {
-  if (state == NULL || (out == NULL && cap != 0)) return SIZE_MAX;
-  GhosttyFormatterTerminalOptions options =
-      GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalOptions);
-  options.emit = GHOSTTY_FORMATTER_FORMAT_VT;
-  options.unwrap = false;
-  options.trim = false;
-  options.extra = GHOSTTY_INIT_SIZED(GhosttyFormatterTerminalExtra);
-  options.extra.palette = true;
-  options.extra.modes = true;
-  options.extra.scrolling_region = true;
-  options.extra.tabstops = true;
-  options.extra.pwd = true;
-  options.extra.keyboard = true;
-  options.extra.screen = GHOSTTY_INIT_SIZED(GhosttyFormatterScreenExtra);
-  options.extra.screen.cursor = true;
-  options.extra.screen.style = true;
-  options.extra.screen.hyperlink = true;
-  options.extra.screen.protection = true;
-  options.extra.screen.kitty_keyboard = true;
-  options.extra.screen.charsets = true;
-
-  GhosttyFormatter formatter = NULL;
-  GhosttyResult result = ghostty_formatter_terminal_new(
-      NULL, &formatter, state->terminal, options);
-  if (result != GHOSTTY_SUCCESS) return SIZE_MAX;
-  size_t written = 0;
-  result = ghostty_formatter_format_buf(formatter, out, cap, &written);
-  ghostty_formatter_free(formatter);
-  if (result != GHOSTTY_SUCCESS && result != GHOSTTY_OUT_OF_SPACE)
-    return SIZE_MAX;
-  return written;
+  return eg_format_recovery(state, false, out, cap);
 }
 
 size_t eg_terminal_take_response(EgTerminal* state, uint8_t* out, size_t cap) {
@@ -1174,12 +1151,12 @@ int eg_terminal_encode_key(EgTerminal* state,
       return GHOSTTY_SUCCESS;
     }
   }
-  ghostty_key_encoder_setopt_from_terminal(state->key_encoder, state->terminal);
+  ghostty_key_encoder_set_from_terminal(state->key_encoder, state->terminal);
   // The Option policy belongs to the keyboard that typed this key, not to the
-  // terminal, and setopt_from_terminal resets it, so every key sets its own.
+  // terminal, and set_from_terminal resets it, so every key sets its own.
   GhosttyOptionAsAlt macos_option_as_alt =
       option_as_alt ? GHOSTTY_OPTION_AS_ALT_TRUE : GHOSTTY_OPTION_AS_ALT_FALSE;
-  ghostty_key_encoder_setopt(
+  ghostty_key_encoder_set(
       state->key_encoder, GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT, &macos_option_as_alt);
   uint8_t option_base[4];
   text_len =
@@ -1194,12 +1171,18 @@ int eg_terminal_encode_key(EgTerminal* state,
           : eg_consumed_mods(text, text_len, unshifted_codepoint, mods, option_as_alt));
   ghostty_key_event_set_composing(state->key_event, false);
   ghostty_key_event_set_unshifted_codepoint(state->key_event, unshifted_codepoint);
-  ghostty_key_event_set_utf8(
-      state->key_event,
-      action == GHOSTTY_KEY_ACTION_RELEASE || text_len == 0 ? NULL : (const char*)text,
-      action == GHOSTTY_KEY_ACTION_RELEASE ? 0 : text_len);
-  return ghostty_key_encoder_encode(
-      state->key_encoder, state->key_event, (char*)out, cap, out_len);
+  GhosttyString utf8 = {0};
+  if (action != GHOSTTY_KEY_ACTION_RELEASE && text_len != 0) {
+    utf8.ptr = text;
+    utf8.len = text_len;
+  }
+  ghostty_key_event_set_utf8(state->key_event, utf8);
+  GhosttyResult result = ghostty_key_encoder_encode(
+      state->key_encoder, state->key_event, out, cap, out_len);
+  // The event borrows its text, and `text` may be `option_base` above, which
+  // dies with this call. The event outlives it, so the borrow ends here.
+  ghostty_key_event_set_utf8(state->key_event, (GhosttyString){0});
+  return result;
 }
 
 int eg_terminal_encode_mouse(EgTerminal* state,
@@ -1220,7 +1203,7 @@ int eg_terminal_encode_mouse(EgTerminal* state,
   if (state == NULL || out_len == NULL || action > GHOSTTY_MOUSE_ACTION_MOTION ||
       button > GHOSTTY_MOUSE_BUTTON_ELEVEN || cell_width == 0 || cell_height == 0)
     return GHOSTTY_INVALID_VALUE;
-  ghostty_mouse_encoder_setopt_from_terminal(state->mouse_encoder, state->terminal);
+  ghostty_mouse_encoder_set_from_terminal(state->mouse_encoder, state->terminal);
   GhosttyMouseEncoderSize size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
   size.screen_width = screen_width;
   size.screen_height = screen_height;
@@ -1228,10 +1211,10 @@ int eg_terminal_encode_mouse(EgTerminal* state,
   size.cell_height = cell_height;
   size.padding_left = padding_left;
   size.padding_top = padding_top;
-  ghostty_mouse_encoder_setopt(state->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+  ghostty_mouse_encoder_set(state->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
 
   bool pressed_during_event = state->mouse_pressed || action == GHOSTTY_MOUSE_ACTION_PRESS;
-  ghostty_mouse_encoder_setopt(
+  ghostty_mouse_encoder_set(
       state->mouse_encoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &pressed_during_event);
   ghostty_mouse_event_set_action(state->mouse_event, (GhosttyMouseAction)action);
   if (button == GHOSTTY_MOUSE_BUTTON_UNKNOWN)
@@ -1242,7 +1225,7 @@ int eg_terminal_encode_mouse(EgTerminal* state,
   ghostty_mouse_event_set_position(
       state->mouse_event, (GhosttyMousePosition){.x = x, .y = y});
   GhosttyResult result = ghostty_mouse_encoder_encode(
-      state->mouse_encoder, state->mouse_event, (char*)out, cap, out_len);
+      state->mouse_encoder, state->mouse_event, out, cap, out_len);
   if (action == GHOSTTY_MOUSE_ACTION_PRESS &&
       button >= GHOSTTY_MOUSE_BUTTON_LEFT && button <= GHOSTTY_MOUSE_BUTTON_MIDDLE)
     state->mouse_pressed = true;
@@ -1266,5 +1249,5 @@ int eg_terminal_encode_focus(EgTerminal* state,
   }
   return ghostty_focus_encode(
       focused ? GHOSTTY_FOCUS_GAINED : GHOSTTY_FOCUS_LOST,
-      (char*)out, cap, out_len);
+      out, cap, out_len);
 }

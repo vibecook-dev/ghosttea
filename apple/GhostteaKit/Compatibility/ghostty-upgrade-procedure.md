@@ -78,6 +78,8 @@ Review all changes against:
 - `native/ghosttea/crates/ghosttea-vt-sys/src/ghostty_shim_identity.c`;
 - `native/ghosttea/crates/ghosttea-vt-sys/build.rs`;
 - the Rust ownership and panic boundary in `ghosttea-core` and `ghosttea-ffi`;
+- `apple/GhostteaKit/Sources/GhosttyVtProof/GhosttyVtProofSession.swift`, the
+  one Swift file that calls the Ghostty C API directly, without the shim;
 - the Swift ownership wrappers in GhostteaKit; and
 - response ordering, resize, selection, accessibility, clipboard, mouse,
   keyboard, kitty graphics, and scrollback semantics.
@@ -90,7 +92,23 @@ the disposable checkout, review it there, regenerate
 `native/patches/ghostty-vt-g15-g21.patch`, and prove that bootstrap recreates
 the same diff. Never build or release an unrecorded vendored change.
 
-The patch set applies in order. `native/patches/ghostty-vt-msvc-runtime.patch`
+The patch set applies in the order `vtPatchSet.patches` lists it, and each
+patch is a zero-context diff of the tree the patches before it produce:
+
+```sh
+git diff --binary --full-index -U0 --no-ext-diff \
+  --src-prefix=a/ --dst-prefix=b/ BASE TIP -- PATHS > native/patches/NAME.patch
+```
+
+`native/patches/ghostty-vt-upstream-fixes.patch` comes first. It holds only
+upstream commits that landed after the pinned release, cherry-picked unchanged
+and named with their upstream hashes in the migration record. It exists so the
+pin can stay on an immutable release while a fix the product needs is not yet
+in one. Drop each commit from it when the pin reaches a release that contains
+it, and delete the file with its lock entry when none is left.
+
+`native/patches/ghostty-vt-g15-g21.patch` follows with Ghosttea's own
+extensions, and `native/patches/ghostty-vt-msvc-runtime.patch`
 follows it and adds the build's `-Dmsvc-runtime` option, which compiles the C
 and C++ objects for one MSVC C runtime (`dll` adds `-fms-runtime-lib=dll`;
 `static`, clang's default, adds nothing). Rebase it with the rest, and keep
@@ -211,7 +229,7 @@ Unicode, styled cells, scrollback, selection, accessibility rows, title,
 clipboard, mouse modes, key encoding, resize, and graphics behavior.
 
 ```sh
-cargo test -p ghosttea phase1_desktop_baseline_is_invariant_to_input_chunking
+cargo test -p ghosttea-core phase1_desktop_baseline_is_invariant_to_input_chunking
 cargo test --workspace
 swift test --package-path apple/GhostteaKit
 npm test
