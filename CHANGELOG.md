@@ -3,6 +3,58 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.15.0 - 2026-11-11
+
+### Changed
+
+- Upgrade the terminal engine to libghostty-vt 1.0.0 at
+  `0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec` (upstream tag `vt-1.0.0`), the
+  first versioned release of the library and the one that freezes its C API.
+  The build keeps the checksum-locked Zig 0.17 recipe, and the native build
+  retains Ghosttea's host-owned terminal geometry and recovery patches, now
+  written to upstream's 1.0 rules for the C API.
+- Carry five upstream fixes that landed after the tag and are in no upstream
+  release yet (ghostty-org/ghostty #15134, #15127 and #15141) as a
+  checksum-locked patch. It is dropped when the pin reaches a release that
+  contains them.
+- Rebuild the three VT archives and the Apple native artifact from the release
+  sources.
+- The C terminal constructor leaves Glyph Protocol APC handling off unless an
+  embedder opts in. Ghosttea does not opt in.
+
+### Added
+
+- Option as Alt is the typing viewer's choice. A key input can carry
+  `optionAsAlt`, with protocol minors of its own (control 19, mesh 9), so a
+  client can tell a daemon that reads the keyboard's Option policy from one
+  that drops it and sends Alt. As Alt, Option sends Alt plus the key's own
+  character and never a bare `ESC [`; as text, it sends the layout's
+  character, such as `@` on a German keyboard.
+- A view can attach without a snapshot. The caller's own refresh is then the
+  one forced full render an attach costs, and other viewers get one reset
+  frame instead of two.
+- A selection read can be fenced on its attachment, so a detached or
+  superseded view never reads and its selection is never brought back.
+
+### Fixed
+
+- A resize that grows the rows and shrinks the columns in one step no longer
+  loses rows of the screen. With 60 short lines on an 80 by 24 terminal, a
+  resize to 60 by 30 left the cursor on row 23 with six blank rows under it;
+  the lines pulled down from scrollback now stay in view (upstream #15141).
+- The column editing sequences DECIC, DECDC, DECBI and DECFI are obeyed. They
+  were ignored.
+- A recovery fragment carries a wrap that is pending at the right margin, so a
+  replay no longer loses it.
+- Tracked pins are no longer left on a destroyed page when a column-growing
+  resize without reflow stops its backfill early (upstream #15134).
+- A failed render-state update no longer marks rows clean before they are
+  rebuilt (upstream #15127).
+- Input past a full or closed input queue is refused with the typed
+  `ControlFailure` (stage `input`, code `input-queue-full` or `input-closed`)
+  instead of a bare error string. `ControlFailure` is public, with read
+  accessors.
+
 ## 0.14.0 - 2026-11-02
 
 ### Changed
