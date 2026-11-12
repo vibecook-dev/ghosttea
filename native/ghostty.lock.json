@@ -1,18 +1,22 @@
 {
   "ghostty": {
     "repository": "https://github.com/ghostty-org/ghostty.git",
-    "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd"
+    "commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"
   },
   "vtPatchSet": {
-    "diffSha256": "63a9c60e8f5a1bf7707ea2a6f836d38cc1c6251883d748819fb0987a22c0a523",
+    "diffSha256": "2834c8add5bf90d146f88f80cf9ecb29c0d802ce932fbcbda434bec7ba521146",
     "patches": [
       {
+        "path": "native/patches/ghostty-vt-upstream-fixes.patch",
+        "sha256": "717e0f676f1ed1a4b65ab115e2100ada8fbac80d6f0f8b2dbcee0c4f76743b16"
+      },
+      {
         "path": "native/patches/ghostty-vt-g15-g21.patch",
-        "sha256": "d5942d6ad16bf402f1a574a158ed1e081566dcc857b6557104daf874f4557a82"
+        "sha256": "270f4e1208f5876ab4e31989c34a6c8aca7777fd488074b9b53c759db3005837"
       },
       {
         "path": "native/patches/ghostty-vt-msvc-runtime.patch",
-        "sha256": "ff22fe161179669320cb68a5c5e42c5549c7f0e47419cef6f458f43c1c61df93"
+        "sha256": "6f490c608f94bb8cfb444bdb9f9efbac949ef05c0deb94cddf762e4517736405"
       }
     ]
   },

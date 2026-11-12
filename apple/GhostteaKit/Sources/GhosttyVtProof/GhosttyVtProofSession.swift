@@ -138,36 +138,12 @@ public final class GhosttyVtProofSession {
   }
 
   public func plainText() throws -> [UInt8] {
-    let screenExtra = GhosttyFormatterScreenExtra(
-      size: MemoryLayout<GhosttyFormatterScreenExtra>.size,
-      cursor: false,
-      style: false,
-      hyperlink: false,
-      protection: false,
-      kitty_keyboard: false,
-      charsets: false
-    )
-    let terminalExtra = GhosttyFormatterTerminalExtra(
-      size: MemoryLayout<GhosttyFormatterTerminalExtra>.size,
-      palette: false,
-      modes: false,
-      scrolling_region: false,
-      tabstops: false,
-      pwd: false,
-      keyboard: false,
-      screen: screenExtra
-    )
-    let options = GhosttyFormatterTerminalOptions(
-      size: MemoryLayout<GhosttyFormatterTerminalOptions>.size,
-      emit: GHOSTTY_FORMATTER_FORMAT_PLAIN,
-      unwrap: false,
-      trim: true,
-      extra: terminalExtra,
-      selection: nil
-    )
+    // A new formatter emits plain text of the whole screen, with trailing
+    // blanks trimmed and lines left wrapped. That is this snapshot, so no
+    // option is set. Plain output ignores the formatter's extras.
     var formatter: GhosttyFormatter?
     try ghosttyRequireSuccess(
-      ghostty_formatter_terminal_new(nil, &formatter, terminal, options),
+      ghostty_formatter_terminal_new(nil, &formatter, terminal),
       operation: "create plain-text formatter"
     )
     guard let formatter else {
@@ -231,27 +207,42 @@ public final class GhosttyVtProofSession {
     }
     defer { ghostty_key_event_free(event) }
 
-    ghostty_key_encoder_setopt_from_terminal(encoder, terminal)
-    ghostty_key_event_set_action(event, GHOSTTY_KEY_ACTION_PRESS)
-    ghostty_key_event_set_key(event, GHOSTTY_KEY_A)
-    let utf8: [CChar] = [97]
-    utf8.withUnsafeBufferPointer { buffer in
-      ghostty_key_event_set_utf8(event, buffer.baseAddress, buffer.count)
-    }
+    try ghosttyRequireSuccess(
+      ghostty_key_encoder_set_from_terminal(encoder, terminal),
+      operation: "configure key encoder from terminal"
+    )
+    try ghosttyRequireSuccess(
+      ghostty_key_event_set_action(event, GHOSTTY_KEY_ACTION_PRESS),
+      operation: "set key action"
+    )
+    try ghosttyRequireSuccess(
+      ghostty_key_event_set_key(event, GHOSTTY_KEY_A),
+      operation: "set key"
+    )
 
-    var output = [CChar](repeating: 0, count: 128)
+    // The event borrows its text instead of copying it, so the text stays
+    // alive until the key is encoded.
+    let utf8: [UInt8] = [97]
+    var output = [UInt8](repeating: 0, count: 128)
     var outputLength = 0
-    let result = output.withUnsafeMutableBufferPointer { buffer in
-      ghostty_key_encoder_encode(
-        encoder,
-        event,
-        buffer.baseAddress,
-        buffer.count,
-        &outputLength
-      )
+    let result = utf8.withUnsafeBufferPointer { text in
+      output.withUnsafeMutableBufferPointer { buffer in
+        let textResult = ghostty_key_event_set_utf8(
+          event,
+          GhosttyString(ptr: text.baseAddress, len: text.count)
+        )
+        guard textResult == GHOSTTY_SUCCESS else { return textResult }
+        return ghostty_key_encoder_encode(
+          encoder,
+          event,
+          buffer.baseAddress,
+          buffer.count,
+          &outputLength
+        )
+      }
     }
     try ghosttyRequireSuccess(result, operation: "encode key")
-    return output.prefix(outputLength).map { UInt8(bitPattern: $0) }
+    return Array(output.prefix(outputLength))
   }
 }
 

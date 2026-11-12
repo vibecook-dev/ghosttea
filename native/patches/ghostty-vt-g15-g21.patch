@@ -1,23 +1,32 @@
 diff --git a/include/ghostty/vt/formatter.h b/include/ghostty/vt/formatter.h
-index 938fc4b39cd8d2df87645d611191a656d447bf5d..f0e7c3489d16b96f6d37bbe342504fc80fea8265 100644
+index ba4a0480e39a4566e76ab47598b157de3343b448..ec7a528e1a36dd34f54cb102167632aa0dd85337 100644
 --- a/include/ghostty/vt/formatter.h
 +++ b/include/ghostty/vt/formatter.h
-@@ -168,0 +169,25 @@ GHOSTTY_API GhosttyResult ghostty_formatter_format(
+@@ -237,0 +238,32 @@ GHOSTTY_API GhosttyResult ghostty_formatter_terminal_new(
++
 +/**
 + * Create a formatter that emits terminal state without screen content.
 + *
 + * This is the state-only counterpart to ghostty_formatter_terminal_new().
-+ * The options and extras have the same meaning, except `selection` is ignored
-+ * because no cells are formatted. For VT output this exposes the formatter's
-+ * state restoration sequences without changing the ABI of the by-value
-+ * GhosttyFormatterTerminalOptions structure.
++ * It formats no screen content. With GHOSTTY_FORMATTER_FORMAT_VT it writes
++ * only the sequences that GHOSTTY_FORMATTER_OPT_EXTRAS selects, which
++ * restore the terminal's state in another terminal. One of them prints:
++ * GHOSTTY_FORMATTER_EXTRA_CURSOR restores a pending wrap by writing the
++ * cell under the cursor again, or a space that it then erases. Plain text
++ * output is empty, and HTML output is at most the palette's style block.
++ *
++ * The new formatter starts with the default for every option, as listed on
++ * GhosttyFormatterOption, and they are changed with ghostty_formatter_set().
++ * A state formatter has no content to select, so setting
++ * GHOSTTY_FORMATTER_OPT_SELECTION to a selection returns
++ * GHOSTTY_INVALID_VALUE and reading it returns GHOSTTY_NO_VALUE.
 + *
 + * The terminal must outlive the formatter.
 + *
 + * @param allocator Pointer to allocator, or NULL to use the default allocator
-+ * @param formatter Pointer to store the created formatter handle
-+ * @param terminal The terminal to format (must not be NULL)
-+ * @param options Formatting options
++ * @param formatter Pointer to store the created formatter handle (NULL
++ *                  returns GHOSTTY_INVALID_VALUE)
++ * @param terminal The terminal to format (NULL returns GHOSTTY_INVALID_VALUE)
 + * @return GHOSTTY_SUCCESS on success, or an error code on failure
 + *
 + * @ingroup formatter
@@ -25,15 +34,17 @@ index 938fc4b39cd8d2df87645d611191a656d447bf5d..f0e7c3489d16b96f6d37bbe342504fc8
 +GHOSTTY_API GhosttyResult ghostty_formatter_terminal_state_new(
 +    const GhosttyAllocator* allocator,
 +    GhosttyFormatter* formatter,
-+    GhosttyTerminal terminal,
-+    GhosttyFormatterTerminalOptions options);
-+
++    GhosttyTerminal terminal);
 diff --git a/include/ghostty/vt/grid_ref.h b/include/ghostty/vt/grid_ref.h
-index c43791dc238cf09b8c8488ef10c044e67eb44440..c463d9bd610947739cbee464609082d6ef116f69 100644
+index 5bbe41b3c6569072f88ba6fa857f6fd04038a992..8e658bfe370bace71224cca4a9f3b7e9f91309d3 100644
 --- a/include/ghostty/vt/grid_ref.h
 +++ b/include/ghostty/vt/grid_ref.h
-@@ -113,0 +114,20 @@ typedef struct {
-+/** Semantic identity kind for a hyperlink. */
+@@ -110,0 +111,34 @@ typedef struct {
++/**
++ * The kind of semantic identity a hyperlink has.
++ *
++ * @ingroup grid_ref
++ */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  /** The cell has no hyperlink. */
 +  GHOSTTY_HYPERLINK_IDENTITY_NONE = 0,
@@ -44,42 +55,74 @@ index c43791dc238cf09b8c8488ef10c044e67eb44440..c463d9bd610947739cbee464609082d6
 +  GHOSTTY_HYPERLINK_IDENTITY_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 +} GhosttyHyperlinkIdentityTag;
 +
-+/** Semantic hyperlink identity, never the page-local hyperlink-set index. */
++/**
++ * Semantic hyperlink identity, never the page-local hyperlink-set index.
++ *
++ * This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
++ * passing it to the library. See @ref sized-structs.
++ *
++ * @ingroup grid_ref
++ */
 +typedef struct {
 +  /** Size of this struct in bytes. Must be initialized with GHOSTTY_INIT_SIZED. */
 +  size_t size;
++
++  /** The kind of identity. */
 +  GhosttyHyperlinkIdentityTag tag;
++
 +  /** Meaningful only when tag is GHOSTTY_HYPERLINK_IDENTITY_IMPLICIT. */
 +  uint64_t implicit_token;
 +} GhosttyHyperlinkIdentity;
 +
-@@ -192,0 +213,20 @@ GHOSTTY_API GhosttyResult ghostty_grid_ref_hyperlink_uri(
+@@ -231,0 +266,38 @@ GHOSTTY_API GhosttyResult ghostty_grid_ref_hyperlink_uri(
 +/**
 + * Get the semantic identity of the hyperlink at a grid reference.
 + *
-+ * Explicit identities return the original OSC 8 `id=` bytes through `buf`.
++ * Explicit identities return the original OSC 8 `id=` bytes through @p buf.
 + * Implicit identities return a token whose equality is stable across pages
 + * within the owning screen. The internal page-local hyperlink-set index is
 + * never exposed. Hyperlink equality is the pair of this identity and the URI.
 + *
-+ * Pass NULL/zero for `buf` to query the explicit identity length. When the
-+ * buffer is too small, returns GHOSTTY_OUT_OF_SPACE and writes the required
-+ * byte count to `out_len`. Cells without a hyperlink return success with tag
-+ * NONE and length zero.
++ * The identity is written before the buffer is checked, so a size query also
++ * reports the tag and the implicit token. If @p buf is too small, this
++ * returns GHOSTTY_OUT_OF_SPACE, sets @p out_written to the size needed, and
++ * leaves @p buf unchanged. To get the size without copying anything, pass
++ * NULL for @p buf and 0 for @p buf_len. A cell with no hyperlink returns
++ * GHOSTTY_SUCCESS with tag GHOSTTY_HYPERLINK_IDENTITY_NONE and
++ * @p out_written set to 0.
++ *
++ * @param ref Pointer to the grid reference (NULL returns
++ *            GHOSTTY_INVALID_VALUE)
++ * @param buf Buffer to write the explicit identity into. May be NULL if
++ *            @p buf_len is 0.
++ * @param buf_len Size of @p buf in bytes
++ * @param[out] out_written The number of bytes written, or the size needed
++ *             if the result is GHOSTTY_OUT_OF_SPACE (NULL returns
++ *             GHOSTTY_INVALID_VALUE)
++ * @param[out] out_identity Receives the identity (NULL or an invalid `size`
++ *             returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_INVALID_VALUE if the ref's
++ *         node is NULL, GHOSTTY_OUT_OF_SPACE if the buffer is too small
++ *
++ * @ingroup grid_ref
 + */
 +GHOSTTY_API GhosttyResult ghostty_grid_ref_hyperlink_identity(
 +    const GhosttyGridRef *ref,
 +    uint8_t *buf,
 +    size_t buf_len,
-+    size_t *out_len,
++    size_t *out_written,
 +    GhosttyHyperlinkIdentity *out_identity);
 +
 diff --git a/include/ghostty/vt/terminal.h b/include/ghostty/vt/terminal.h
-index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da2958998fbb4 100644
+index bb887c01bc9f76febce9d4d1650cfc544f700949..af05e8625bedbfebd056b9f1cdd2f56e57fc6cb1 100644
 --- a/include/ghostty/vt/terminal.h
 +++ b/include/ghostty/vt/terminal.h
-@@ -400,0 +401,96 @@ typedef enum GHOSTTY_ENUM_TYPED {
-+/** Character set designation stored by a terminal screen. */
+@@ -185,0 +186,139 @@ typedef enum GHOSTTY_ENUM_TYPED {
++/**
++ * Character set designation stored by a terminal screen.
++ *
++ * @ingroup terminal
++ */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  GHOSTTY_TERMINAL_CHARSET_UTF8 = 0,
 +  GHOSTTY_TERMINAL_CHARSET_ASCII = 1,
@@ -88,7 +131,11 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GHOSTTY_TERMINAL_CHARSET_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 +} GhosttyTerminalCharset;
 +
-+/** Character set slot used for GL, GR, and single-shift state. */
++/**
++ * Character set slot used for GL, GR, and single-shift state.
++ *
++ * @ingroup terminal
++ */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  GHOSTTY_TERMINAL_CHARSET_SLOT_G0 = 0,
 +  GHOSTTY_TERMINAL_CHARSET_SLOT_G1 = 1,
@@ -97,7 +144,15 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GHOSTTY_TERMINAL_CHARSET_SLOT_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 +} GhosttyTerminalCharsetSlot;
 +
-+/** Complete character set state for one screen. */
++/**
++ * Complete character set state for one screen.
++ *
++ * The layout of this struct is frozen. It is nested in
++ * GhosttyTerminalSavedCursor and GhosttyTerminalScreenState, so it has no
++ * size field of its own.
++ *
++ * @ingroup terminal
++ */
 +typedef struct {
 +  GhosttyTerminalCharset g0;
 +  GhosttyTerminalCharset g1;
@@ -105,11 +160,19 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GhosttyTerminalCharset g3;
 +  GhosttyTerminalCharsetSlot gl;
 +  GhosttyTerminalCharsetSlot gr;
++  /** True when `single_shift` holds a pending SS2 or SS3. */
 +  bool has_single_shift;
 +  GhosttyTerminalCharsetSlot single_shift;
 +} GhosttyTerminalCharsetState;
 +
-+/** A populated DECSC saved-cursor slot for one terminal screen. */
++/**
++ * A populated DECSC saved-cursor slot for one terminal screen.
++ *
++ * This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
++ * passing it to the library. See @ref sized-structs.
++ *
++ * @ingroup terminal
++ */
 +typedef struct {
 +  /** Size of this struct in bytes. Must be initialized with GHOSTTY_INIT_SIZED. */
 +  size_t size;
@@ -122,7 +185,11 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GhosttyTerminalCharsetState charset;
 +} GhosttyTerminalSavedCursor;
 +
-+/** Most recently selected protected-character mechanism for a screen. */
++/**
++ * Most recently selected protected-character mechanism for a screen.
++ *
++ * @ingroup terminal
++ */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  GHOSTTY_TERMINAL_PROTECTED_MODE_OFF = 0,
 +  GHOSTTY_TERMINAL_PROTECTED_MODE_ISO = 1,
@@ -130,7 +197,11 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GHOSTTY_TERMINAL_PROTECTED_MODE_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 +} GhosttyTerminalProtectedMode;
 +
-+/** Shell-integration click behavior retained by OSC 133 state. */
++/**
++ * Shell-integration click behavior retained by OSC 133 state.
++ *
++ * @ingroup terminal
++ */
 +typedef enum GHOSTTY_ENUM_TYPED {
 +  GHOSTTY_TERMINAL_SEMANTIC_CLICK_NONE = 0,
 +  GHOSTTY_TERMINAL_SEMANTIC_CLICK_EVENTS_ABSOLUTE = 1,
@@ -142,10 +213,21 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GHOSTTY_TERMINAL_SEMANTIC_CLICK_MAX_VALUE = GHOSTTY_ENUM_MAX_VALUE,
 +} GhosttyTerminalSemanticClick;
 +
-+/** Fixed capacity of Ghostty's per-screen Kitty keyboard flag stack. */
++/**
++ * Fixed capacity of Ghostty's per-screen Kitty keyboard flag stack.
++ *
++ * @ingroup terminal
++ */
 +#define GHOSTTY_TERMINAL_KITTY_KEYBOARD_STACK_CAPACITY 8
 +
-+/** Read-only state and dimensions for one terminal screen. */
++/**
++ * Read-only state and dimensions for one terminal screen.
++ *
++ * This is a sized struct. Initialize it with GHOSTTY_INIT_SIZED() before
++ * passing it to the library. See @ref sized-structs.
++ *
++ * @ingroup terminal
++ */
 +typedef struct {
 +  /** Size of this struct in bytes. Must be initialized with GHOSTTY_INIT_SIZED. */
 +  size_t size;
@@ -155,7 +237,7 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  uint64_t scrollback_rows;
 +  uint16_t cursor_x;
 +  uint16_t cursor_y;
-+  GhosttyTerminalCursorStyle cursor_visual_style;
++  GhosttyCursorStyle cursor_visual_style;
 +  GhosttyStyle cursor_style;
 +  bool cursor_protected;
 +  bool cursor_pending_wrap;
@@ -175,18 +257,27 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +  GhosttyTerminalSemanticClick semantic_prompt_click;
 +} GhosttyTerminalScreenState;
 +
-@@ -3641,0 +3738,86 @@ GHOSTTY_API GhosttyResult ghostty_terminal_compress(
+@@ -3512,0 +3652,164 @@ GHOSTTY_API GhosttyResult ghostty_terminal_compress(
++/** @name Screens
++ *
++ * Read one screen's state without activating it. These never switch
++ * screens or change the terminal. The alternate screen is created on first
++ * use, so until then every function here returns GHOSTTY_NO_VALUE for it.
++ *
++ * @{
++ */
++
 +/**
 + * Read the DECSC saved-cursor slot belonging to a specific screen.
 + *
-+ * This does not switch screens or mutate terminal state. Alternate screens are
-+ * initialized lazily; an uninitialized screen or an empty slot returns
-+ * GHOSTTY_NO_VALUE.
-+ *
-+ * @param terminal The terminal handle
++ * @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
 + * @param screen Screen whose saved slot should be read
-+ * @param[out] out_cursor Receives the complete saved cursor state
-+ * @return GHOSTTY_SUCCESS, GHOSTTY_NO_VALUE, or GHOSTTY_INVALID_VALUE
++ * @param[out] out_cursor Receives the complete saved cursor state (NULL or
++ *             an invalid `size` returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the screen has not
++ *         been created or its slot is empty, or GHOSTTY_INVALID_VALUE
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_saved_cursor(
 +    GhosttyTerminal terminal,
@@ -194,9 +285,16 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +    GhosttyTerminalSavedCursor* out_cursor);
 +
 +/**
-+ * Read current state and dimensions from a specific screen without activating
-+ * it. An alternate screen that has not been initialized returns
-+ * GHOSTTY_NO_VALUE.
++ * Read current state and dimensions from a specific screen.
++ *
++ * @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param screen Screen to read
++ * @param[out] out_state Receives the screen state (NULL or an invalid `size`
++ *             returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the screen has not
++ *         been created, or GHOSTTY_INVALID_VALUE
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_get(
 +    GhosttyTerminal terminal,
@@ -204,10 +302,20 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +    GhosttyTerminalScreenState* out_state);
 +
 +/**
-+ * Resolve a point against a specific screen without activating it.
++ * Resolve a point against a specific screen.
 + *
 + * Point tags have the same meanings and costs as ghostty_terminal_grid_ref().
 + * The returned reference has the usual untracked-reference lifetime.
++ *
++ * @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param screen Screen to resolve the point against
++ * @param point The point to resolve
++ * @param[out] out_ref On success, set to the reference (may be NULL)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the screen has not
++ *         been created, or GHOSTTY_INVALID_VALUE if the point is not on the
++ *         screen
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_grid_ref(
 +    GhosttyTerminal terminal,
@@ -221,6 +329,16 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 + * Unlike repeated screen-coordinate lookups, iteration traverses the backing
 + * page list once. The terminal must remain alive and unmodified until the
 + * iterator is freed.
++ *
++ * @param allocator Pointer to allocator, or NULL to use the default allocator
++ * @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param screen Screen to iterate
++ * @param[out] out_iterator Receives the iterator, or NULL on every failure
++ *             (NULL returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the screen has not
++ *         been created, GHOSTTY_OUT_OF_MEMORY, or GHOSTTY_INVALID_VALUE
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_row_iterator_new(
 +    const GhosttyAllocator* allocator,
@@ -228,16 +346,32 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +    GhosttyTerminalScreen screen,
 +    GhosttyTerminalScreenRowIterator* out_iterator);
 +
-+/** Free a screen row iterator. NULL is allowed. */
++/**
++ * Free a screen row iterator.
++ *
++ * @param iterator The iterator to free (may be NULL)
++ *
++ * @ingroup terminal
++ */
 +GHOSTTY_API void ghostty_terminal_screen_row_iterator_free(
 +    GhosttyTerminalScreenRowIterator iterator);
 +
 +/**
 + * Advance a screen row iterator.
 + *
-+ * On success, `out_has_value` says whether a row was produced. A produced
-+ * reference points at column zero of that row; callers may copy it and change
++ * On success, @p out_has_value says whether a row was produced. A produced
++ * reference points at column zero of that row. You may copy it and change
 + * only `x` to inspect other cells in the same row.
++ *
++ * @param iterator The iterator (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param[out] out_ref Receives the row's reference, or a zeroed reference
++ *             once the rows are exhausted (NULL returns
++ *             GHOSTTY_INVALID_VALUE)
++ * @param[out] out_has_value Receives whether a row was produced (NULL
++ *             returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, or GHOSTTY_INVALID_VALUE
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_row_iterator_next(
 +    GhosttyTerminalScreenRowIterator iterator,
@@ -247,26 +381,52 @@ index b5865565971796090e412ad8d02e838b672f08f9..eb368beb196a954637319e379a5da295
 +/**
 + * Read the currently open OSC 8 hyperlink on a selected screen's cursor.
 + *
-+ * This is separate from GhosttyTerminalScreenState because URI and explicit
-+ * identity are variable-length. A cursor without an open hyperlink returns
-+ * GHOSTTY_NO_VALUE. Buffer sizing follows the grid-ref hyperlink accessors.
++ * This is separate from GhosttyTerminalScreenState because the URI and the
++ * explicit identity are variable-length. Both sizes and the identity are
++ * written before the buffers are checked, so a size query also reports them.
++ * If either buffer is too small, this returns GHOSTTY_OUT_OF_SPACE and
++ * leaves both buffers unchanged. To get the sizes without copying anything,
++ * pass NULL and 0 for both buffers.
++ *
++ * @param terminal The terminal handle (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param screen Screen whose cursor should be read
++ * @param uri_buf Buffer to write the URI into. May be NULL if
++ *                @p uri_buf_len is 0.
++ * @param uri_buf_len Size of @p uri_buf in bytes
++ * @param[out] out_uri_written The URI bytes written, or the size needed
++ *             (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param id_buf Buffer to write the explicit identity into. May be NULL if
++ *               @p id_buf_len is 0.
++ * @param id_buf_len Size of @p id_buf in bytes
++ * @param[out] out_id_written The identity bytes written, or the size needed
++ *             (NULL returns GHOSTTY_INVALID_VALUE)
++ * @param[out] out_identity Receives the identity (NULL or an invalid `size`
++ *             returns GHOSTTY_INVALID_VALUE)
++ * @return GHOSTTY_SUCCESS on success, GHOSTTY_NO_VALUE if the screen has not
++ *         been created or its cursor has no open hyperlink,
++ *         GHOSTTY_OUT_OF_SPACE if a buffer is too small, or
++ *         GHOSTTY_INVALID_VALUE
++ *
++ * @ingroup terminal
 + */
 +GHOSTTY_API GhosttyResult ghostty_terminal_screen_cursor_hyperlink(
 +    GhosttyTerminal terminal,
 +    GhosttyTerminalScreen screen,
 +    uint8_t* uri_buf,
 +    size_t uri_buf_len,
-+    size_t* out_uri_len,
++    size_t* out_uri_written,
 +    uint8_t* id_buf,
 +    size_t id_buf_len,
-+    size_t* out_id_len,
++    size_t* out_id_written,
 +    GhosttyHyperlinkIdentity* out_identity);
 +
++/** @} */
++
 diff --git a/include/ghostty/vt/types.h b/include/ghostty/vt/types.h
-index 465976898755efc2308f5287a3eaf81079c9e0e7..c053836002e3660f39e8feefea90cf4e9aedb4f1 100644
+index 567e0878d767961038afc802ae92e2f09cfa9a87..09d287109adaab4d5cf658e7fd936391358d80e9 100644
 --- a/include/ghostty/vt/types.h
 +++ b/include/ghostty/vt/types.h
-@@ -211,0 +212,10 @@ typedef struct GhosttySearchImpl* GhosttySearch;
+@@ -288,0 +289,10 @@ typedef struct GhosttySearchImpl* GhosttySearch;
 +/**
 + * Opaque iterator over every retained row of one selected terminal screen.
 + *
@@ -278,29 +438,26 @@ index 465976898755efc2308f5287a3eaf81079c9e0e7..c053836002e3660f39e8feefea90cf4e
 +typedef struct GhosttyTerminalScreenRowIteratorImpl* GhosttyTerminalScreenRowIterator;
 +
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 06252080a2facbfc7593cd13ace3b16d1f8375b3..82771cfdb1bd77a9f3be93bf2a3e96114c4e6651 100644
+index 1a338e6ce50f108f848003b76242f4efd7eb96de..1abfc1658413aeea3ed2bc4e354f5459d9543683 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -259,0 +260,9 @@ comptime {
-+            @export(&c.terminal_saved_cursor, .{ .name = "ghostty_terminal_saved_cursor" });
-+            @export(&c.terminal_screen_get, .{ .name = "ghostty_terminal_screen_get" });
-+            @export(&c.terminal_screen_grid_ref, .{ .name = "ghostty_terminal_screen_grid_ref" });
-+            @export(&c.terminal_screen_row_iterator_new, .{ .name = "ghostty_terminal_screen_row_iterator_new" });
-+            @export(&c.terminal_screen_row_iterator_free, .{ .name = "ghostty_terminal_screen_row_iterator_free" });
-+            @export(&c.terminal_screen_row_iterator_next, .{ .name = "ghostty_terminal_screen_row_iterator_next" });
-+            @export(&c.terminal_screen_cursor_hyperlink, .{ .name = "ghostty_terminal_screen_cursor_hyperlink" });
-+            @export(&c.grid_ref_hyperlink_identity, .{ .name = "ghostty_grid_ref_hyperlink_identity" });
-+
-@@ -287,0 +297 @@ comptime {
-+            @export(&c.formatter_terminal_state_new, .{ .name = "ghostty_formatter_terminal_state_new" });
+@@ -280,0 +281 @@ comptime {
++        @export(&c.formatter_terminal_state_new, .{ .name = "ghostty_formatter_terminal_state_new" });
+@@ -360,0 +362,7 @@ comptime {
++        @export(&c.terminal_saved_cursor, .{ .name = "ghostty_terminal_saved_cursor" });
++        @export(&c.terminal_screen_get, .{ .name = "ghostty_terminal_screen_get" });
++        @export(&c.terminal_screen_grid_ref, .{ .name = "ghostty_terminal_screen_grid_ref" });
++        @export(&c.terminal_screen_row_iterator_new, .{ .name = "ghostty_terminal_screen_row_iterator_new" });
++        @export(&c.terminal_screen_row_iterator_free, .{ .name = "ghostty_terminal_screen_row_iterator_free" });
++        @export(&c.terminal_screen_row_iterator_next, .{ .name = "ghostty_terminal_screen_row_iterator_next" });
++        @export(&c.terminal_screen_cursor_hyperlink, .{ .name = "ghostty_terminal_screen_cursor_hyperlink" });
+@@ -393,0 +402 @@ comptime {
++        @export(&c.grid_ref_hyperlink_identity, .{ .name = "ghostty_grid_ref_hyperlink_identity" });
 diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
-index 0fd016774df4d314ab4a4f939dec30e25de2088c..5bccc34b47d3db0fd559530ccd7d09a8cb2a593e 100644
+index ee2689f7c587424d20ceb9b6a10d7b20d7162909..b4f234b5113ed5e5f414e1d7b1e1e61fc5ff042b 100644
 --- a/src/terminal/Screen.zig
 +++ b/src/terminal/Screen.zig
-@@ -1530 +1530 @@ pub fn cursorCopy(self: *Screen, other: Cursor, opts: struct {
--            // This shouldn't happen because startHyperlink should handle
-+            // This shouldn't happen because startHyperlink handles
-@@ -1614,6 +1614,5 @@ inline fn cursorChangePin(self: *Screen, new: Pin) void {
+@@ -1647,6 +1647,5 @@ inline fn cursorChangePin(self: *Screen, new: Pin) void {
 -        // Re-add
 -        self.startHyperlink(link.uri, switch (link.id) {
 -            .explicit => |v| v,
@@ -312,8 +469,7 @@ index 0fd016774df4d314ab4a4f939dec30e25de2088c..5bccc34b47d3db0fd559530ccd7d09a8
 +        // live OSC 8 run merely because it crossed a page boundary.
 +        self.startHyperlinkValue(link.*) catch |err| {
 +            // This shouldn't happen because startHyperlinkValue handles
-@@ -2868 +2867,10 @@ pub fn startHyperlink(
--    // Loop until we have enough page memory to add the hyperlink
+@@ -2855,0 +2855,9 @@ pub fn startHyperlink(
 +    return self.startHyperlinkValue(link);
 +}
 +
@@ -323,13 +479,28 @@ index 0fd016774df4d314ab4a4f939dec30e25de2088c..5bccc34b47d3db0fd559530ccd7d09a8
 +    self: *Screen,
 +    link: hyperlink.Hyperlink,
 +) PageList.IncreaseCapacityError!void {
-+    // Loop until we have enough page memory to add the hyperlink.
+diff --git a/src/terminal/c/abi/symbols.txt b/src/terminal/c/abi/symbols.txt
+index c7a56f4f23aad406838421cb91f8939d3afea888..ff83622b25769281ac34f1df7f386b406e610775 100644
+--- a/src/terminal/c/abi/symbols.txt
++++ b/src/terminal/c/abi/symbols.txt
+@@ -24,0 +25 @@ ghostty_formatter_terminal_new
++ghostty_formatter_terminal_state_new
+@@ -27,0 +29 @@ ghostty_grid_ref_graphemes
++ghostty_grid_ref_hyperlink_identity
+@@ -186,0 +189,7 @@ ghostty_terminal_resize
++ghostty_terminal_saved_cursor
++ghostty_terminal_screen_cursor_hyperlink
++ghostty_terminal_screen_get
++ghostty_terminal_screen_grid_ref
++ghostty_terminal_screen_row_iterator_free
++ghostty_terminal_screen_row_iterator_new
++ghostty_terminal_screen_row_iterator_next
 diff --git a/src/terminal/c/formatter.zig b/src/terminal/c/formatter.zig
-index 00239d6373191aa4a1cc33935bae9137b2bcf56e..d5c33f51032b835ec6401dc2467c66707eca91a0 100644
+index fe7615c8004010142286332c3b35b6e7e91431e2..c39a84f519307a932597be536d034643e2f02bf0 100644
 --- a/src/terminal/c/formatter.zig
 +++ b/src/terminal/c/formatter.zig
-@@ -116,0 +117,26 @@ pub fn terminal_new(
-+        false,
+@@ -142,0 +143,32 @@ pub fn terminal_new(
++        .{ .selection = null },
 +    ) catch |err| {
 +        result.* = null;
 +        return switch (err) {
@@ -341,86 +512,92 @@ index 00239d6373191aa4a1cc33935bae9137b2bcf56e..d5c33f51032b835ec6401dc2467c6670
 +    return .success;
 +}
 +
-+/// Create a terminal formatter whose content is `.none`. Keeping this as an
-+/// additive entry point avoids changing the calling convention of the
-+/// by-value C options struct.
++/// Create a terminal formatter whose content is `.none`: it formats no
++/// screen content and emits only what its extras select. That is not
++/// always free of text: the cursor extra restores a pending wrap by
++/// writing the cell under the cursor again, and HTML output still carries
++/// the palette's style block. `.none` is the mark of a state formatter for
++/// the rest of this file, since `terminal_new` and `set` never produce it.
 +pub fn terminal_state_new(
 +    alloc_: ?*const CAllocator,
-+    result: *Formatter,
++    result_: ?*Formatter,
 +    terminal_: terminal_c.Terminal,
-+    opts: TerminalOptions,
 +) callconv(lib.calling_conv) Result {
++    if (comptime !lib.feature(.formatter)) {
++        if (result_) |o| o.* = null;
++        return .unsupported;
++    }
++    const result = result_ orelse return .invalid_value;
 +    result.* = terminal_new_(
 +        alloc_,
 +        terminal_,
-+        opts,
-+        true,
-@@ -131,0 +158 @@ fn terminal_new_(
-+    state_only: bool,
-@@ -151,4 +178,8 @@ fn terminal_new_(
--    if (opts.selection) |sel| formatter.content = .{
--        .selection = sel.toZig() orelse
--            return error.InvalidValue,
--    };
-+    if (state_only) {
-+        formatter.content = .none;
-+    } else if (opts.selection) |sel| {
-+        formatter.content = .{
-+            .selection = sel.toZig() orelse
-+                return error.InvalidValue,
-+        };
-+    }
-@@ -571,0 +603,57 @@ test "format vt" {
++        .none,
+@@ -156,0 +189 @@ fn terminal_new_(
++    content: formatterpkg.ScreenFormatter.Content,
+@@ -168,0 +202 @@ fn terminal_new_(
++    formatter.content = content;
+@@ -213,5 +247,10 @@ fn setTyped(
+-        .selection => f.content = .{
+-            .selection = if (value) |v|
+-                v.toZig() orelse return .invalid_value
+-            else
+-                null,
++        .selection => switch (f.content) {
++            // A state formatter formats no screen content, so it has nothing
++            // to select. Clearing the selection is its default and succeeds.
++            .none => if (value != null) return .invalid_value,
++            .selection => f.content = .{
++                .selection = if (value) |v|
++                    v.toZig() orelse return .invalid_value
++                else
++                    null,
++            },
+@@ -686,0 +726,109 @@ test "format vt" {
 +test "terminal_state_new emits state without screen content" {
 +    var source: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &source, 12, 3));
-+    try testing.expectEqual(Result.success, terminal_c.set(source, .scrollback_max_bytes, &@as(usize, 10_000)));
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &source,
++        12,
++        3,
++    ));
 +    defer terminal_c.free(source);
 +
-+    terminal_c.vt_write(source, "secret\x1b[?2004h", 14);
++    const input = "secret\x1b[?2004h";
++    terminal_c.vt_write(source, input, input.len);
 +
-+    var formatter: Formatter = null;
++    var f: Formatter = null;
 +    try testing.expectEqual(Result.success, terminal_state_new(
 +        &lib.alloc.test_allocator,
-+        &formatter,
++        &f,
 +        source,
-+        .{
-+            .emit = .vt,
-+            .unwrap = false,
-+            .trim = false,
-+            .extra = .{
-+                .palette = false,
-+                .modes = true,
-+                .scrolling_region = false,
-+                .tabstops = false,
-+                .pwd = false,
-+                .keyboard = false,
-+                .screen = .{
-+                    .cursor = false,
-+                    .style = false,
-+                    .hyperlink = false,
-+                    .protection = false,
-+                    .kitty_keyboard = false,
-+                    .charsets = false,
-+                },
-+            },
-+        },
 +    ));
-+    defer free(formatter);
++    defer free(f);
++
++    const emit: Format = .vt;
++    try testing.expectEqual(Result.success, set(f, .emit, &emit));
++    const trim: bool = false;
++    try testing.expectEqual(Result.success, set(f, .trim, &trim));
++    const extras: Extras = ExtraBit.modes.mask();
++    try testing.expectEqual(Result.success, set(f, .extras, &extras));
 +
 +    var buf: [4096]u8 = undefined;
 +    var written: usize = 0;
-+    try testing.expectEqual(
-+        Result.success,
-+        format_buf(formatter, &buf, buf.len, &written),
-+    );
++    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
++    try testing.expect(written > 0);
 +    try testing.expect(std.mem.indexOf(u8, buf[0..written], "secret") == null);
 +
++    // Replaying the state restores the mode in another terminal and
++    // prints nothing there.
 +    var replacement: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &replacement, 12, 3));
-+    try testing.expectEqual(Result.success, terminal_c.set(replacement, .scrollback_max_bytes, &@as(usize, 10_000)));
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &replacement,
++        12,
++        3,
++    ));
 +    defer terminal_c.free(replacement);
-+    terminal_c.vt_write(replacement, buf[0..written].ptr, written);
++    terminal_c.vt_write(replacement, &buf, written);
 +
 +    try testing.expect(replacement.?.terminal.modes.get(.bracketed_paste));
 +    const text = try replacement.?.terminal.plainString(testing.allocator);
@@ -428,11 +605,68 @@ index 00239d6373191aa4a1cc33935bae9137b2bcf56e..d5c33f51032b835ec6401dc2467c6670
 +    try testing.expectEqualStrings("", text);
 +}
 +
++test "terminal_state_new has nothing to select" {
++    var t: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &t,
++        80,
++        24,
++    ));
++    defer terminal_c.free(t);
++
++    terminal_c.vt_write(t, "Hello World", 11);
++
++    var start_ref: grid_ref.CGridRef = .{};
++    try testing.expectEqual(Result.success, terminal_c.grid_ref(t, .{
++        .tag = .active,
++        .value = .{ .active = .{ .x = 6, .y = 0 } },
++    }, &start_ref));
++    var end_ref: grid_ref.CGridRef = .{};
++    try testing.expectEqual(Result.success, terminal_c.grid_ref(t, .{
++        .tag = .active,
++        .value = .{ .active = .{ .x = 10, .y = 0 } },
++    }, &end_ref));
++    const sel: selection_c.CSelection = .{
++        .start = start_ref,
++        .end = end_ref,
++    };
++
++    var f: Formatter = null;
++    try testing.expectEqual(Result.success, terminal_state_new(
++        &lib.alloc.test_allocator,
++        &f,
++        t,
++    ));
++    defer free(f);
++
++    // A selection is refused and the formatter stays a state formatter.
++    try testing.expectEqual(Result.invalid_value, set(f, .selection, &sel));
++    try testing.expectEqual(Result.success, set(f, .selection, null));
++    var out: selection_c.CSelection = undefined;
++    try testing.expectEqual(Result.no_value, get(f, .selection, &out));
++
++    var buf: [64]u8 = undefined;
++    var written: usize = 0;
++    try testing.expectEqual(Result.success, format_buf(f, &buf, buf.len, &written));
++    try testing.expectEqual(@as(usize, 0), written);
++}
++
++test "terminal_state_new invalid_value on null terminal" {
++    var f: Formatter = null;
++    try testing.expectEqual(Result.invalid_value, terminal_state_new(
++        &lib.alloc.test_allocator,
++        &f,
++        null,
++    ));
++    try testing.expect(f == null);
++}
++
 diff --git a/src/terminal/c/grid_ref.zig b/src/terminal/c/grid_ref.zig
-index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d14c5b1e9 100644
+index bdf9654e18ed9cce585a561cce0b905157c05987..39dde1b671faba365e8e2a93a5756b1fdcdf0839 100644
 --- a/src/terminal/c/grid_ref.zig
 +++ b/src/terminal/c/grid_ref.zig
-@@ -42,0 +43,14 @@ pub const CGridRef = extern struct {
+@@ -54,0 +55,24 @@ pub const CGridRef = extern struct {
 +/// C: GhosttyHyperlinkIdentityTag
 +pub const HyperlinkIdentityTag = enum(c_int) {
 +    none = 0,
@@ -441,71 +675,140 @@ index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d
 +};
 +
 +/// C: GhosttyHyperlinkIdentity
++///
++/// The semantic identity of a hyperlink: what makes two cells part of the
++/// same link, as opposed to the page-local index of the hyperlink set.
++/// An explicit identity is the OSC 8 `id=` bytes, which the functions
++/// return through a buffer. An implicit identity is the token in this
++/// struct.
++///
++/// This is a sized struct that the caller passes and the library fills.
 +pub const HyperlinkIdentity = extern struct {
 +    size: usize = @sizeOf(HyperlinkIdentity),
 +    tag: HyperlinkIdentityTag = .none,
 +    implicit_token: u64 = 0,
++
++    pub const sized_base = "implicit_token";
 +};
 +
-@@ -129,0 +144,37 @@ pub fn grid_ref_hyperlink_uri(
+@@ -151,0 +176,51 @@ pub fn grid_ref_hyperlink_uri(
 +pub fn grid_ref_hyperlink_identity(
-+    ref: *const CGridRef,
-+    out_buf: ?[*]u8,
++    ref_: ?*const CGridRef,
++    buf_: ?[*]u8,
 +    buf_len: usize,
-+    out_len: *usize,
-+    out_identity: ?*HyperlinkIdentity,
++    out_written_: ?*usize,
++    out_identity_: ?*HyperlinkIdentity,
 +) callconv(lib.calling_conv) Result {
-+    const identity = out_identity orelse return .invalid_value;
-+    if (identity.size < @sizeOf(HyperlinkIdentity)) return .invalid_value;
++    if (comptime !lib.feature(.grid_introspection)) return .unsupported;
++    const ref = ref_ orelse return .invalid_value;
++    const out_written = out_written_ orelse return .invalid_value;
++    const out_identity = out_identity_ orelse return .invalid_value;
++    if (!lib.sizedCheck(.output, out_identity)) return .invalid_value;
 +    const p = ref.toPin() orelse return .invalid_value;
-+    identity.tag = .none;
-+    identity.implicit_token = 0;
-+    out_len.* = 0;
++
++    // The identity is written before the buffer is checked, so a size
++    // query also reports the tag and the implicit token.
++    out_written.* = 0;
++    lib.sizedWrite(out_identity, .{});
 +
 +    const terminal_page = p.node.page();
 +    const cell = terminal_page.getRowAndCell(p.x, p.y).cell;
 +    if (!cell.hyperlink) return .success;
 +
 +    const link_id = terminal_page.lookupHyperlink(cell) orelse return .success;
-+    const entry = terminal_page.hyperlink_set.get(terminal_page.memory, link_id);
++    const entry = terminal_page.hyperlink_set.get(
++        terminal_page.memory,
++        link_id,
++    );
 +    switch (entry.id) {
-+        .implicit => |token| {
-+            identity.tag = .implicit;
-+            identity.implicit_token = @intCast(token);
-+        },
++        .implicit => |token| lib.sizedWrite(out_identity, .{
++            .tag = .implicit,
++            .implicit_token = token,
++        }),
 +        .explicit => |slice| {
-+            identity.tag = .explicit;
++            lib.sizedWrite(out_identity, .{ .tag = .explicit });
++
 +            const id = slice.slice(terminal_page.memory);
-+            out_len.* = id.len;
 +            if (id.len == 0) return .success;
-+            if (out_buf == null or buf_len < id.len) return .out_of_space;
-+            @memcpy(out_buf.?[0..id.len], id);
++            if (buf_ == null or buf_len < id.len) {
++                out_written.* = id.len;
++                return .out_of_space;
++            }
++
++            @memcpy(buf_.?[0..id.len], id);
++            out_written.* = id.len;
 +        },
 +    }
++
 +    return .success;
 +}
 +
-@@ -257,0 +309,112 @@ test "grid_ref_hyperlink_uri with hyperlink" {
+@@ -327,0 +403,165 @@ test "grid_ref_hyperlink_uri with hyperlink" {
 +
-+test "grid_ref_hyperlink_identity preserves explicit bytes" {
++test "grid_ref_hyperlink_identity null node" {
++    const ref = CGridRef{};
++    var len: usize = undefined;
++    var identity: HyperlinkIdentity = .{};
++    try testing.expectEqual(
++        Result.invalid_value,
++        grid_ref_hyperlink_identity(&ref, null, 0, &len, &identity),
++    );
++}
++
++test "grid_ref_hyperlink_identity no hyperlink" {
 +    var terminal: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &terminal, 80, 24));
-+    try testing.expectEqual(Result.success, terminal_c.set(terminal, .scrollback_max_bytes, &@as(usize, 10_000)));
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &terminal,
++        80,
++        24,
++    ));
 +    defer terminal_c.free(terminal);
 +
-+    const seq =
-+        "\x1b]8;id=original-id;https://example.com\x1b\\link\x1b]8;;\x1b\\";
-+    terminal_c.vt_write(terminal, seq, seq.len);
++    terminal_c.vt_write(terminal, "hello", 5);
 +
-+    var ref: CGridRef = .{};
++    var ref: CGridRef = undefined;
 +    try testing.expectEqual(Result.success, terminal_c.grid_ref(
 +        terminal,
 +        point.Point.cval(.{ .active = .{ .x = 0, .y = 0 } }),
 +        &ref,
 +    ));
 +
++    var len: usize = undefined;
++    var identity: HyperlinkIdentity = .{ .tag = .explicit, .implicit_token = 7 };
++    try testing.expectEqual(
++        Result.success,
++        grid_ref_hyperlink_identity(&ref, null, 0, &len, &identity),
++    );
++    try testing.expectEqual(HyperlinkIdentityTag.none, identity.tag);
++    try testing.expectEqual(@as(u64, 0), identity.implicit_token);
++    try testing.expectEqual(@as(usize, 0), len);
++}
++
++test "grid_ref_hyperlink_identity preserves explicit bytes" {
++    var terminal: terminal_c.Terminal = null;
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &terminal,
++        80,
++        24,
++    ));
++    defer terminal_c.free(terminal);
++
++    const seq =
++        "\x1b]8;id=original-id;https://example.com\x1b\\link\x1b]8;;\x1b\\";
++    terminal_c.vt_write(terminal, seq, seq.len);
++
++    var ref: CGridRef = undefined;
++    try testing.expectEqual(Result.success, terminal_c.grid_ref(
++        terminal,
++        point.Point.cval(.{ .active = .{ .x = 0, .y = 0 } }),
++        &ref,
++    ));
++
++    // A size query also reports the tag.
 +    var identity: HyperlinkIdentity = .{};
-+    var len: usize = 0;
++    var len: usize = undefined;
 +    try testing.expectEqual(
 +        Result.out_of_space,
 +        grid_ref_hyperlink_identity(&ref, null, 0, &len, &identity),
@@ -513,13 +816,24 @@ index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d
 +    try testing.expectEqual(HyperlinkIdentityTag.explicit, identity.tag);
 +    try testing.expectEqual(@as(usize, "original-id".len), len);
 +
++    // An undersized buffer gets the same result and is left untouched.
++    var small: [4]u8 = @splat('x');
++    try testing.expectEqual(
++        Result.out_of_space,
++        grid_ref_hyperlink_identity(&ref, &small, small.len, &len, &identity),
++    );
++    try testing.expectEqual(@as(usize, "original-id".len), len);
++    try testing.expectEqualStrings("xxxx", &small);
++
 +    var buf: [32]u8 = undefined;
 +    try testing.expectEqual(
 +        Result.success,
 +        grid_ref_hyperlink_identity(&ref, &buf, buf.len, &len, &identity),
 +    );
 +    try testing.expectEqualStrings("original-id", buf[0..len]);
++    try testing.expectEqual(HyperlinkIdentityTag.explicit, identity.tag);
 +
++    // A size below the base layout is rejected before anything is written.
 +    identity.size = 0;
 +    try testing.expectEqual(
 +        Result.invalid_value,
@@ -527,20 +841,29 @@ index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d
 +    );
 +}
 +
-+test "grid_ref implicit hyperlink identity is stable across pages" {
++test "grid_ref_hyperlink_identity implicit token is stable across pages" {
 +    var terminal: terminal_c.Terminal = null;
-+    try testing.expectEqual(Result.success, terminal_c.new(&lib.alloc.test_allocator, &terminal, 215, 2));
-+    try testing.expectEqual(Result.success, terminal_c.set(terminal, .scrollback_max_bytes, &@as(usize, 20_000_000)));
++    try testing.expectEqual(Result.success, terminal_c.new(
++        &lib.alloc.test_allocator,
++        &terminal,
++        215,
++        2,
++    ));
 +    defer terminal_c.free(terminal);
++    const max_bytes: usize = 20_000_000;
++    try testing.expectEqual(
++        Result.success,
++        terminal_c.set(terminal, .scrollback_max_bytes, &max_bytes),
++    );
 +
++    // One implicit link held open over enough rows to span pages.
 +    const open = "\x1b]8;;https://example.com/implicit\x1b\\";
 +    terminal_c.vt_write(terminal, open, open.len);
 +    for (0..300) |_| terminal_c.vt_write(terminal, "x\r\n", 3);
 +    const close = "x\x1b]8;;\x1b\\";
 +    terminal_c.vt_write(terminal, close, close.len);
 +
-+    var state: terminal_c.ScreenState = undefined;
-+    state.size = @sizeOf(terminal_c.ScreenState);
++    var state: terminal_c.ScreenState = .{};
 +    try testing.expectEqual(
 +        Result.success,
 +        terminal_c.screen_get(terminal, .primary, &state),
@@ -570,26 +893,14 @@ index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d
 +
 +    var first_identity: HyperlinkIdentity = .{};
 +    var last_identity: HyperlinkIdentity = .{};
-+    var len: usize = 0;
++    var len: usize = undefined;
 +    try testing.expectEqual(
 +        Result.success,
-+        grid_ref_hyperlink_identity(
-+            &first,
-+            null,
-+            0,
-+            &len,
-+            &first_identity,
-+        ),
++        grid_ref_hyperlink_identity(&first, null, 0, &len, &first_identity),
 +    );
 +    try testing.expectEqual(
 +        Result.success,
-+        grid_ref_hyperlink_identity(
-+            &last,
-+            null,
-+            0,
-+            &len,
-+            &last_identity,
-+        ),
++        grid_ref_hyperlink_identity(&last, null, 0, &len, &last_identity),
 +    );
 +    try testing.expectEqual(HyperlinkIdentityTag.implicit, first_identity.tag);
 +    try testing.expectEqual(HyperlinkIdentityTag.implicit, last_identity.tag);
@@ -599,12 +910,12 @@ index 20f49be91ac959128db3eb7798749dbda8fc040e..b176946a648eb8a844c523699bd3c76d
 +    );
 +}
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index a0c0dc33cf3485d17db3a6ba1ee7351e2509b458..9411509642d7cc3e96650bd9b0847aab2379972a 100644
+index 3c32b58b17ea79287a13884a74a0fb45eae5689d..b13d92317ee4b30749df7c23b584463a03a92af9 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
-@@ -84,0 +85 @@ pub const formatter_format = formatter.format;
+@@ -86,0 +87 @@ pub const formatter_terminal_new = formatter.terminal_new;
 +pub const formatter_terminal_state_new = formatter.terminal_state_new;
-@@ -204,0 +206,7 @@ pub const terminal_continuation_alloc = terminal.continuation_alloc;
+@@ -241,0 +243,7 @@ pub const terminal_point_from_grid_ref = terminal.point_from_grid_ref;
 +pub const terminal_saved_cursor = terminal.saved_cursor;
 +pub const terminal_screen_get = terminal.screen_get;
 +pub const terminal_screen_grid_ref = terminal.screen_grid_ref;
@@ -612,38 +923,78 @@ index a0c0dc33cf3485d17db3a6ba1ee7351e2509b458..9411509642d7cc3e96650bd9b0847aab
 +pub const terminal_screen_row_iterator_free = terminal.screen_row_iterator_free;
 +pub const terminal_screen_row_iterator_next = terminal.screen_row_iterator_next;
 +pub const terminal_screen_cursor_hyperlink = terminal.screen_cursor_hyperlink;
-@@ -259,0 +268 @@ pub const grid_ref_hyperlink_uri = grid_ref.grid_ref_hyperlink_uri;
+@@ -265,0 +274 @@ pub const grid_ref_hyperlink_uri = grid_ref.grid_ref_hyperlink_uri;
 +pub const grid_ref_hyperlink_identity = grid_ref.grid_ref_hyperlink_identity;
 diff --git a/src/terminal/c/terminal.zig b/src/terminal/c/terminal.zig
-index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174fc5ba4e8 100644
+index a5f6a31846dc87aa490d63887c1a71ce7f8f284b..038ca323d77558ed94096dc9957d179adba5797f 100644
 --- a/src/terminal/c/terminal.zig
 +++ b/src/terminal/c/terminal.zig
-@@ -19,0 +20 @@ const mouse = @import("../mouse.zig");
+@@ -14,0 +15 @@ const PageList = @import("../PageList.zig");
++const ansi = @import("../ansi.zig");
+@@ -15,0 +17 @@ const apc = @import("../apc.zig");
 +const charsets = @import("../charsets.zig");
-@@ -1804,0 +1806,9 @@ pub const TerminalCursorStyle = enum(c_int) {
-+
-+    fn fromZig(value: Screen.CursorStyle) TerminalCursorStyle {
-+        return switch (value) {
-+            .bar => .bar,
-+            .block => .block,
-+            .underline => .underline,
-+            .block_hollow => .block_hollow,
-+        };
-+    }
-@@ -1865,0 +1876,131 @@ pub const TerminalScreen = ScreenSet.Key;
-+const ScreenRowIteratorWrapper = struct {
-+    alloc: std.mem.Allocator,
-+    rows: PageList.RowIterator,
-+};
-+
-+/// C: GhosttyTerminalScreenRowIterator
-+pub const ScreenRowIterator = ?*ScreenRowIteratorWrapper;
-+
+@@ -1936,0 +1939,186 @@ pub const TerminalMemoryUsage = extern struct {
 +/// C: GhosttyTerminalCharset
 +pub const TerminalCharset = charsets.Charset;
 +
 +/// C: GhosttyTerminalCharsetSlot
 +pub const TerminalCharsetSlot = charsets.Slots;
++
++/// C: GhosttyTerminalCharsetState
++///
++/// Frozen layout. It is nested in `SavedCursor` and `ScreenState`, and a
++/// nested struct can't be a sized struct.
++pub const TerminalCharsetState = extern struct {
++    g0: TerminalCharset = .utf8,
++    g1: TerminalCharset = .utf8,
++    g2: TerminalCharset = .utf8,
++    g3: TerminalCharset = .utf8,
++    gl: TerminalCharsetSlot = .G0,
++    gr: TerminalCharsetSlot = .G2,
++    has_single_shift: bool = false,
++    single_shift: TerminalCharsetSlot = .G0,
++
++    fn fromZig(value: Screen.CharsetState) TerminalCharsetState {
++        return .{
++            .g0 = value.charsets.g0,
++            .g1 = value.charsets.g1,
++            .g2 = value.charsets.g2,
++            .g3 = value.charsets.g3,
++            .gl = value.gl,
++            .gr = value.gr,
++            .has_single_shift = value.single_shift != null,
++            .single_shift = value.single_shift orelse .G0,
++        };
++    }
++};
++
++/// C: GhosttyTerminalSavedCursor
++///
++/// This is a sized struct that the caller passes and the library fills.
++pub const SavedCursor = extern struct {
++    size: usize = @sizeOf(SavedCursor),
++    x: size.CellCountInt = 0,
++    y: size.CellCountInt = 0,
++    style: style_c.Style = .default,
++    protected_cell: bool = false,
++    pending_wrap: bool = false,
++    origin: bool = false,
++    charset: TerminalCharsetState = .{},
++
++    pub const sized_base = "charset";
++
++    fn fromZig(value: Screen.SavedCursor) SavedCursor {
++        return .{
++            .x = value.x,
++            .y = value.y,
++            .style = .fromStyle(value.style),
++            .protected_cell = value.protected,
++            .pending_wrap = value.pending_wrap,
++            .origin = value.origin,
++            .charset = .fromZig(value.charset),
++        };
++    }
++};
 +
 +/// C: GhosttyTerminalProtectedMode
 +pub const TerminalProtectedMode = enum(c_int) {
@@ -651,7 +1002,7 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +    iso = 1,
 +    dec = 2,
 +
-+    fn fromZig(value: @import("../ansi.zig").ProtectedMode) TerminalProtectedMode {
++    fn fromZig(value: ansi.ProtectedMode) TerminalProtectedMode {
 +        return switch (value) {
 +            .off => .off,
 +            .iso => .iso,
@@ -687,160 +1038,143 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +    }
 +};
 +
-+/// C: GhosttyTerminalCharsetState
-+pub const TerminalCharsetState = extern struct {
-+    g0: TerminalCharset,
-+    g1: TerminalCharset,
-+    g2: TerminalCharset,
-+    g3: TerminalCharset,
-+    gl: TerminalCharsetSlot,
-+    gr: TerminalCharsetSlot,
-+    has_single_shift: bool,
-+    single_shift: TerminalCharsetSlot,
++/// The length of `ScreenState.kitty_keyboard_stack`, which the header
++/// names GHOSTTY_TERMINAL_KITTY_KEYBOARD_STACK_CAPACITY. It is part of
++/// the ABI, so a core stack of another length must not change it.
++const kitty_keyboard_stack_capacity = 8;
 +
-+    fn fromZig(value: Screen.CharsetState) TerminalCharsetState {
-+        return .{
-+            .g0 = value.charsets.g0,
-+            .g1 = value.charsets.g1,
-+            .g2 = value.charsets.g2,
-+            .g3 = value.charsets.g3,
-+            .gl = value.gl,
-+            .gr = value.gr,
-+            .has_single_shift = value.single_shift != null,
-+            .single_shift = value.single_shift orelse .G0,
-+        };
-+    }
-+};
-+
-+/// C: GhosttyTerminalSavedCursor
-+pub const SavedCursor = extern struct {
-+    size: usize = @sizeOf(SavedCursor),
-+    x: size.CellCountInt,
-+    y: size.CellCountInt,
-+    style: style_c.Style,
-+    protected_cell: bool,
-+    pending_wrap: bool,
-+    origin: bool,
-+    charset: TerminalCharsetState,
-+
-+    fn fromZig(value: Screen.SavedCursor) SavedCursor {
-+        return .{
-+            .x = value.x,
-+            .y = value.y,
-+            .style = .fromStyle(value.style),
-+            .protected_cell = value.protected,
-+            .pending_wrap = value.pending_wrap,
-+            .origin = value.origin,
-+            .charset = .fromZig(value.charset),
-+        };
-+    }
-+};
++comptime {
++    const CoreStack = @FieldType(kitty.FlagStack, "flags");
++    std.debug.assert(@typeInfo(CoreStack).array.len == kitty_keyboard_stack_capacity);
++}
 +
 +/// C: GhosttyTerminalScreenState
++///
++/// The state of one screen, read without activating it. This is a sized
++/// struct that the caller passes and the library fills.
 +pub const ScreenState = extern struct {
 +    size: usize = @sizeOf(ScreenState),
-+    cols: size.CellCountInt,
-+    rows: size.CellCountInt,
-+    total_rows: u64,
-+    scrollback_rows: u64,
-+    cursor_x: size.CellCountInt,
-+    cursor_y: size.CellCountInt,
-+    cursor_visual_style: TerminalCursorStyle,
-+    cursor_style: style_c.Style,
-+    cursor_protected: bool,
-+    cursor_pending_wrap: bool,
-+    charset: TerminalCharsetState,
-+    kitty_keyboard_flags: u8,
-+    viewport_offset: u64,
-+    cursor_semantic_content: cell_c.SemanticContent,
-+    cursor_semantic_content_clear_eol: bool,
-+    hyperlink_implicit_id: u64,
-+    protected_mode: TerminalProtectedMode,
-+    kitty_keyboard_stack: [8]u8,
-+    kitty_keyboard_index: u8,
-+    semantic_prompt_seen: bool,
-+    semantic_prompt_click: TerminalSemanticClick,
++    cols: size.CellCountInt = 0,
++    rows: size.CellCountInt = 0,
++    total_rows: u64 = 0,
++    scrollback_rows: u64 = 0,
++    cursor_x: size.CellCountInt = 0,
++    cursor_y: size.CellCountInt = 0,
++    cursor_visual_style: CursorStyle = .block,
++    cursor_style: style_c.Style = .default,
++    cursor_protected: bool = false,
++    cursor_pending_wrap: bool = false,
++    charset: TerminalCharsetState = .{},
++    kitty_keyboard_flags: u8 = 0,
++    viewport_offset: u64 = 0,
++    cursor_semantic_content: cell_c.SemanticContent = .output,
++    cursor_semantic_content_clear_eol: bool = false,
++    hyperlink_implicit_id: u64 = 0,
++    protected_mode: TerminalProtectedMode = .off,
++    kitty_keyboard_stack: [kitty_keyboard_stack_capacity]u8 = @splat(0),
++    kitty_keyboard_index: u8 = 0,
++    semantic_prompt_seen: bool = false,
++    semantic_prompt_click: TerminalSemanticClick = .none,
++
++    pub const sized_base = "semantic_prompt_click";
++
++    /// Gather the state of `screen`, one of the screens of `t`.
++    fn init(t: *const ZigTerminal, screen: *Screen) ScreenState {
++        const total_rows: u64 = screen.pages.total_rows;
++        var result: ScreenState = .{
++            .cols = t.cols,
++            .rows = t.rows,
++            .total_rows = total_rows,
++            .scrollback_rows = total_rows - t.rows,
++            .cursor_x = screen.cursor.x,
++            .cursor_y = screen.cursor.y,
++            .cursor_visual_style = .fromZig(screen.cursor.cursor_style),
++            .cursor_style = .fromStyle(screen.cursor.style),
++            .cursor_protected = screen.cursor.protected,
++            .cursor_pending_wrap = screen.cursor.pending_wrap,
++            .charset = .fromZig(screen.charset),
++            .kitty_keyboard_flags = screen.kitty_keyboard.current().int(),
++            .viewport_offset = screen.pages.scrollbar().offset,
++            .cursor_semantic_content = @fromBackingInt(
++                @backingInt(screen.cursor.semantic_content),
++            ),
++            .cursor_semantic_content_clear_eol = screen.cursor.semantic_content_clear_eol,
++            .hyperlink_implicit_id = screen.cursor.hyperlink_implicit_id,
++            .protected_mode = .fromZig(screen.protected_mode),
++            .kitty_keyboard_index = screen.kitty_keyboard.idx,
++            .semantic_prompt_seen = screen.semantic_prompt.seen,
++            .semantic_prompt_click = .fromZig(screen.semantic_prompt.click),
++        };
++        for (&result.kitty_keyboard_stack, screen.kitty_keyboard.flags) |*dst, flags| {
++            dst.* = flags.int();
++        }
++        return result;
++    }
 +};
 +
-@@ -2062,0 +2204,188 @@ pub fn get_multi(
++const ScreenRowIteratorWrapper = struct {
++    alloc: std.mem.Allocator,
++    rows: PageList.RowIterator,
++};
++
++/// C: GhosttyTerminalScreenRowIterator
++pub const ScreenRowIterator = ?*ScreenRowIteratorWrapper;
++
+@@ -2252,0 +2441,166 @@ pub fn point_from_grid_ref(
++// The functions below read one screen without activating it. The alternate
++// screen is created on first use, so a screen that doesn't exist yet is
++// `.no_value` and never an error.
++
 +pub fn saved_cursor(
 +    terminal_: Terminal,
-+    screen_key: TerminalScreen,
-+    out: ?*SavedCursor,
++    screen_: lib.CEnum(TerminalScreen),
++    out_: ?*SavedCursor,
 +) callconv(lib.calling_conv) Result {
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
-+    const result = out orelse return .invalid_value;
-+    if (result.size < @sizeOf(SavedCursor)) return .invalid_value;
-+    if (comptime std.debug.runtime_safety) {
-+        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
-+            return .invalid_value;
-+    }
-+    const screen = t.screens.get(screen_key) orelse return .no_value;
++    const out = out_ orelse return .invalid_value;
++    if (!lib.sizedCheck(.output, out)) return .invalid_value;
++    const key = lib.enumFromC(TerminalScreen, screen_) orelse return .invalid_value;
++    const screen = t.screens.get(key) orelse return .no_value;
 +    const value = screen.saved_cursor orelse return .no_value;
-+    result.* = .fromZig(value);
++    lib.sizedWrite(out, .fromZig(value));
 +    return .success;
 +}
 +
 +pub fn screen_get(
 +    terminal_: Terminal,
-+    screen_key: TerminalScreen,
-+    out: ?*ScreenState,
++    screen_: lib.CEnum(TerminalScreen),
++    out_: ?*ScreenState,
 +) callconv(lib.calling_conv) Result {
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
-+    const result = out orelse return .invalid_value;
-+    if (result.size < @sizeOf(ScreenState)) return .invalid_value;
-+    if (comptime std.debug.runtime_safety) {
-+        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
-+            return .invalid_value;
++    const out = out_ orelse return .invalid_value;
++    if (!lib.sizedCheck(.output, out)) return .invalid_value;
++    const key = lib.enumFromC(TerminalScreen, screen_) orelse return .invalid_value;
++    const screen = t.screens.get(key) orelse return .no_value;
++
++    // This is `lib.sizedWrite` written out. That helper validates the
++    // struct again at comptime for every field it writes, and with this
++    // many fields those checks exceed the default branch quota.
++    const state: ScreenState = .init(t, screen);
++    inline for (@typeInfo(ScreenState).@"struct".field_names[1..]) |name| {
++        if (lib.sizedFieldFits(ScreenState, out.size, name)) {
++            @field(out, name) = @field(state, name);
++        }
 +    }
-+    const screen = t.screens.get(screen_key) orelse return .no_value;
-+    const total_rows: u64 = @intCast(screen.pages.total_rows);
-+    const scrollbar = screen.pages.scrollbar();
-+    var kitty_keyboard_stack: [8]u8 = undefined;
-+    for (screen.kitty_keyboard.flags, 0..) |flags, index| {
-+        kitty_keyboard_stack[index] = @as(u8, flags.int());
-+    }
-+    result.* = .{
-+        .cols = t.cols,
-+        .rows = t.rows,
-+        .total_rows = total_rows,
-+        .scrollback_rows = total_rows - @as(u64, t.rows),
-+        .cursor_x = screen.cursor.x,
-+        .cursor_y = screen.cursor.y,
-+        .cursor_visual_style = .fromZig(screen.cursor.cursor_style),
-+        .cursor_style = .fromStyle(screen.cursor.style),
-+        .cursor_protected = screen.cursor.protected,
-+        .cursor_pending_wrap = screen.cursor.pending_wrap,
-+        .charset = .fromZig(screen.charset),
-+        .kitty_keyboard_flags = @as(u8, screen.kitty_keyboard.current().int()),
-+        .viewport_offset = @intCast(scrollbar.offset),
-+        .cursor_semantic_content = @fromBackingInt(
-+            @backingInt(screen.cursor.semantic_content),
-+        ),
-+        .cursor_semantic_content_clear_eol = screen.cursor.semantic_content_clear_eol,
-+        .hyperlink_implicit_id = @intCast(screen.cursor.hyperlink_implicit_id),
-+        .protected_mode = .fromZig(screen.protected_mode),
-+        .kitty_keyboard_stack = kitty_keyboard_stack,
-+        .kitty_keyboard_index = @intCast(screen.kitty_keyboard.idx),
-+        .semantic_prompt_seen = screen.semantic_prompt.seen,
-+        .semantic_prompt_click = .fromZig(screen.semantic_prompt.click),
-+    };
 +    return .success;
 +}
 +
 +pub fn screen_grid_ref(
 +    terminal_: Terminal,
-+    screen_key: TerminalScreen,
++    screen_: lib.CEnum(TerminalScreen),
 +    pt: point.Point.C,
 +    out_ref: ?*grid_ref_c.CGridRef,
 +) callconv(lib.calling_conv) Result {
++    if (comptime !(lib.feature(.grid_introspection) or lib.feature(.selection))) return .unsupported;
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
-+    if (comptime std.debug.runtime_safety) {
-+        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
-+            return .invalid_value;
-+    }
-+    const screen = t.screens.get(screen_key) orelse return .no_value;
-+    const p = screen.pages.pin(.fromC(pt)) orelse return .invalid_value;
++    const key = lib.enumFromC(TerminalScreen, screen_) orelse return .invalid_value;
++    const zig_pt = point.Point.fromC(pt) orelse return .invalid_value;
++    const screen = t.screens.get(key) orelse return .no_value;
++    const p = screen.pages.pin(zig_pt) orelse return .invalid_value;
 +    if (out_ref) |out| out.* = grid_ref_c.CGridRef.fromPin(p);
 +    return .success;
 +}
@@ -848,18 +1182,20 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +pub fn screen_row_iterator_new(
 +    alloc_: ?*const CAllocator,
 +    terminal_: Terminal,
-+    screen_key: TerminalScreen,
-+    out: ?*ScreenRowIterator,
++    screen_: lib.CEnum(TerminalScreen),
++    out_: ?*ScreenRowIterator,
 +) callconv(lib.calling_conv) Result {
-+    const result = out orelse return .invalid_value;
-+    // Constructor APIs leave a caller-safe value on every failure path.
-+    result.* = null;
-+    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
-+    if (comptime std.debug.runtime_safety) {
-+        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
-+            return .invalid_value;
++    if (comptime !lib.feature(.grid_introspection)) {
++        if (out_) |o| o.* = null;
++        return .unsupported;
 +    }
-+    const screen = t.screens.get(screen_key) orelse return .no_value;
++    const out = out_ orelse return .invalid_value;
++    out.* = null;
++
++    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
++    const key = lib.enumFromC(TerminalScreen, screen_) orelse return .invalid_value;
++    const screen = t.screens.get(key) orelse return .no_value;
++
 +    const alloc = lib.alloc.default(alloc_);
 +    const ptr = alloc.create(ScreenRowIteratorWrapper) catch
 +        return .out_of_memory;
@@ -871,13 +1207,15 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +            null,
 +        ),
 +    };
-+    result.* = ptr;
++
++    out.* = ptr;
 +    return .success;
 +}
 +
 +pub fn screen_row_iterator_free(
 +    iterator_: ScreenRowIterator,
 +) callconv(lib.calling_conv) void {
++    if (comptime !lib.feature(.grid_introspection)) return;
 +    const iterator = iterator_ orelse return;
 +    const alloc = iterator.alloc;
 +    alloc.destroy(iterator);
@@ -885,102 +1223,108 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +
 +pub fn screen_row_iterator_next(
 +    iterator_: ScreenRowIterator,
-+    out_ref: ?*grid_ref_c.CGridRef,
-+    out_has_value: ?*bool,
++    out_ref_: ?*grid_ref_c.CGridRef,
++    out_has_value_: ?*bool,
 +) callconv(lib.calling_conv) Result {
++    if (comptime !lib.feature(.grid_introspection)) return .unsupported;
 +    const iterator = iterator_ orelse return .invalid_value;
-+    const result = out_ref orelse return .invalid_value;
-+    const has_value = out_has_value orelse return .invalid_value;
++    const out_ref = out_ref_ orelse return .invalid_value;
++    const out_has_value = out_has_value_ orelse return .invalid_value;
++
 +    const pin = iterator.rows.next() orelse {
-+        has_value.* = false;
-+        result.* = .{};
++        out_ref.* = .{};
++        out_has_value.* = false;
 +        return .success;
 +    };
-+    result.* = .fromPin(pin);
-+    has_value.* = true;
++
++    out_ref.* = .fromPin(pin);
++    out_has_value.* = true;
 +    return .success;
 +}
 +
 +pub fn screen_cursor_hyperlink(
 +    terminal_: Terminal,
-+    screen_key: TerminalScreen,
-+    uri_buf: ?[*]u8,
++    screen_: lib.CEnum(TerminalScreen),
++    uri_buf_: ?[*]u8,
 +    uri_buf_len: usize,
-+    out_uri_len: ?*usize,
-+    id_buf: ?[*]u8,
++    out_uri_written_: ?*usize,
++    id_buf_: ?[*]u8,
 +    id_buf_len: usize,
-+    out_id_len: ?*usize,
-+    out_identity: ?*grid_ref_c.HyperlinkIdentity,
++    out_id_written_: ?*usize,
++    out_identity_: ?*grid_ref_c.HyperlinkIdentity,
 +) callconv(lib.calling_conv) Result {
 +    const t: *ZigTerminal = (terminal_ orelse return .invalid_value).terminal;
-+    const uri_len = out_uri_len orelse return .invalid_value;
-+    const id_len = out_id_len orelse return .invalid_value;
-+    const identity = out_identity orelse return .invalid_value;
-+    if (identity.size < @sizeOf(grid_ref_c.HyperlinkIdentity))
-+        return .invalid_value;
-+    if (comptime std.debug.runtime_safety) {
-+        _ = std.enums.fromInt(TerminalScreen, @backingInt(screen_key)) orelse
-+            return .invalid_value;
-+    }
-+    const screen = t.screens.get(screen_key) orelse return .no_value;
++    const out_uri_written = out_uri_written_ orelse return .invalid_value;
++    const out_id_written = out_id_written_ orelse return .invalid_value;
++    const out_identity = out_identity_ orelse return .invalid_value;
++    if (!lib.sizedCheck(.output, out_identity)) return .invalid_value;
++    const key = lib.enumFromC(TerminalScreen, screen_) orelse return .invalid_value;
++    const screen = t.screens.get(key) orelse return .no_value;
 +    const link = screen.cursor.hyperlink orelse return .no_value;
 +
-+    uri_len.* = link.uri.len;
-+    id_len.* = 0;
-+    identity.tag = .none;
-+    identity.implicit_token = 0;
-+    switch (link.id) {
-+        .explicit => |id| {
-+            identity.tag = .explicit;
-+            id_len.* = id.len;
-+        },
-+        .implicit => |token| {
-+            identity.tag = .implicit;
-+            identity.implicit_token = @intCast(token);
-+        },
-+    }
-+
-+    if (uri_buf_len < uri_len.* or (uri_len.* != 0 and uri_buf == null) or
-+        id_buf_len < id_len.* or (id_len.* != 0 and id_buf == null))
-+        return .out_of_space;
-+    if (uri_len.* != 0) @memcpy(uri_buf.?[0..uri_len.*], link.uri);
-+    if (id_len.* != 0) switch (link.id) {
-+        .explicit => |id| @memcpy(id_buf.?[0..id_len.*], id),
-+        .implicit => unreachable,
++    const uri = link.uri;
++    const id: []const u8 = switch (link.id) {
++        .explicit => |bytes| bytes,
++        .implicit => "",
 +    };
++    const identity: grid_ref_c.HyperlinkIdentity = switch (link.id) {
++        .explicit => .{ .tag = .explicit },
++        .implicit => |token| .{ .tag = .implicit, .implicit_token = token },
++    };
++
++    // Both sizes and the identity are written before the buffers are
++    // checked, so a size query also reports them.
++    out_uri_written.* = uri.len;
++    out_id_written.* = id.len;
++    lib.sizedWrite(out_identity, identity);
++
++    if ((uri.len != 0 and (uri_buf_ == null or uri_buf_len < uri.len)) or
++        (id.len != 0 and (id_buf_ == null or id_buf_len < id.len)))
++        return .out_of_space;
++
++    if (uri.len != 0) @memcpy(uri_buf_.?[0..uri.len], uri);
++    if (id.len != 0) @memcpy(id_buf_.?[0..id.len], id);
 +    return .success;
 +}
 +
-@@ -3420,0 +3750,233 @@ test "set and get mode validate configuration" {
+@@ -5190,0 +5545,296 @@ test "point_from_grid_ref null node" {
 +test "saved cursor and screen reads are screen selected" {
 +    var t: Terminal = null;
-+    try testing.expectEqual(Result.success, new(&lib.alloc.test_allocator, &t, 8, 3));
-+    try testing.expectEqual(Result.success, set(t, .scrollback_max_bytes, &@as(usize, 10_000)));
++    try testing.expectEqual(Result.success, new(
++        &lib.alloc.test_allocator,
++        &t,
++        8,
++        3,
++    ));
 +    defer free(t);
 +
-+    var saved: SavedCursor = undefined;
-+    saved.size = @sizeOf(SavedCursor);
-+    try testing.expectEqual(
-+        Result.no_value,
-+        saved_cursor(t, .primary, &saved),
-+    );
++    // Nothing is saved yet, and the alternate screen doesn't exist yet.
++    var saved: SavedCursor = .{};
++    try testing.expectEqual(Result.no_value, saved_cursor(t, .primary, &saved));
++    try testing.expectEqual(Result.no_value, saved_cursor(t, .alternate, &saved));
++    var missing_state: ScreenState = .{};
++    try testing.expectEqual(Result.no_value, screen_get(t, .alternate, &missing_state));
++    var missing_ref: grid_ref_c.CGridRef = .{};
++    try testing.expectEqual(Result.no_value, screen_grid_ref(t, .alternate, .{
++        .tag = .screen,
++        .value = .{ .screen = .{ .x = 0, .y = 0 } },
++    }, &missing_ref));
 +    var missing_iterator: ScreenRowIterator = null;
-+    try testing.expectEqual(
-+        Result.no_value,
-+        screen_row_iterator_new(
-+            &lib.alloc.test_allocator,
-+            t,
-+            .alternate,
-+            &missing_iterator,
-+        ),
-+    );
++    try testing.expectEqual(Result.no_value, screen_row_iterator_new(
++        &lib.alloc.test_allocator,
++        t,
++        .alternate,
++        &missing_iterator,
++    ));
 +    try testing.expectEqual(@as(ScreenRowIterator, null), missing_iterator);
++
++    // A size below the base layout and a screen that is not a screen are
++    // both rejected.
 +    saved.size = 0;
-+    try testing.expectEqual(
-+        Result.invalid_value,
-+        saved_cursor(t, .primary, &saved),
-+    );
++    try testing.expectEqual(Result.invalid_value, saved_cursor(t, .primary, &saved));
 +    saved.size = @sizeOf(SavedCursor);
++    try testing.expectEqual(Result.invalid_value, saved_cursor(t, @fromBackingInt(99), &saved));
++    try testing.expectEqual(Result.invalid_value, screen_get(t, @fromBackingInt(99), &missing_state));
 +
 +    const primary_content = "primary\r\nhistory\r\n";
 +    vt_write(t, primary_content, primary_content.len);
@@ -988,12 +1332,9 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +        "\x1b[?6h\x1b[1;31m\x1b[1\"q\x1b(0\x1b[2;8HX\x1b7";
 +    vt_write(t, primary_state, primary_state.len);
 +
-+    try testing.expectEqual(
-+        Result.success,
-+        saved_cursor(t, .primary, &saved),
-+    );
++    try testing.expectEqual(Result.success, saved_cursor(t, .primary, &saved));
 +    try testing.expectEqual(@as(size.CellCountInt, 7), saved.x);
-+    try testing.expect(saved.style.bold);
++    try testing.expect(saved.style.flags.bold);
 +    try testing.expect(saved.protected_cell);
 +    try testing.expect(saved.pending_wrap);
 +    try testing.expect(saved.origin);
@@ -1003,27 +1344,19 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +        "\x1b[?1049h\x1b[?6l\x1b[0m\x1b[1\"q\x1b(Balternate\x1b[3;8HX\x1b7";
 +    vt_write(t, alternate_state, alternate_state.len);
 +
-+    var alternate_saved: SavedCursor = undefined;
-+    alternate_saved.size = @sizeOf(SavedCursor);
-+    try testing.expectEqual(
-+        Result.success,
-+        saved_cursor(t, .alternate, &alternate_saved),
-+    );
++    var alternate_saved: SavedCursor = .{};
++    try testing.expectEqual(Result.success, saved_cursor(t, .alternate, &alternate_saved));
 +    try testing.expectEqual(@as(size.CellCountInt, 7), alternate_saved.x);
 +    try testing.expectEqual(@as(size.CellCountInt, 2), alternate_saved.y);
-+    try testing.expect(!alternate_saved.style.bold);
++    try testing.expect(!alternate_saved.style.flags.bold);
 +    try testing.expect(alternate_saved.protected_cell);
 +    try testing.expect(alternate_saved.pending_wrap);
 +    try testing.expect(!alternate_saved.origin);
 +    try testing.expectEqual(TerminalCharset.ascii, alternate_saved.charset.g0);
 +
 +    // The primary screen stays readable while the alternate screen is active.
-+    var primary: ScreenState = undefined;
-+    primary.size = @sizeOf(ScreenState);
-+    try testing.expectEqual(
-+        Result.success,
-+        screen_get(t, .primary, &primary),
-+    );
++    var primary: ScreenState = .{};
++    try testing.expectEqual(Result.success, screen_get(t, .primary, &primary));
 +    try testing.expectEqual(@as(size.CellCountInt, 8), primary.cols);
 +    try testing.expectEqual(@as(size.CellCountInt, 3), primary.rows);
 +    try testing.expect(primary.total_rows >= primary.rows);
@@ -1033,15 +1366,12 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +    );
 +
 +    var iterator: ScreenRowIterator = null;
-+    try testing.expectEqual(
-+        Result.success,
-+        screen_row_iterator_new(
-+            &lib.alloc.test_allocator,
-+            t,
-+            .primary,
-+            &iterator,
-+        ),
-+    );
++    try testing.expectEqual(Result.success, screen_row_iterator_new(
++        &lib.alloc.test_allocator,
++        t,
++        .primary,
++        &iterator,
++    ));
 +    defer screen_row_iterator_free(iterator);
 +    var iterated_rows: u64 = 0;
 +    while (true) {
@@ -1056,155 +1386,231 @@ index 5f047f489083060ec33ec2e7471e8d0e1c8db204..49555d665d0ce6100718a442ea30a174
 +        iterated_rows += 1;
 +    }
 +    try testing.expectEqual(primary.total_rows, iterated_rows);
-+    var exhausted_ref: grid_ref_c.CGridRef = .{};
++
++    // An exhausted iterator keeps reporting no row, with a zeroed ref.
++    var exhausted_ref: grid_ref_c.CGridRef = .{ .x = 5 };
 +    var exhausted_has_row = true;
 +    try testing.expectEqual(
 +        Result.success,
-+        screen_row_iterator_next(
-+            iterator,
-+            &exhausted_ref,
-+            &exhausted_has_row,
-+        ),
++        screen_row_iterator_next(iterator, &exhausted_ref, &exhausted_has_row),
 +    );
 +    try testing.expect(!exhausted_has_row);
++    try testing.expectEqual(grid_ref_c.CGridRef{}, exhausted_ref);
 +
 +    var ref: grid_ref_c.CGridRef = .{};
-+    try testing.expectEqual(Result.success, screen_grid_ref(
-+        t,
-+        .primary,
-+        point.Point.cval(.{ .screen = .{ .x = 0, .y = 0 } }),
-+        &ref,
-+    ));
++    try testing.expectEqual(Result.success, screen_grid_ref(t, .primary, .{
++        .tag = .screen,
++        .value = .{ .screen = .{ .x = 0, .y = 0 } },
++    }, &ref));
 +    var graphemes: [4]u32 = undefined;
 +    var grapheme_len: usize = 0;
-+    try testing.expectEqual(
-+        Result.success,
-+        grid_ref_c.grid_ref_graphemes(
-+            &ref,
-+            &graphemes,
-+            graphemes.len,
-+            &grapheme_len,
-+        ),
-+    );
++    try testing.expectEqual(Result.success, grid_ref_c.grid_ref_graphemes(
++        &ref,
++        &graphemes,
++        graphemes.len,
++        &grapheme_len,
++    ));
 +    try testing.expectEqual(@as(usize, 1), grapheme_len);
 +    try testing.expectEqual(@as(u32, 'p'), graphemes[0]);
 +
-+    var alternate: ScreenState = undefined;
-+    alternate.size = @sizeOf(ScreenState);
-+    try testing.expectEqual(
-+        Result.success,
-+        screen_get(t, .alternate, &alternate),
-+    );
++    var alternate: ScreenState = .{};
++    try testing.expectEqual(Result.success, screen_get(t, .alternate, &alternate));
 +    try testing.expectEqual(@as(size.CellCountInt, 7), alternate.cursor_x);
 +    try testing.expectEqual(TerminalCharset.ascii, alternate.charset.g0);
 +
 +    alternate.size = 0;
++    try testing.expectEqual(Result.invalid_value, screen_get(t, .alternate, &alternate));
++}
++
++test "screen reads null terminal and null outputs" {
++    var saved: SavedCursor = .{};
++    try testing.expectEqual(Result.invalid_value, saved_cursor(null, .primary, &saved));
++    var state: ScreenState = .{};
++    try testing.expectEqual(Result.invalid_value, screen_get(null, .primary, &state));
++    var ref: grid_ref_c.CGridRef = .{};
++    try testing.expectEqual(Result.invalid_value, screen_grid_ref(null, .primary, .{
++        .tag = .screen,
++        .value = .{ .screen = .{ .x = 0, .y = 0 } },
++    }, &ref));
++    var iterator: ScreenRowIterator = null;
++    try testing.expectEqual(Result.invalid_value, screen_row_iterator_new(
++        &lib.alloc.test_allocator,
++        null,
++        .primary,
++        &iterator,
++    ));
++    var has_row = false;
 +    try testing.expectEqual(
 +        Result.invalid_value,
-+        screen_get(t, .alternate, &alternate),
++        screen_row_iterator_next(null, &ref, &has_row),
 +    );
++    screen_row_iterator_free(null);
++
++    var t: Terminal = null;
++    try testing.expectEqual(Result.success, new(
++        &lib.alloc.test_allocator,
++        &t,
++        8,
++        3,
++    ));
++    defer free(t);
++    try testing.expectEqual(Result.invalid_value, saved_cursor(t, .primary, null));
++    try testing.expectEqual(Result.invalid_value, screen_get(t, .primary, null));
++    try testing.expectEqual(Result.invalid_value, screen_row_iterator_new(
++        &lib.alloc.test_allocator,
++        t,
++        .primary,
++        null,
++    ));
 +}
 +
 +test "screen cursor hyperlink exposes URI and semantic identity" {
 +    var t: Terminal = null;
-+    try testing.expectEqual(Result.success, new(&lib.alloc.test_allocator, &t, 12, 3));
-+    try testing.expectEqual(Result.success, set(t, .scrollback_max_bytes, &@as(usize, 10_000)));
++    try testing.expectEqual(Result.success, new(
++        &lib.alloc.test_allocator,
++        &t,
++        12,
++        3,
++    ));
 +    defer free(t);
 +
 +    var identity: grid_ref_c.HyperlinkIdentity = .{};
 +    var uri_len: usize = 0;
 +    var id_len: usize = 0;
-+    try testing.expectEqual(
-+        Result.no_value,
-+        screen_cursor_hyperlink(
-+            t,
-+            .primary,
-+            null,
-+            0,
-+            &uri_len,
-+            null,
-+            0,
-+            &id_len,
-+            &identity,
-+        ),
-+    );
++    try testing.expectEqual(Result.no_value, screen_cursor_hyperlink(
++        t,
++        .primary,
++        null,
++        0,
++        &uri_len,
++        null,
++        0,
++        &id_len,
++        &identity,
++    ));
 +
++    // A size query reports both sizes and the identity.
 +    const explicit = "\x1b]8;id=group;https://example.test/explicit\x1b\\";
 +    vt_write(t, explicit, explicit.len);
-+    try testing.expectEqual(
-+        Result.out_of_space,
-+        screen_cursor_hyperlink(
-+            t,
-+            .primary,
-+            null,
-+            0,
-+            &uri_len,
-+            null,
-+            0,
-+            &id_len,
-+            &identity,
-+        ),
-+    );
-+    var uri: [64]u8 = undefined;
++    try testing.expectEqual(Result.out_of_space, screen_cursor_hyperlink(
++        t,
++        .primary,
++        null,
++        0,
++        &uri_len,
++        null,
++        0,
++        &id_len,
++        &identity,
++    ));
++    try testing.expectEqual(@as(usize, "https://example.test/explicit".len), uri_len);
++    try testing.expectEqual(@as(usize, "group".len), id_len);
++    try testing.expectEqual(grid_ref_c.HyperlinkIdentityTag.explicit, identity.tag);
++
++    // One buffer too small leaves both untouched.
++    var uri: [64]u8 = @splat('x');
++    var small_id: [2]u8 = @splat('x');
++    try testing.expectEqual(Result.out_of_space, screen_cursor_hyperlink(
++        t,
++        .primary,
++        &uri,
++        uri.len,
++        &uri_len,
++        &small_id,
++        small_id.len,
++        &id_len,
++        &identity,
++    ));
++    try testing.expectEqual(@as(u8, 'x'), uri[0]);
++    try testing.expectEqualStrings("xx", &small_id);
++
 +    var id: [16]u8 = undefined;
-+    try testing.expectEqual(
-+        Result.success,
-+        screen_cursor_hyperlink(
-+            t,
-+            .primary,
-+            &uri,
-+            uri.len,
-+            &uri_len,
-+            &id,
-+            id.len,
-+            &id_len,
-+            &identity,
-+        ),
-+    );
++    try testing.expectEqual(Result.success, screen_cursor_hyperlink(
++        t,
++        .primary,
++        &uri,
++        uri.len,
++        &uri_len,
++        &id,
++        id.len,
++        &id_len,
++        &identity,
++    ));
 +    try testing.expectEqualStrings("https://example.test/explicit", uri[0..uri_len]);
 +    try testing.expectEqualStrings("group", id[0..id_len]);
 +    try testing.expectEqual(grid_ref_c.HyperlinkIdentityTag.explicit, identity.tag);
 +
 +    const implicit = "\x1b]8;;https://example.test/implicit\x1b\\";
 +    vt_write(t, implicit, implicit.len);
-+    try testing.expectEqual(
-+        Result.out_of_space,
-+        screen_cursor_hyperlink(
-+            t,
-+            .primary,
-+            null,
-+            0,
-+            &uri_len,
-+            null,
-+            0,
-+            &id_len,
-+            &identity,
-+        ),
-+    );
++    try testing.expectEqual(Result.out_of_space, screen_cursor_hyperlink(
++        t,
++        .primary,
++        null,
++        0,
++        &uri_len,
++        null,
++        0,
++        &id_len,
++        &identity,
++    ));
 +    try testing.expectEqual(grid_ref_c.HyperlinkIdentityTag.implicit, identity.tag);
 +    try testing.expectEqual(@as(usize, 0), id_len);
++
++    // An implicit link needs no identity buffer at all.
++    try testing.expectEqual(Result.success, screen_cursor_hyperlink(
++        t,
++        .primary,
++        &uri,
++        uri.len,
++        &uri_len,
++        null,
++        0,
++        &id_len,
++        &identity,
++    ));
++    try testing.expectEqualStrings("https://example.test/implicit", uri[0..uri_len]);
++
++    identity.size = 0;
++    try testing.expectEqual(Result.invalid_value, screen_cursor_hyperlink(
++        t,
++        .primary,
++        null,
++        0,
++        &uri_len,
++        null,
++        0,
++        &id_len,
++        &identity,
++    ));
 +}
 +
 diff --git a/src/terminal/c/types.zig b/src/terminal/c/types.zig
-index db75bfddf2a0594edff74a84d295bef66d5d9e49..21dcc605cd617b5ad0c254e4b1d6346213dea26a 100644
+index cb662f3f8450b002ea7281771e18a333294b4e87..e8d0c6add8784b6cc661b2afb3069983d44cb4e8 100644
 --- a/src/terminal/c/types.zig
 +++ b/src/terminal/c/types.zig
-@@ -173,0 +174,10 @@ const type_decls = [_]TypeDecl{
+@@ -402,0 +403 @@ pub const type_decls = [_]TypeDecl{
 +    .initStruct("GhosttyHyperlinkIdentity", grid_ref.HyperlinkIdentity),
+@@ -430,0 +432 @@ pub const type_decls = [_]TypeDecl{
 +    .initStruct("GhosttyTerminalCharsetState", terminal.TerminalCharsetState),
+@@ -442,0 +445,2 @@ pub const type_decls = [_]TypeDecl{
 +    .initStruct("GhosttyTerminalSavedCursor", terminal.SavedCursor),
 +    .initStruct("GhosttyTerminalScreenState", terminal.ScreenState),
-+    .initOpaque("GhosttyTerminalScreenRowIterator"),
+@@ -479,0 +484 @@ pub const type_decls = [_]TypeDecl{
 +    .initEnum("GhosttyHyperlinkIdentityTag", grid_ref.HyperlinkIdentityTag, "GHOSTTY_HYPERLINK_IDENTITY_"),
+@@ -544,0 +550,2 @@ pub const type_decls = [_]TypeDecl{
 +    .initEnum("GhosttyTerminalCharset", terminal.TerminalCharset, "GHOSTTY_TERMINAL_CHARSET_"),
 +    .initEnum("GhosttyTerminalCharsetSlot", terminal.TerminalCharsetSlot, "GHOSTTY_TERMINAL_CHARSET_SLOT_"),
+@@ -549,0 +557 @@ pub const type_decls = [_]TypeDecl{
 +    .initEnum("GhosttyTerminalProtectedMode", terminal.TerminalProtectedMode, "GHOSTTY_TERMINAL_PROTECTED_MODE_"),
+@@ -550,0 +559 @@ pub const type_decls = [_]TypeDecl{
 +    .initEnum("GhosttyTerminalSemanticClick", terminal.TerminalSemanticClick, "GHOSTTY_TERMINAL_SEMANTIC_CLICK_"),
+@@ -587,0 +597 @@ pub const type_decls = [_]TypeDecl{
++    .initOpaque("GhosttyTerminalScreenRowIterator"),
 diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
-index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84ee346b52 100644
+index 3ba5173c8b3a3651f967d74eda924a9adebb76d9..930eb68f27f75960af11ddd1fee35aecb08c8196 100644
 --- a/src/terminal/formatter.zig
 +++ b/src/terminal/formatter.zig
-@@ -409,4 +409,4 @@ pub const TerminalFormatter = struct {
+@@ -409,4 +409,5 @@ pub const TerminalFormatter = struct {
 -        // Emit terminal modes that differ from defaults. We probably have
 -        // some modes we want to emit before and some after, but for now for
 -        // simplicity we just emit them all before. If we make this more complex
@@ -1212,8 +1618,9 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +        // DECCOLM (mode 3) is ignored unless mode 40 is already enabled, and a
 +        // successful DECCOLM resize recreates the tabstop table. Restore this
 +        // pair before custom tabstops and before the generated mode-order loop
-+        // (where numeric mode 3 otherwise precedes mode 40).
-@@ -414,4 +414,8 @@ pub const TerminalFormatter = struct {
++        // (where numeric mode 3 otherwise precedes mode 40). The pin_map
++        // counts these bytes with the rest of the modes below.
+@@ -414,4 +415,8 @@ pub const TerminalFormatter = struct {
 -            inline for (@typeInfo(modespkg.Mode).@"enum".field_names, @typeInfo(modespkg.Mode).@"enum".field_values) |field, field_value| {
 -                const mode: modespkg.Mode = @fromBackingInt(field_value);
 -                const current = self.terminal.modes.get(mode);
@@ -1226,7 +1633,7 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +                    .{if (mode_40) "h" else "l"},
 +                );
 +            }
-@@ -419,5 +423,24 @@ pub const TerminalFormatter = struct {
+@@ -419,5 +424,24 @@ pub const TerminalFormatter = struct {
 -                if (current != default_val) {
 -                    const tag: modespkg.ModeTag = @bitCast(@backingInt(mode));
 -                    const prefix = if (tag.ansi) "" else "?";
@@ -1256,14 +1663,14 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +                    try writer.print("\x1b[{d}G", .{col + 1});
 +                    // Set tab (HTS)
 +                    try writer.print("\x1bH", .{});
-@@ -426,0 +450,3 @@ pub const TerminalFormatter = struct {
+@@ -426,0 +451,3 @@ pub const TerminalFormatter = struct {
 +            // Screen contents are formatted relative to the top-left.
 +            try writer.writeAll("\x1b[H");
 +
-@@ -434 +460 @@ pub const TerminalFormatter = struct {
+@@ -434 +461 @@ pub const TerminalFormatter = struct {
 -                extra_formatter.extra.modes = true;
 +                extra_formatter.extra.tabstops = true;
-@@ -447,6 +473,10 @@ pub const TerminalFormatter = struct {
+@@ -447,6 +474,10 @@ pub const TerminalFormatter = struct {
 -        // Emit tabstop positions before the screen contents because setting
 -        // them moves the cursor. Screen formatting will restore the requested
 -        // cursor position afterwards.
@@ -1280,7 +1687,7 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +                if (mode == .enable_mode_3 or mode == .@"132_column") continue;
 +                const current = self.terminal.modes.get(mode);
 +                const default_val = @field(self.terminal.modes.default, field);
-@@ -454,7 +484,5 @@ pub const TerminalFormatter = struct {
+@@ -454,7 +485,5 @@ pub const TerminalFormatter = struct {
 -            // Set each configured tabstop by moving cursor and using HTS
 -            for (0..self.terminal.cols) |col| {
 -                if (self.terminal.tabstops.get(col)) {
@@ -1293,14 +1700,14 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +                    const prefix = if (tag.ansi) "" else "?";
 +                    const suffix = if (current) "h" else "l";
 +                    try writer.print("\x1b[{s}{d}{s}", .{ prefix, tag.value, suffix });
-@@ -464,3 +491,0 @@ pub const TerminalFormatter = struct {
+@@ -464,3 +492,0 @@ pub const TerminalFormatter = struct {
 -            // Screen contents are formatted relative to the top-left.
 -            try writer.writeAll("\x1b[H");
 -
-@@ -474 +499 @@ pub const TerminalFormatter = struct {
+@@ -474 +500 @@ pub const TerminalFormatter = struct {
 -                extra_formatter.extra.tabstops = true;
 +                extra_formatter.extra.modes = true;
-@@ -864,0 +890,12 @@ pub const ScreenFormatter = struct {
+@@ -883,0 +910,12 @@ pub const ScreenFormatter = struct {
 +
 +            // SS2/SS3 applies to exactly the next printable character. It
 +            // therefore has to be emitted after all other formatter output
@@ -1313,16 +1720,16 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +                };
 +                try writer.print("{s}", .{seq});
 +            }
-@@ -6370 +6407 @@ test "Screen vt with kitty keyboard" {
+@@ -6385 +6423 @@ test "Screen vt with kitty keyboard" {
 -test "Screen vt with charsets" {
 +test "Screen vt with charsets including pending single shift" {
-@@ -6387,2 +6424,3 @@ test "Screen vt with charsets" {
+@@ -6402,2 +6440,3 @@ test "Screen vt with charsets" {
 -    // Set G0 to DEC special and shift to G1
 -    s.nextSlice("\x1b(0\x0ehello");
 +    // Set G0 and G2 to DEC special, shift GL to G1, and leave SS2
 +    // pending. The formatter must not consume that one-shot state itself.
 +    s.nextSlice("\x1b(0\x0ehello\x1b*0\x1bN");
-@@ -6418,0 +6457,8 @@ test "Screen vt with charsets" {
+@@ -6433,0 +6473,8 @@ test "Screen vt with charsets" {
 +    try testing.expectEqual(
 +        t.screens.active.charset.charsets.get(.G2),
 +        t2.screens.active.charset.charsets.get(.G2),
@@ -1331,7 +1738,7 @@ index f1ec6b7c13c014e51b22be331f9917944628f80e..8cf227df70e4d51624279ce640a1fd84
 +        t.screens.active.charset.single_shift,
 +        t2.screens.active.charset.single_shift,
 +    );
-@@ -6720,0 +6767,82 @@ test "Terminal vt with tabstops" {
+@@ -6784,0 +6832,82 @@ test "Terminal vt with tabstops" {
 +test "Terminal vt restores cursor after margins and tabstops" {
 +    const testing = std.testing;
 +    const alloc = testing.allocator;

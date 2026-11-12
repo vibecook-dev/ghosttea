@@ -39,6 +39,14 @@ bool eg_buffer_append(EgBuffer* buffer, const uint8_t* data, size_t len);
 // surrogate or a value above U+10FFFF is the caller's to rule out.
 size_t eg_utf8_encode(uint32_t codepoint, uint8_t out[4]);
 void eg_terminal_style(GhosttyStyle source, EgTerminalStyle* out);
+// Formats the VT stream that recreates the active screen in another
+// terminal: its state alone when `state_only`, else its cells as well.
+// Returns the bytes written, the size needed when `out` is too small, or
+// SIZE_MAX on failure.
+size_t eg_format_recovery(EgTerminal* state,
+                          bool state_only,
+                          uint8_t* out,
+                          size_t cap);
 int eg_emit_hyperlink_uri(EgTerminal* state,
                           const GhosttyGridRef* ref,
                           uint32_t row,
