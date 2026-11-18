@@ -168,7 +168,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - run: npm ci --ignore-scripts
-      - run: npm audit --audit-level=high
+      - run: npm run audit:npm
 
       # RustSec's own release build, pinned by checksum. Compiling it with
       # `cargo install` took two to three minutes of every audit.

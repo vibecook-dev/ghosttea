@@ -101,12 +101,20 @@ Run from a clean checkout of the release commit:
 
 ```sh
 npm ci --ignore-scripts
-npm audit --audit-level=high
+npm run audit:npm
 npm run bootstrap:ghostty-vt:apple
 npm run ci:desktop
 npm run check:first-publishes
 cargo audit
 ```
+
+`npm run audit:npm` is `npm audit` held to high and critical advisories, with the
+dated exceptions in `npm-audit-exceptions.json`. An exception names one advisory
+for one package, at the vulnerable range `npm audit` printed beside that package
+when it was granted, and expires within ninety days. The gate fails again when
+that day passes, when that range changes (a fixed version may exist: bump
+instead) and when nothing reports the advisory any more (remove the exception).
+`cargo audit` has the same door in `.cargo/audit.toml`.
 
 The desktop gate builds and tests every workspace, validates npm and Rust
 package archives, builds external consumers exclusively from those archives,

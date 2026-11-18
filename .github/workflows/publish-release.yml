@@ -156,7 +156,7 @@ jobs:
         run: test "v$(node -p "require('./package.json').version")" = "$RELEASE_TAG"
 
       - run: npm ci --ignore-scripts
-      - run: npm audit --audit-level=high
+      - run: npm run audit:npm
 
       # The desktop gate covers the registry artifacts. It does not reach the
       # GhostteaKit native artifact, which ships to SwiftPM consumers through a
