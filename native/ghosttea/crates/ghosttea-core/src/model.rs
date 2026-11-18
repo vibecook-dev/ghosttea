@@ -244,6 +244,22 @@ impl TerminalModel {
         self.snapshot_update(render)
     }
 
+    /// The appearance a terminal starts with, set before its first byte is
+    /// fed so that a program's first color query is answered from it. Nothing
+    /// is published: there is no screen yet, and the first snapshot is the
+    /// caller's to take.
+    pub fn set_initial_appearance(
+        &mut self,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        cursor: [u8; 3],
+        palette: &[(u8, [u8; 3])],
+    ) -> Result<()> {
+        self.terminal.set_colors(foreground, background, cursor)?;
+        self.terminal.set_palette(palette)?;
+        Ok(())
+    }
+
     pub fn selection_text(
         &mut self,
         start: (u16, u32),
