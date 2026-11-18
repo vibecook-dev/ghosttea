@@ -68,22 +68,38 @@ for (const [description, actual, expected] of [
 }
 mkdirSync(output, { recursive: true });
 
-const args = [
-  "build",
+// Both Zig invocations share these, so the build finds what the fetch stored.
+const directories = [
   `-j${lock.builder.zigBuildJobs}`,
   "--cache-dir",
   join(output, "cache"),
   "--pkg-dir",
   join(output, lock.builder.zigPackageDirectory),
+];
+
+function zigBuild(args) {
+  const result = spawnSync(zig, ["build", ...args], { cwd: vendor, env: commandEnvironment, stdio: "inherit" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+// Fetch every package Ghostty's manifests name before the build asks for one.
+// Ghostty lists `aro` as lazy from its own mirror, and translate_c lists the
+// same package as required at its upstream URL. A build that fetches on demand
+// makes Zig 0.17.0 start a second fetch from that upstream URL. If it fails,
+// Zig reports nothing and then reads the failed fetch's unset path: a
+// segmentation fault at 0xaaaaaaaaaaaaaaaa instead of an error. Fetched up
+// front, every package is required from the start and comes from the mirror
+// by its pinned hash, so the build starts with every package already present.
+zigBuild(["--fetch=all", ...directories]);
+zigBuild([
+  ...directories,
   "--prefix",
   install,
   "-Demit-lib-vt",
   "-Demit-xcframework",
   `-Doptimize=${lock.builder.zigOptimize}`,
-];
-const result = spawnSync(zig, args, { cwd: vendor, env: commandEnvironment, stdio: "inherit" });
-if (result.error) throw result.error;
-if (result.status !== 0) process.exit(result.status ?? 1);
+]);
 if (!existsSync(xcframework)) {
   throw new Error(`Ghostty build completed without ${xcframework}`);
 }

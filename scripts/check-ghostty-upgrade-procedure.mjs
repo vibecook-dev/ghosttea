@@ -279,6 +279,13 @@ for (const path of ["scripts/build-ghostty-vt.mjs", "scripts/build-ghostty-vt-ap
     throw new Error(`${path} does not reject source changes outside the exact locked patch set.`);
   }
 }
+// A build that fetches on demand can ask a package's upstream host, and Zig
+// 0.17.0 crashes when that fetch fails. See the build script.
+for (const path of ["scripts/build-ghostty-vt-apple.mjs"]) {
+  if (!read(path).includes('"--fetch=all"')) {
+    throw new Error(`${path} does not fetch every Ghostty package before the build.`);
+  }
+}
 const desktopBuild = read("scripts/build-ghostty-vt.mjs");
 for (const text of [
   "-Dcpu=${config.zigCpu}",
