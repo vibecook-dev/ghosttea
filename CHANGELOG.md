@@ -3,6 +3,24 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## Unreleased
+
+### Added
+
+- A host can tell a session its colors whole and from its first instant, with
+  control protocol 1.20. `set-colors` takes an optional `palette` of sparse
+  `[index, [r, g, b]]` slots, which lie over the configuration's palette, and
+  `create-session` takes optional `colors` (foreground, background, cursor and
+  palette). Colors named at create are in the terminal before the child's
+  first byte is read, and give the session's `COLORFGBG` hint unless the
+  caller sets one. A palette that names an index twice, an index over 255 or
+  more than 256 entries is refused. A session told its colors keeps them
+  across a configuration reload; a session never told still follows the
+  configuration. The node client adds
+  `setColors(sessionId, colors)`, passes `colors` through `createSession`, and
+  refuses a palette or create-time colors against a daemon older than 1.20,
+  which would silently drop them.
+
 ## 0.15.0 - 2026-11-11
 
 ### Changed

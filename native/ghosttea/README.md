@@ -239,3 +239,29 @@ to tell. A daemon relays a remote session's key as it arrived, so for a remote s
 minor its mesh negotiated with the host decides, and a control client does not see that
 minor. The C ABI carries the same choice as `GHOSTTEA_KEY_FLAG_OPTION_TYPES_TEXT`; it is
 linked into its caller, so it has nothing to negotiate.
+
+# Session colors: what a host tells a session
+
+A program asks its terminal what the ground is (OSC 10 and 11, the color-scheme report,
+`COLORFGBG`) and picks its light or dark design from the answer. By default a session
+answers from the configuration. A host whose view of a session differs from the
+configuration tells the session its colors, and the session answers from those instead.
+
+`set-colors` says foreground, background and cursor. With a `palette` of sparse
+`[index, [r, g, b]]` slots it also says the palette: the slots it names over the
+configuration's, each index at most once. A palette is the host's whole palette, so a slot
+an earlier command named and a later one does not follows the configuration again. Without a
+`palette` the command leaves the palette as it is.
+
+`colors` in the spawn options says the same at create. Those colors are in the terminal
+before the child's first byte is read, so the first query a program makes is answered from
+them, and they give the `COLORFGBG` hint unless the caller's environment names one.
+
+A session told its colors either way is host-colored: a configuration reload leaves its
+colors alone, where a session never told follows the reloaded configuration. A remote
+session accepts `set-colors` and does nothing with it, as before; its host owns its colors.
+
+Control protocol 1.20 says the daemon reads `palette` and `colors` and keeps a host's
+colors across a reload. Serde ignores fields it does not know, so an older daemon drops
+both and still answers `ok`; the node client refuses them below 1.20 for that reason.
+A `set-colors` without a palette predates the minor and needs none.

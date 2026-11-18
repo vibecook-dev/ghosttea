@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
             program_kind: SessionProgramKind::default(),
             owner_id: None,
             scrollback_bytes: None,
+            colors: None,
         },
         FrameHub::new(8),
         Arc::new(Mutex::new(

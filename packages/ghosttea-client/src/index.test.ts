@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionColors, SessionPaletteEntry } from "@vibecook/ghosttea-protocol";
 
 const commands: Record<string, unknown>[] = [];
 let socketBehavior: "normal" | "close-during-auth" | "silent-auth" = "normal";
@@ -46,6 +47,20 @@ const document = {
   path: "/tmp/config.ghostty",
   exists: true,
   contents: "# exact\r\n",
+};
+
+const sessionColors: SessionColors = {
+  foreground: [32, 33, 36],
+  background: [250, 250, 250],
+  cursor: [32, 33, 36],
+};
+
+const createOptions = {
+  executable: "/bin/sh",
+  args: [],
+  cols: 80,
+  rows: 24,
+  persistence: "keep-until-exit" as const,
 };
 
 function packet(value: string | object): Buffer {
@@ -233,7 +248,7 @@ class FakeSocket extends EventEmitter {
           }),
         ),
       );
-    } else if (command.type === "close-session-owner") {
+    } else if (command.type === "close-session-owner" || command.type === "set-colors") {
       queueMicrotask(() => this.emit("data", packet({ requestId, type: "ok" })));
     } else if (command.type === "terminate") {
       queueMicrotask(() => {
@@ -454,6 +469,94 @@ describe("GhostteaAutomationClient", () => {
     const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
     await expect(client.releaseSession("session", "unused")).resolves.toBe("attached");
     expect(commands.at(-1)).toMatchObject({ type: "release-session", sessionId: "session", condition: "unused" });
+    client.dispose();
+  });
+
+  it("tells a session its colors, naming a palette only when one is given", async () => {
+    serverProtocolMinor = 20;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    await client.setColors("session", sessionColors);
+    expect(commands.at(-1)).toEqual({
+      requestId: expect.any(Number),
+      type: "set-colors",
+      sessionId: "session",
+      foreground: [32, 33, 36],
+      background: [250, 250, 250],
+      cursor: [32, 33, 36],
+    });
+    expect(commands.at(-1)).not.toHaveProperty("palette");
+
+    const palette: SessionPaletteEntry[] = [
+      [0, [32, 33, 36]],
+      [15, [255, 255, 255]],
+    ];
+    await client.setColors("session", { ...sessionColors, palette });
+    expect(commands.at(-1)).toEqual({
+      requestId: expect.any(Number),
+      type: "set-colors",
+      sessionId: "session",
+      foreground: [32, 33, 36],
+      background: [250, 250, 250],
+      cursor: [32, 33, 36],
+      palette: [
+        [0, [32, 33, 36]],
+        [15, [255, 255, 255]],
+      ],
+    });
+    expect(commands.map((command) => command.type)).toEqual(["hello", "set-colors", "set-colors"]);
+    client.dispose();
+  });
+
+  it("refuses a palette and colors at create before session colors protocol 1.20", async () => {
+    // A 1.19 daemon would ignore both fields and answer ok, so the host would
+    // believe colors were set that never were.
+    serverProtocolMinor = 19;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    const refused = "requires protocol 1.20";
+    const palette: SessionPaletteEntry[] = [[1, [200, 40, 40]]];
+    await expect(client.setColors("session", { ...sessionColors, palette })).rejects.toThrow(refused);
+    await expect(
+      client.request({ type: "set-colors", sessionId: "session", ...sessionColors, palette }),
+    ).rejects.toThrow(refused);
+    await expect(client.createSession({ ...createOptions, colors: sessionColors })).rejects.toThrow(refused);
+    await expect(
+      client.request({ type: "create-session", options: { ...createOptions, colors: sessionColors } }),
+    ).rejects.toThrow(refused);
+    expect(commands.map((command) => command.type)).toEqual(["hello"]);
+
+    // Without a palette the command predates the gate.
+    await client.setColors("session", sessionColors);
+    expect(commands.map((command) => command.type)).toEqual(["hello", "set-colors"]);
+    client.dispose();
+  });
+
+  it("creates a session in its colors against a 1.20 daemon", async () => {
+    serverProtocolMinor = 20;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    const colors: SessionColors = { ...sessionColors, palette: [[1, [200, 40, 40]]] };
+    await expect(client.createSession({ ...createOptions, colors })).resolves.toMatchObject({ id: "created" });
+    expect(commands.at(-1)).toMatchObject({ type: "create-session" });
+    expect(commands.at(-1)?.options).toEqual({ ...createOptions, colors });
+    client.dispose();
+  });
+
+  it("validates session colors before any reach the daemon", async () => {
+    serverProtocolMinor = 20;
+    const client = new GhostteaAutomationClient({ controlSocket: "control.sock", authToken: "secret" });
+    const tooBright: SessionColors = { ...sessionColors, cursor: [0, 0, 256] };
+    const fractional: SessionColors = { ...sessionColors, foreground: [0, 0.5, 0] };
+    const twice: SessionPaletteEntry[] = [
+      [3, [0, 0, 0]],
+      [3, [255, 255, 255]],
+    ];
+    const outOfRange: SessionPaletteEntry[] = [[256, [0, 0, 0]]];
+    await expect(client.setColors("session", tooBright)).rejects.toThrow(RangeError);
+    await expect(client.setColors("session", { ...sessionColors, palette: twice })).rejects.toThrow(RangeError);
+    await expect(
+      client.request({ type: "set-colors", sessionId: "session", ...sessionColors, palette: outOfRange }),
+    ).rejects.toThrow(RangeError);
+    await expect(client.createSession({ ...createOptions, colors: fractional })).rejects.toThrow(RangeError);
+    expect(commands.map((command) => command.type)).toEqual(["hello"]);
     client.dispose();
   });
 

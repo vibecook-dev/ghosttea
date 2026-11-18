@@ -40,3 +40,11 @@ control-socket protocol directly. Raw configuration document methods require
 protocol 1.11 and are intentionally privileged: they can edit only the
 daemon-designated final overlay, use an expected revision to prevent stale
 writes, and are not suitable for direct renderer exposure.
+
+`setColors(sessionId, colors)` tells a session its foreground, background and
+cursor, which the daemon answers a program's color queries from, and
+`createSession` takes the same `colors` so a session starts in them. Protocol
+1.20 adds the sparse `palette` and `colors` at creation, and keeps a session's
+told colors across a configuration reload. The client refuses a palette or
+create-time colors against an older daemon rather than let them drop; a
+palette-less `setColors` works against any daemon.

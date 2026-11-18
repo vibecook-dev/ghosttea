@@ -39,11 +39,13 @@ const MAX_AUTH_TOKEN_BYTES: usize = 1024;
 const MAX_TERMINAL_COLS: u16 = 1_000;
 const MAX_TERMINAL_ROWS: u16 = 1_000;
 const MAX_SESSION_OWNER_TRANSFERS: usize = 4_096;
+/// A palette has 256 slots, and a host's palette names each at most once.
+const MAX_PALETTE_ENTRIES: usize = 256;
 const MAX_CLOSED_OWNER_TOMBSTONES: usize = 16_384;
 const CLOSED_OWNER_BLOOM_BITS: usize = 1 << 23;
 const CLOSED_OWNER_BLOOM_HASHES: u64 = 4;
 const CONTROL_PROTOCOL_MAJOR: u16 = 1;
-const CONTROL_PROTOCOL_MINOR: u16 = 19;
+const CONTROL_PROTOCOL_MINOR: u16 = 20;
 const ACTIVITY_EVENT_PROTOCOL_MINOR: u16 = 6;
 const EVENTS_LOST_PROTOCOL_MINOR: u16 = 8;
 const SESSION_CREATED_PROTOCOL_MINOR: u16 = 9;
@@ -102,6 +104,16 @@ const METADATA_EVENT_PROTOCOL_MINOR: u16 = 17;
 /// in `tunnel_protocol`), negotiated between the mesh peers; this minor does
 /// not report it.
 const OPTION_AS_ALT_PROTOCOL_MINOR: u16 = 19;
+/// A host's colors for a session: `palette` on `set-colors`, and `colors` on
+/// `create-session`. A session told its colors either way keeps them across
+/// a configuration reload.
+///
+/// Fields on existing commands, and still a minor of their own, for the reason
+/// `CONTROL_REVISION_CAS_PROTOCOL_MINOR` gives: serde ignores fields it does
+/// not know. A minor-19 daemon drops both unread, so a host would believe it
+/// had set a palette, or a session's first colors, that it never did. The
+/// negotiated minor is what tells a client this daemon reads them.
+const SESSION_COLORS_PROTOCOL_MINOR: u16 = 20;
 // A gate above the advertised minor would be unreachable: no client could ever
 // negotiate high enough to receive the event it guards.
 const _: () = assert!(SESSION_CREATED_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
@@ -116,6 +128,7 @@ const _: () = assert!(SESSION_SCROLLBACK_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINO
 const _: () = assert!(STRUCTURED_ERROR_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(METADATA_EVENT_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const _: () = assert!(OPTION_AS_ALT_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
+const _: () = assert!(SESSION_COLORS_PROTOCOL_MINOR <= CONTROL_PROTOCOL_MINOR);
 const ACTIVITY_SAMPLE_INTERVAL: Duration = Duration::from_millis(200);
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// How long an accepted connection may take to present its token before the
@@ -636,6 +649,15 @@ enum Command {
         foreground: [u8; 3],
         background: [u8; 3],
         cursor: [u8; 3],
+        /// Palette slots, `[index, [r, g, b]]` pairs, each index at most once
+        /// (`SESSION_COLORS_PROTOCOL_MINOR`).
+        ///
+        /// Absent leaves the palette as it is, all a pre-minor-20 host can
+        /// ask. Present is the host's whole palette: the named slots over the
+        /// configuration's, as `colors` at create, so a slot an earlier
+        /// command named and this one does not follows the configuration.
+        #[serde(default)]
+        palette: Option<Vec<(u8, [u8; 3])>>,
     },
     SelectionText {
         session_id: String,
@@ -2237,6 +2259,9 @@ async fn create_local_session(
 ) -> Result<Arc<Session>> {
     validate_grid(options.cols, options.rows)?;
     validate_owner(options.owner_id.as_deref())?;
+    if let Some(colors) = &options.colors {
+        validate_palette(&colors.palette)?;
+    }
     // Count first, then check — the order is the guarantee. A create that
     // reads the flag as open before being descheduled has already made itself
     // visible, so a shutdown that observes zero in-flight creates knows none
@@ -2305,7 +2330,19 @@ async fn create_local_session(
         let scrollback_bytes = usize::try_from(effective_scrollback_bytes)
             .context("scrollbackBytes does not fit this platform")?;
         let mut options = options;
+        let configured_palette = terminal_config
+            .palette
+            .iter()
+            .map(|entry| (entry.index, entry.color))
+            .collect::<Vec<_>>();
+        // A host's palette is whole in the options before the session is
+        // spawned, so the terminal has it, and the hint reads the host's
+        // background, from the first instant.
+        if let Some(colors) = options.colors.as_mut() {
+            colors.palette = palette_over(&configured_palette, &colors.palette);
+        }
         options.hint_color_scheme(terminal_config.background);
+        let host_colors = options.colors.clone();
         tokio::task::spawn_blocking(move || {
             let session = Session::spawn_configured(
                 options,
@@ -2315,17 +2352,25 @@ async fn create_local_session(
                 scrollback_bytes,
                 on_exit,
             )?;
-            let palette = terminal_config
-                .palette
-                .iter()
-                .map(|entry| (entry.index, entry.color))
-                .collect::<Vec<_>>();
-            session.set_appearance(
-                terminal_config.foreground,
-                terminal_config.background,
-                terminal_config.cursor,
-                &palette,
-            )?;
+            // Applied once the session exists, which publishes its first
+            // screen. A host's colors are in the terminal already (see
+            // `SpawnOptions::colors`), so saying them here changes nothing a
+            // program can see.
+            if let Some(colors) = host_colors {
+                session.set_host_colors(
+                    colors.foreground,
+                    colors.background,
+                    colors.cursor,
+                    Some(colors.palette.as_slice()),
+                )?;
+            } else {
+                session.set_appearance(
+                    terminal_config.foreground,
+                    terminal_config.background,
+                    terminal_config.cursor,
+                    &configured_palette,
+                )?;
+            }
             Ok::<_, anyhow::Error>(session)
         })
         .await
@@ -3217,9 +3262,28 @@ async fn handle_command(
                 foreground,
                 background,
                 cursor,
+                palette,
             } => {
+                // As at create, a host's palette lies over the configuration's:
+                // the slots it names are its own, the rest follow the
+                // configuration as it stands now.
+                let palette = match palette {
+                    Some(palette) => {
+                        validate_palette(&palette)?;
+                        let configured = context
+                            .config
+                            .snapshot()
+                            .terminal
+                            .palette
+                            .iter()
+                            .map(|entry| (entry.index, entry.color))
+                            .collect::<Vec<_>>();
+                        Some(palette_over(&configured, &palette))
+                    }
+                    None => None,
+                };
                 if let Some(session) = registry.read().unwrap().get(&session_id).cloned() {
-                    session.set_colors(foreground, background, cursor)?;
+                    session.set_host_colors(foreground, background, cursor, palette.as_deref())?;
                 } else if context.mesh_runtime.summary(&session_id).await.is_none() {
                     bail!("unknown session");
                 }
@@ -3565,7 +3629,9 @@ fn publish_reloaded_config(
         .cloned()
         .collect::<Vec<_>>();
     for session in sessions {
-        if let Err(error) = session.set_appearance(
+        // A session its host told its colors keeps them; the rest follow
+        // the configuration.
+        if let Err(error) = session.set_configured_appearance(
             colors.foreground,
             colors.background,
             colors.cursor,
@@ -3602,6 +3668,37 @@ fn validate_owner(owner_id: Option<&str>) -> Result<()> {
         bail!("ownerId must contain between 1 and 256 bytes");
     }
     Ok(())
+}
+
+/// A host's palette names each slot at most once. Its `u8` indices already
+/// keep it to the 256 slots, so a longer palette always repeats one; the count
+/// is still refused by name, before anything walks the list.
+fn validate_palette(palette: &[(u8, [u8; 3])]) -> Result<()> {
+    if palette.len() > MAX_PALETTE_ENTRIES {
+        bail!("palette must name at most {MAX_PALETTE_ENTRIES} entries");
+    }
+    let mut named = [false; MAX_PALETTE_ENTRIES];
+    for (index, _) in palette {
+        let slot = &mut named[usize::from(*index)];
+        if *slot {
+            bail!("palette names index {index} more than once");
+        }
+        *slot = true;
+    }
+    Ok(())
+}
+
+/// A host's palette over the configuration's: a slot both name is the host's.
+/// Setting a terminal's palette starts from Ghostty's defaults each time, so
+/// the list a session is given is always the whole of what it should hold.
+fn palette_over(configured: &[(u8, [u8; 3])], host: &[(u8, [u8; 3])]) -> Vec<(u8, [u8; 3])> {
+    let mut palette = configured
+        .iter()
+        .filter(|(index, _)| !host.iter().any(|(named, _)| named == index))
+        .copied()
+        .collect::<Vec<_>>();
+    palette.extend_from_slice(host);
+    palette
 }
 
 fn validate_owner_transfers(
@@ -4182,6 +4279,7 @@ mod protocol_tests {
             program_kind: session::SessionProgramKind::Application,
             owner_id: None,
             scrollback_bytes: None,
+            colors: None,
         }
     }
 
@@ -4641,6 +4739,265 @@ mod protocol_tests {
             inherited["session"]["scrollbackBytes"],
             ghosttea_config::DEFAULT_SCROLLBACK_BYTES,
         );
+    }
+
+    /// The color tests' configuration, and the one a reload brings in.
+    #[cfg(unix)]
+    const CONFIG_COLORS: &str = "background = 101820\npalette = 1=aa0000\npalette = 2=00aa00\n";
+    #[cfg(unix)]
+    const RELOAD_COLORS: &str = "background = 202830\npalette = 1=bb0000\npalette = 2=00bb00\n";
+    /// The background the tests' host tells a session: light, where both
+    /// configurations are dark.
+    #[cfg(unix)]
+    const HOST_BACKGROUND: [u8; 3] = [0xef, 0xf1, 0xf5];
+
+    /// A test service whose whole configuration is the file at `config`, so
+    /// a test sets its colors and nothing from the host's own files leaks in.
+    #[cfg(unix)]
+    fn start_test_service_with_config(label: &str, config: &std::path::Path) -> TestService {
+        let control_endpoint = unique_endpoint(&format!("{label}-control"));
+        let frame_endpoint = unique_endpoint(&format!("{label}-frames"));
+        let token = "colors-test-token".to_owned();
+        let service = TerminalService::new(TerminalServiceConfig {
+            control_socket: control_endpoint.name.clone(),
+            frame_socket: frame_endpoint.name.clone(),
+            auth_token: token.clone(),
+        })
+        .with_text_engine(TextEngine::discover().unwrap())
+        .with_config_load_options(ConfigLoadOptions::explicit(config));
+        let listeners = service.bind().unwrap();
+        let (handle, serving) = service.serve_managed(listeners);
+        TestService {
+            handle,
+            serving: tokio::spawn(serving),
+            control: control_endpoint.name.clone(),
+            frame: frame_endpoint.name.clone(),
+            token,
+            _control_endpoint: control_endpoint,
+            _frame_endpoint: frame_endpoint,
+        }
+    }
+
+    /// Create a session over `client` and take it from the service's registry.
+    #[cfg(unix)]
+    async fn create_session(
+        client: &mut ControlStream,
+        access: &ServiceSessions,
+        create: Value,
+    ) -> Arc<Session> {
+        let created = request(client, create).await;
+        assert_eq!(created["type"], "session-created", "{created}");
+        access
+            .session(created["session"]["id"].as_str().unwrap())
+            .unwrap()
+    }
+
+    /// `set-colors` for `session` in the host's colors, with `palette` if any.
+    #[cfg(unix)]
+    fn set_colors_command(request_id: u64, session: &Session, palette: Option<Value>) -> Value {
+        let mut command = json!({
+            "requestId": request_id,
+            "type": "set-colors",
+            "sessionId": session.id(),
+            "foreground": [0x4c, 0x4f, 0x69],
+            "background": HOST_BACKGROUND,
+            "cursor": [0xdc, 0x8a, 0x78],
+        });
+        if let Some(palette) = palette {
+            command["palette"] = palette;
+        }
+        command
+    }
+
+    /// Write `contents` as the configuration and have the service reload it.
+    #[cfg(unix)]
+    async fn reload_config(client: &mut ControlStream, config: &std::path::Path, contents: &str) {
+        std::fs::write(config, contents).unwrap();
+        let reload = json!({ "requestId": 90, "type": "reload-config" });
+        let reloaded = request(client, reload).await;
+        assert_eq!(reloaded["type"], "config", "{reloaded}");
+    }
+
+    /// What `session` answers an OSC 11 query with, and the colors palette
+    /// slots 1 and 2 resolve to when painted at the top left.
+    #[cfg(unix)]
+    fn colors_of(session: &Session) -> (Vec<u8>, [Option<[u8; 3]>; 2]) {
+        let mut probe = session::OSC_11_QUERY.to_vec();
+        probe.extend_from_slice(b"\x1b[H\x1b[31m1\x1b[32m2\x1b[0m");
+        let (answer, screen) = session.probe(&probe);
+        let row = &screen.rows[0];
+        let slot = |column: u16| {
+            row.cells
+                .iter()
+                .find(|cell| cell.column == column)
+                .and_then(|cell| cell.style.foreground)
+        };
+        (answer, [slot(0), slot(1)])
+    }
+
+    /// What [`colors_of`] reads from a session whose default background is
+    /// `background` and whose palette slots 1 and 2 are `slots`.
+    #[cfg(unix)]
+    fn colors(background: [u8; 3], slots: [[u8; 3]; 2]) -> (Vec<u8>, [Option<[u8; 3]>; 2]) {
+        (session::osc_11_answer(background), slots.map(Some))
+    }
+
+    /// Colors named at create are the session's own: it answers OSC 11 with
+    /// the host's background, a slot the host names resolves to the host's
+    /// color and one it does not to the configuration's, and a configuration
+    /// reload changes none of it. A session created without colors has the
+    /// configuration's and follows them across the same reload, as every
+    /// session did before protocol 1.20.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn colors_named_at_create_outlast_a_configuration_reload() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.ghostty");
+        std::fs::write(&config, CONFIG_COLORS).unwrap();
+        let service = start_test_service_with_config("create-colors", &config);
+        let access = service.handle.sessions().await.unwrap();
+        let mut client = connect_control(&service).await;
+
+        let mut told = owned_long_running_session(1, "colors");
+        told["options"]["colors"] = json!({
+            "foreground": [0x4c, 0x4f, 0x69],
+            "background": HOST_BACKGROUND,
+            "cursor": [0xdc, 0x8a, 0x78],
+            "palette": [[2, [0x12, 0x34, 0x56]]],
+        });
+        let told = create_session(&mut client, &access, told).await;
+        let untold = owned_long_running_session(2, "colors");
+        let untold = create_session(&mut client, &access, untold).await;
+
+        let told_colors = colors(HOST_BACKGROUND, [[0xaa, 0, 0], [0x12, 0x34, 0x56]]);
+        assert_eq!(colors_of(&told), told_colors);
+        assert_eq!(
+            colors_of(&untold),
+            colors([0x10, 0x18, 0x20], [[0xaa, 0, 0], [0, 0xaa, 0]])
+        );
+
+        reload_config(&mut client, &config, RELOAD_COLORS).await;
+        assert_eq!(colors_of(&told), told_colors);
+        assert_eq!(
+            colors_of(&untold),
+            colors([0x20, 0x28, 0x30], [[0xbb, 0, 0], [0, 0xbb, 0]])
+        );
+
+        service
+            .handle
+            .shutdown(Duration::from_secs(5))
+            .await
+            .unwrap();
+        service.serving.await.unwrap().unwrap();
+    }
+
+    /// `set-colors` without a palette leaves the palette as it was, all it
+    /// could ask before protocol 1.20; with one, the slot it names resolves to
+    /// the host's color and a slot it does not to the configuration's, as at
+    /// create. Either way the session is the host's from then on: a
+    /// configuration reload changes nothing about it, while a session never
+    /// told follows the configuration.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn set_colors_palette_is_optional_and_outlasts_a_configuration_reload() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config.ghostty");
+        std::fs::write(&config, CONFIG_COLORS).unwrap();
+        let service = start_test_service_with_config("set-colors", &config);
+        let access = service.handle.sessions().await.unwrap();
+        let mut client = connect_control(&service).await;
+        let plain = owned_long_running_session(1, "colors");
+        let plain = create_session(&mut client, &access, plain).await;
+        let painted = owned_long_running_session(2, "colors");
+        let painted = create_session(&mut client, &access, painted).await;
+        let untold = owned_long_running_session(3, "colors");
+        let untold = create_session(&mut client, &access, untold).await;
+
+        let unpainted = request(&mut client, set_colors_command(4, &plain, None)).await;
+        assert_eq!(unpainted["type"], "ok", "{unpainted}");
+        let palette = json!([[2, [0x12, 0x34, 0x56]]]);
+        let painting = set_colors_command(5, &painted, Some(palette));
+        let painting = request(&mut client, painting).await;
+        assert_eq!(painting["type"], "ok", "{painting}");
+
+        assert_eq!(
+            colors_of(&plain),
+            colors(HOST_BACKGROUND, [[0xaa, 0, 0], [0, 0xaa, 0]])
+        );
+        assert_eq!(
+            colors_of(&painted),
+            colors(HOST_BACKGROUND, [[0xaa, 0, 0], [0x12, 0x34, 0x56]])
+        );
+        assert_eq!(
+            colors_of(&untold),
+            colors([0x10, 0x18, 0x20], [[0xaa, 0, 0], [0, 0xaa, 0]])
+        );
+
+        let (plain_before, painted_before) = (colors_of(&plain), colors_of(&painted));
+        reload_config(&mut client, &config, RELOAD_COLORS).await;
+        assert_eq!(colors_of(&plain), plain_before);
+        assert_eq!(colors_of(&painted), painted_before);
+        assert_eq!(
+            colors_of(&untold),
+            colors([0x20, 0x28, 0x30], [[0xbb, 0, 0], [0, 0xbb, 0]])
+        );
+
+        service
+            .handle
+            .shutdown(Duration::from_secs(5))
+            .await
+            .unwrap();
+        service.serving.await.unwrap().unwrap();
+    }
+
+    /// A palette that names a slot twice, or more slots than there are, is
+    /// refused with an error, at `set-colors` and at create alike.
+    #[tokio::test]
+    async fn a_palette_that_repeats_a_slot_or_overflows_is_refused() {
+        let service = start_test_service("palette-refusals");
+        let mut client = connect_control(&service).await;
+        let created = request(&mut client, owned_long_running_session(1, "palette")).await;
+        let session_id = created["session"]["id"].clone();
+        let repeated = json!([[1, [1, 2, 3]], [1, [4, 5, 6]]]);
+        let overflowing: Value = (0..=256)
+            .map(|index| json!([index % 256, [0, 0, 0]]))
+            .collect();
+        let refusals = [
+            (repeated, "palette names index 1 more than once"),
+            (overflowing, "palette must name at most 256 entries"),
+        ];
+        for (palette, message) in refusals {
+            let set_colors = json!({
+                "requestId": 2,
+                "type": "set-colors",
+                "sessionId": session_id,
+                "foreground": [1, 2, 3],
+                "background": [4, 5, 6],
+                "cursor": [7, 8, 9],
+                "palette": palette,
+            });
+            let refused = request(&mut client, set_colors).await;
+            assert_eq!(refused["type"], "error", "{refused}");
+            assert_eq!(refused["message"], message);
+
+            let mut create = owned_long_running_session(3, "palette");
+            create["options"]["colors"] = json!({
+                "foreground": [1, 2, 3],
+                "background": [4, 5, 6],
+                "cursor": [7, 8, 9],
+                "palette": palette,
+            });
+            let refused = request(&mut client, create).await;
+            assert_eq!(refused["type"], "error", "{refused}");
+            assert_eq!(refused["message"], message);
+        }
+
+        service
+            .handle
+            .shutdown(Duration::from_secs(5))
+            .await
+            .unwrap();
+        service.serving.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -5304,6 +5661,56 @@ mod protocol_tests {
                 _ => panic!("expected send-key command"),
             }
         }
+    }
+
+    /// `set-colors` reads an optional palette, at a minor of its own: a
+    /// minor-19 daemon drops `palette` unread. A message without one parses
+    /// as it always has, and an index past the 256 slots does not parse.
+    #[test]
+    fn set_colors_reads_an_optional_palette_at_its_own_minor() {
+        assert_eq!(SESSION_COLORS_PROTOCOL_MINOR, 20);
+        let set_colors = |palette: Option<Value>| {
+            let mut command = json!({
+                "requestId": 15,
+                "type": "set-colors",
+                "sessionId": "session",
+                "foreground": [1, 2, 3],
+                "background": [4, 5, 6],
+                "cursor": [7, 8, 9],
+            });
+            if let Some(palette) = palette {
+                command["palette"] = palette;
+            }
+            serde_json::from_value::<Envelope>(command)
+        };
+
+        match set_colors(None).unwrap().command {
+            Command::SetColors {
+                foreground,
+                background,
+                cursor,
+                palette,
+                ..
+            } => {
+                assert_eq!(
+                    (foreground, background, cursor),
+                    ([1, 2, 3], [4, 5, 6], [7, 8, 9])
+                );
+                assert_eq!(palette, None);
+            }
+            _ => panic!("expected set-colors command"),
+        }
+        let named = json!([[1, [0x12, 0x34, 0x56]], [255, [0, 0, 0]]]);
+        match set_colors(Some(named)).unwrap().command {
+            Command::SetColors { palette, .. } => {
+                assert_eq!(
+                    palette,
+                    Some(vec![(1, [0x12, 0x34, 0x56]), (255, [0, 0, 0])])
+                );
+            }
+            _ => panic!("expected set-colors command"),
+        }
+        assert!(set_colors(Some(json!([[256, [0, 0, 0]]]))).is_err());
     }
 
     #[test]

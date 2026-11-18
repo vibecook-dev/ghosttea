@@ -7915,6 +7915,7 @@ mod tests {
                 program_kind: ghosttea::SessionProgramKind::default(),
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             ghosttea::FrameHub::new(8),
             Arc::new(std::sync::Mutex::new(

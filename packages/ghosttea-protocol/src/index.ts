@@ -1,5 +1,5 @@
 export const PROTOCOL_MAJOR = 1;
-export const PROTOCOL_MINOR = 19;
+export const PROTOCOL_MINOR = 20;
 export const SESSION_LIFECYCLE_PROTOCOL_MINOR = 18;
 export const SESSION_SCROLLBACK_PROTOCOL_MINOR = 15;
 export const STRUCTURED_ERROR_PROTOCOL_MINOR = 16;
@@ -12,6 +12,12 @@ export const METADATA_EVENT_PROTOCOL_MINOR = 17;
  * tunnel_protocol.rs), which this minor does not report.
  */
 export const OPTION_AS_ALT_PROTOCOL_MINOR = 19;
+/**
+ * The daemon reads `palette` on `set-colors` and `colors` in `create-session` options from this minor, and keeps a
+ * session's host-told colors across a configuration reload. An older daemon ignores both fields, so a client
+ * refuses them below this minor rather than let them drop. A `set-colors` without `palette` needs no minor.
+ */
+export const SESSION_COLORS_PROTOCOL_MINOR = 20;
 export const CONFIG_SCHEMA_VERSION = 1;
 export const CONFIG_DOCUMENT_SCHEMA_VERSION = 1;
 
@@ -240,6 +246,21 @@ export type ExitOutcome =
 export type AutomationInputOperation =
   { kind: "text"; text: string } | { kind: "paste"; text: string; submit: boolean } | { kind: "interrupt" };
 
+/** One palette slot: its index (0–255) and its color. */
+export type SessionPaletteEntry = [index: number, color: [number, number, number]];
+
+/** The colors a host tells a session. Requires protocol 1.20 where noted. */
+export interface SessionColors {
+  foreground: [number, number, number];
+  background: [number, number, number];
+  cursor: [number, number, number];
+  /**
+   * The host's whole palette, sparse: the slots named lie over the configuration's, the rest follow it. Each index
+   * at most once. Requires protocol 1.20.
+   */
+  palette?: SessionPaletteEntry[];
+}
+
 export interface CreateSessionOptions {
   /** Opaque correlation in the first summary; requires protocol 1.18. */
   creationId?: string;
@@ -264,10 +285,53 @@ export interface CreateSessionOptions {
    * delegates to the daemon's current global default. Requires protocol 1.15.
    */
   scrollbackBytes?: number;
+  /**
+   * The session's colors from its first instant: the appearance it spawns
+   * with, and the `COLORFGBG` hint unless the environment names one. Palette
+   * entries lay over the configuration's. A session created with colors keeps
+   * them across a configuration reload; absence follows the configuration.
+   * Requires protocol 1.20.
+   */
+  colors?: SessionColors;
 }
 
 export function isValidScrollbackBytes(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isByteTriple(value: unknown): value is [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((channel) => Number.isSafeInteger(channel) && channel >= 0 && channel <= 255)
+  );
+}
+
+/** At most 256 entries, each an integer index 0–255 named at most once, with a color of 0–255 channels. */
+export function isValidSessionPalette(value: unknown): value is SessionPaletteEntry[] {
+  if (!Array.isArray(value) || value.length > 256) return false;
+  const named = new Set<number>();
+  for (const entry of value) {
+    if (!Array.isArray(entry) || entry.length !== 2) return false;
+    const [index, color] = entry;
+    if (!Number.isSafeInteger(index) || index < 0 || index > 255 || named.has(index) || !isByteTriple(color)) {
+      return false;
+    }
+    named.add(index);
+  }
+  return true;
+}
+
+/** Foreground, background and cursor of 0–255 integer channels, and a palette that is absent or valid. */
+export function isValidSessionColors(value: unknown): value is SessionColors {
+  if (!value || typeof value !== "object") return false;
+  const colors = value as Record<string, unknown>;
+  return (
+    isByteTriple(colors.foreground) &&
+    isByteTriple(colors.background) &&
+    isByteTriple(colors.cursor) &&
+    (colors.palette === undefined || isValidSessionPalette(colors.palette))
+  );
 }
 
 /** Re-home a session before its current application owner is closed. */
@@ -353,6 +417,8 @@ export type ClientCommand =
       foreground: [number, number, number];
       background: [number, number, number];
       cursor: [number, number, number];
+      /** The host's whole palette, as `SessionColors.palette`; absent leaves the palette as it is. Protocol 1.20. */
+      palette?: SessionPaletteEntry[];
     }
   | {
       requestId: number;

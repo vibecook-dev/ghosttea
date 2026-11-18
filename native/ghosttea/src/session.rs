@@ -354,6 +354,20 @@ pub struct AutomationInputResult {
 /// that returned success cannot be overtaken by a class sampled earlier.
 pub type ExitCallback = Arc<dyn Fn(String, SessionExit) + Send + Sync>;
 
+/// The colors a host tells a session at its creation (protocol 1.20).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionColors {
+    pub foreground: [u8; 3],
+    pub background: [u8; 3],
+    pub cursor: [u8; 3],
+    /// Sparse palette slots, `[index, [r, g, b]]` on the wire, each index at
+    /// most once. The service lays them over the configuration's palette
+    /// before the session is spawned, so a slot both name is the host's.
+    #[serde(default)]
+    pub palette: Vec<(u8, [u8; 3])>,
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOptions {
@@ -378,14 +392,26 @@ pub struct SpawnOptions {
     /// global default; zero intentionally disables scrollback.
     #[serde(default, deserialize_with = "deserialize_optional_safe_u64")]
     pub scrollback_bytes: Option<u64>,
+    /// The session's colors from its first instant, in place of the
+    /// configuration's, kept across a configuration reload. Absent, the
+    /// session follows the configuration. They are in the terminal before
+    /// the child's first byte is read, so its first color query is answered
+    /// from them, and the session is host-colored from birth.
+    #[serde(default)]
+    pub colors: Option<SessionColors>,
 }
 
 impl SpawnOptions {
     /// Advertise whether the default background is light or dark through
     /// `COLORFGBG` (the rxvt `fg;bg` palette-index convention). Programs that
     /// read it at startup instead of querying OSC 11 pick a matching theme.
-    /// A value the caller already set wins.
-    pub(crate) fn hint_color_scheme(&mut self, background: [u8; 3]) {
+    /// The background is the host's when it named `colors`, and the
+    /// configuration's otherwise. A value the caller already set wins.
+    pub(crate) fn hint_color_scheme(&mut self, configured_background: [u8; 3]) {
+        let background = self
+            .colors
+            .as_ref()
+            .map_or(configured_background, |colors| colors.background);
         let value = if background_is_light(background) {
             "0;15"
         } else {
@@ -899,6 +925,12 @@ pub struct Session {
     concluded: watch::Sender<bool>,
     model: Mutex<TerminalModel>,
     model_operation: Mutex<()>,
+    /// Set once a host tells the session its colors, at create or by
+    /// `set-colors`; a configuration reload leaves its colors alone from
+    /// then on. Read and written only under `model_operation`, so a reload
+    /// cannot apply the configuration's colors over a host's that landed
+    /// after it looked.
+    host_colored: AtomicBool,
     exited: AtomicBool,
     frames: FrameHub,
     on_exit: ExitCallback,
@@ -1450,6 +1482,7 @@ impl Session {
             program_kind,
             owner_id,
             scrollback_bytes: _,
+            colors,
         } = options;
         let program_kind = resolve_program_kind(program_kind, &executable, &args);
         let pair = native_pty_system()
@@ -1575,6 +1608,17 @@ impl Session {
             },
         )?;
         model.set_link_context(link_cwd.clone(), link_home);
+        // A host's colors are in the terminal before the reader starts, so
+        // whatever the child asks first is answered from them.
+        let host_colored = colors.is_some();
+        if let Some(colors) = colors {
+            model.set_initial_appearance(
+                colors.foreground,
+                colors.background,
+                colors.cursor,
+                &colors.palette,
+            )?;
+        }
         let session = Arc::new(Self {
             lifecycle: Mutex::new(()),
             released: AtomicBool::new(false),
@@ -1625,6 +1669,7 @@ impl Session {
             concluded: watch::channel(false).0,
             model: Mutex::new(model),
             model_operation: Mutex::new(()),
+            host_colored: AtomicBool::new(host_colored),
             exited: AtomicBool::new(false),
             frames,
             on_exit,
@@ -3056,6 +3101,64 @@ impl Session {
         Ok(())
     }
 
+    /// Colors a host tells this session: as [`Session::set_appearance`]
+    /// with a `palette`, which is then the whole of what the terminal holds
+    /// over Ghostty's defaults, and as [`Session::set_colors`] without one,
+    /// which leaves the palette as it is. The session is host-colored from
+    /// then on, so a configuration reload leaves its colors alone.
+    pub fn set_host_colors(
+        &self,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        cursor: [u8; 3],
+        palette: Option<&[(u8, [u8; 3])]>,
+    ) -> Result<()> {
+        let _operation = self.model_operation.lock().unwrap();
+        let update = match palette {
+            Some(palette) => self.model.lock().unwrap().set_appearance(
+                foreground,
+                background,
+                cursor,
+                palette,
+                RenderRequest::Full,
+            )?,
+            None => self.model.lock().unwrap().set_colors(
+                foreground,
+                background,
+                cursor,
+                RenderRequest::Full,
+            )?,
+        };
+        self.host_colored.store(true, Ordering::Release);
+        self.execute_update(update, _operation);
+        Ok(())
+    }
+
+    /// The configuration's colors after a reload, as
+    /// [`Session::set_appearance`], unless a host has told this session its
+    /// own; then nothing changes.
+    pub(crate) fn set_configured_appearance(
+        &self,
+        foreground: [u8; 3],
+        background: [u8; 3],
+        cursor: [u8; 3],
+        palette: &[(u8, [u8; 3])],
+    ) -> Result<()> {
+        let _operation = self.model_operation.lock().unwrap();
+        if self.host_colored.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let update = self.model.lock().unwrap().set_appearance(
+            foreground,
+            background,
+            cursor,
+            palette,
+            RenderRequest::Full,
+        )?;
+        self.execute_update(update, _operation);
+        Ok(())
+    }
+
     /// Terminate, bounded by `deadline`.
     ///
     /// The deadline lands in the latch before the ladder is asked to start, so
@@ -3221,6 +3324,55 @@ impl Session {
     }
 }
 
+// Test probes of a session's colors. Unix-only, like the tests that use them:
+// there the long-running test child prints nothing that could interleave.
+
+/// An OSC 11 query: "what is your default background?".
+#[cfg(all(test, unix))]
+pub(crate) const OSC_11_QUERY: &[u8] = b"\x1b]11;?\x1b\\";
+
+/// What a terminal whose default background is `background` answers
+/// [`OSC_11_QUERY`] with, so a test compares a session's answer against it
+/// without spelling Ghostty's reply format.
+#[cfg(all(test, unix))]
+pub(crate) fn osc_11_answer(background: [u8; 3]) -> Vec<u8> {
+    let mut terminal = ghosttea_vt::GhosttyTerminalCore::new(20, 4, 100).unwrap();
+    terminal
+        .set_colors([0, 0, 0], background, [0, 0, 0])
+        .unwrap();
+    terminal.feed(OSC_11_QUERY);
+    let answer = terminal.take_pty_response();
+    assert!(!answer.is_empty(), "a terminal answers OSC 11");
+    answer
+}
+
+#[cfg(all(test, unix))]
+impl Session {
+    /// Feed `bytes` as though the child wrote them, and return what the
+    /// terminal answers and how its screen then reads. Neither reaches the
+    /// child or a viewer, and `model_operation` is held throughout, so the
+    /// child's own output cannot land in between.
+    pub(crate) fn probe(&self, bytes: &[u8]) -> (Vec<u8>, LogicalTerminalSnapshot) {
+        let _operation = self.model_operation.lock().unwrap();
+        let update = self
+            .model
+            .lock()
+            .unwrap()
+            .feed(bytes, RenderRequest::Full)
+            .unwrap();
+        let mut answer: Vec<u8> = Vec::new();
+        let mut screen = None;
+        for effect in update {
+            match effect {
+                TerminalEffect::WriteToTransport(reply) => answer.extend(reply),
+                TerminalEffect::LogicalSnapshotReady(snapshot) => screen = Some(snapshot),
+                _ => {}
+            }
+        }
+        (answer, screen.expect("a full render carries the screen"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
@@ -3242,6 +3394,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             FrameHub::new(16),
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -3332,6 +3485,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             FrameHub::new(16),
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -3817,6 +3971,127 @@ mod tests {
         assert_eq!(overrides["COLORFGBG"], "7;4");
     }
 
+    /// A host that names `colors` at create is the hint's source, over the
+    /// configuration's background, and a caller's own `COLORFGBG` still wins.
+    #[test]
+    fn color_hint_follows_the_hosts_background_when_it_names_colors() {
+        let colored = |background: [u8; 3]| -> serde_json::Value {
+            let mut json = spawn_options_json(0.into());
+            json["colors"] = serde_json::json!({
+                "foreground": [0x4c, 0x4f, 0x69],
+                "background": background,
+                "cursor": [0xdc, 0x8a, 0x78],
+            });
+            json
+        };
+        let mut light: SpawnOptions = serde_json::from_value(colored([0xef, 0xf1, 0xf5])).unwrap();
+        light.hint_color_scheme([0x28, 0x2c, 0x34]);
+        assert_eq!(light.env["COLORFGBG"], "0;15");
+
+        let mut dark: SpawnOptions = serde_json::from_value(colored([0x1e, 0x1e, 0x2e])).unwrap();
+        dark.hint_color_scheme([0xff, 0xff, 0xff]);
+        assert_eq!(dark.env["COLORFGBG"], "15;0");
+
+        let mut chosen = colored([0xef, 0xf1, 0xf5]);
+        chosen["environment"] = serde_json::json!({
+            "mode": "inherit",
+            "overrides": { "COLORFGBG": "7;4" }
+        });
+        let mut chosen: SpawnOptions = serde_json::from_value(chosen).unwrap();
+        chosen.hint_color_scheme([0x28, 0x2c, 0x34]);
+        let Some(SessionEnvironment::Inherit { overrides }) = &chosen.environment else {
+            panic!()
+        };
+        assert_eq!(overrides["COLORFGBG"], "7;4");
+    }
+
+    /// `colors` is optional, so a create written before protocol 1.20 parses
+    /// as it did. Its palette is optional too, and is `[index, [r, g, b]]`
+    /// pairs; an index that is not one of the 256 slots does not parse.
+    #[test]
+    fn spawn_options_read_optional_session_colors() {
+        let legacy: SpawnOptions = serde_json::from_value(spawn_options_json(0.into())).unwrap();
+        assert_eq!(legacy.colors, None);
+
+        let mut json = spawn_options_json(0.into());
+        json["colors"] = serde_json::json!({
+            "foreground": [1, 2, 3],
+            "background": [4, 5, 6],
+            "cursor": [7, 8, 9],
+        });
+        let unpainted: SpawnOptions = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            unpainted.colors,
+            Some(SessionColors {
+                foreground: [1, 2, 3],
+                background: [4, 5, 6],
+                cursor: [7, 8, 9],
+                palette: Vec::new(),
+            })
+        );
+
+        json["colors"]["palette"] = serde_json::json!([[1, [0x12, 0x34, 0x56]], [255, [0, 0, 0]]]);
+        let painted: SpawnOptions = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            painted.colors.unwrap().palette,
+            vec![(1, [0x12, 0x34, 0x56]), (255, [0, 0, 0])]
+        );
+
+        json["colors"]["palette"] = serde_json::json!([[256, [0, 0, 0]]]);
+        assert!(serde_json::from_value::<SpawnOptions>(json).is_err());
+    }
+
+    /// Colors named in the options are in the terminal when `spawn` returns,
+    /// with nothing said afterwards: a color query is answered from them, a
+    /// slot they name resolves to their color, and the session is
+    /// host-colored from birth.
+    #[cfg(unix)]
+    #[test]
+    fn colors_named_at_spawn_are_in_the_terminal_before_anything_is_said() {
+        let background = [0xef, 0xf1, 0xf5];
+        let session = Session::spawn(
+            SpawnOptions {
+                creation_id: None,
+                executable: "/bin/sh".into(),
+                args: vec!["-c".into(), "exec sleep 30".into()],
+                cwd: None,
+                env: HashMap::new(),
+                environment: Some(SessionEnvironment::Clean {
+                    variables: HashMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+                }),
+                cols: 80,
+                rows: 24,
+                persistence: Persistence::KeepUntilExit,
+                program_kind: SessionProgramKind::Application,
+                owner_id: None,
+                scrollback_bytes: None,
+                colors: Some(SessionColors {
+                    foreground: [0x4c, 0x4f, 0x69],
+                    background,
+                    cursor: [0xdc, 0x8a, 0x78],
+                    palette: vec![(1, [0x12, 0x34, 0x56])],
+                }),
+            },
+            FrameHub::new(16),
+            Arc::new(Mutex::new(TextEngine::discover().unwrap())),
+            Arc::new(|_, _| {}),
+        )
+        .unwrap();
+        assert!(session.host_colored.load(Ordering::Acquire));
+
+        let mut asked = OSC_11_QUERY.to_vec();
+        asked.extend_from_slice(b"\x1b[H\x1b[31m1");
+        let (answer, screen) = session.probe(&asked);
+        assert_eq!(answer, osc_11_answer(background));
+        let painted = screen.rows[0]
+            .cells
+            .iter()
+            .find(|cell| cell.column == 0)
+            .and_then(|cell| cell.style.foreground);
+        assert_eq!(painted, Some([0x12, 0x34, 0x56]));
+        stop(&session);
+    }
+
     #[test]
     fn scrollback_override_rejects_negative_fractional_and_unsafe_numbers() {
         for value in [
@@ -4059,6 +4334,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4133,6 +4409,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4400,6 +4677,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4495,6 +4773,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames.clone(),
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4744,6 +5023,7 @@ mod tests {
                 program_kind: SessionProgramKind::InteractiveShell,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4819,6 +5099,7 @@ mod tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -4874,6 +5155,7 @@ mod tests {
                     program_kind: SessionProgramKind::Application,
                     owner_id: None,
                     scrollback_bytes: None,
+                    colors: None,
                 },
                 frames.clone(),
                 Arc::clone(&text_engine),
@@ -4940,6 +5222,7 @@ mod tests {
                 program_kind: SessionProgramKind::InteractiveShell,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             frames,
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -5092,6 +5375,7 @@ mod reply_delivery_tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             FrameHub::new(16),
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
@@ -5170,6 +5454,7 @@ mod reply_delivery_tests {
                 program_kind: SessionProgramKind::Application,
                 owner_id: None,
                 scrollback_bytes: None,
+                colors: None,
             },
             FrameHub::new(16),
             Arc::new(Mutex::new(TextEngine::discover().unwrap())),
