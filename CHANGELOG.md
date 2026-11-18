@@ -3,7 +3,7 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
-## Unreleased
+## 0.16.0 - 2026-11-18
 
 ### Added
 
@@ -20,6 +20,13 @@ share one version.
   `setColors(sessionId, colors)`, passes `colors` through `createSession`, and
   refuses a palette or create-time colors against a daemon older than 1.20,
   which would silently drop them.
+
+### Fixed
+
+- The prebuilt `ghosttead` daemons build against quinn-udp 0.5.16, which fixes
+  RUSTSEC-2026-0538: quinn-udp's receive loop can spin after a truncated
+  datagram. It sits under the Truffle mesh transport. Crates.io consumers
+  resolve their own versions.
 
 ## 0.15.0 - 2026-11-11
 

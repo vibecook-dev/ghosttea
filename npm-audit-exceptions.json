@@ -1,12 +1,3 @@
 {
-  "exceptions": [
-    {
-      "advisory": "GHSA-fc5q-39xc-vjpf",
-      "package": "picomatch",
-      "range": "*",
-      "reason": "ReDoS through repeated extglobs. Every published version is affected (npm reports the range `*`), so there is nothing to bump to. It is installed only for development and build tooling (vite, vitest, typescript-eslint, and node-gyp under electron-builder), where the patterns are our own; no published package depends on it.",
-      "added": "2026-11-18",
-      "expires": "2026-12-18"
-    }
-  ]
+  "exceptions": []
 }
