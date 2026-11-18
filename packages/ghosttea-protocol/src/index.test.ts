@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isRendererClientCommandAllowed, isServerEvent, terminalLinkUrl, unknownSessionActivity } from "./index";
+import {
+  isRendererClientCommandAllowed,
+  isServerEvent,
+  isValidSessionColors,
+  isValidSessionPalette,
+  terminalLinkUrl,
+  unknownSessionActivity,
+} from "./index";
 
 describe("isServerEvent forward compatibility", () => {
   it("tolerates fields it has never heard of, so an additive daemon change is not fatal", () => {
@@ -514,5 +521,51 @@ describe("conditional session release", () => {
     expect(
       isRendererClientCommandAllowed({ requestId: 1, type: "release-session", sessionId: "s", condition: "unused" }),
     ).toBe(false);
+  });
+});
+
+describe("session colors", () => {
+  const colors = { foreground: [32, 33, 36], background: [250, 250, 250], cursor: [32, 33, 36] };
+
+  it("accepts integer channels 0-255 and a sparse palette that names each slot at most once", () => {
+    expect(isValidSessionColors(colors)).toBe(true);
+    expect(isValidSessionColors({ ...colors, palette: [] })).toBe(true);
+    expect(
+      isValidSessionColors({
+        ...colors,
+        palette: [
+          [0, [0, 0, 0]],
+          [255, [255, 255, 255]],
+        ],
+      }),
+    ).toBe(true);
+    const everySlot = Array.from({ length: 256 }, (_, index) => [index, [index, 0, 255 - index]]);
+    expect(isValidSessionPalette(everySlot)).toBe(true);
+    expect(isValidSessionColors({ ...colors, palette: everySlot })).toBe(true);
+  });
+
+  it("rejects a channel outside 0-255, a slot named twice, an index outside 0-255, and over 256 entries", () => {
+    for (const color of [[0, 0], [0, 0, 0, 0], [0, 0, 256], [-1, 0, 0], [0, 0.5, 0], ["0", 0, 0], null]) {
+      expect(isValidSessionColors({ ...colors, cursor: color })).toBe(false);
+    }
+    expect(isValidSessionColors({ foreground: colors.foreground, background: colors.background })).toBe(false);
+    expect(isValidSessionColors(null)).toBe(false);
+    for (const palette of [
+      [
+        [3, [0, 0, 0]],
+        [3, [255, 255, 255]],
+      ],
+      [[256, [0, 0, 0]]],
+      [[-1, [0, 0, 0]]],
+      [[1.5, [0, 0, 0]]],
+      [[1, [0, 0, 256]]],
+      [[1]],
+      [{ index: 1, color: [0, 0, 0] }],
+      Array.from({ length: 257 }, (_, index) => [index % 256, [0, 0, 0]]),
+      {},
+    ]) {
+      expect(isValidSessionPalette(palette)).toBe(false);
+      expect(isValidSessionColors({ ...colors, palette })).toBe(false);
+    }
   });
 });

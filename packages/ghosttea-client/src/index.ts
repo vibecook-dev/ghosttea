@@ -4,10 +4,12 @@ import { openEndpoint } from "./endpoints.js";
 import {
   PROTOCOL_MAJOR,
   PROTOCOL_MINOR,
+  SESSION_COLORS_PROTOCOL_MINOR,
   SESSION_SCROLLBACK_PROTOCOL_MINOR,
   STRUCTURED_ERROR_PROTOCOL_MINOR,
   isServerEvent,
   isValidScrollbackBytes,
+  isValidSessionColors,
   type AutomationInputOperation,
   SESSION_LIFECYCLE_PROTOCOL_MINOR,
   type SessionReleaseState,
@@ -18,6 +20,7 @@ import {
   type ConfigSnapshot,
   type CreateSessionOptions,
   type ServerEvent,
+  type SessionColors,
   type SessionOwnerTransfer,
   type SessionSummary,
   type TerminationSource,
@@ -56,6 +59,8 @@ const MAX_CONTROL_BYTES = 1024 * 1024;
 const CONFIG_DOCUMENT_PROTOCOL_MINOR = 11;
 const REMOTE_LIFECYCLE_PROTOCOL_MINOR = 12;
 const SESSION_OWNER_TRANSFER_PROTOCOL_MINOR = 14;
+const SESSION_COLORS_RANGE_MESSAGE =
+  "session colors take integer channels 0-255 and at most 256 palette entries, each index 0-255 named once";
 
 export class GhostteaConfigDocumentConflictError extends Error {
   readonly document: ConfigDocument;
@@ -211,6 +216,27 @@ export class GhostteaAutomationClient extends EventEmitter {
     const event = await this.request({ type: "create-session", options });
     if (event.type !== "session-created") throw new Error("ghosttead returned an unexpected response");
     return event.session;
+  }
+
+  /**
+   * Tell a session its colors, which the daemon then answers a program's color
+   * queries from. A `palette` is the host's whole palette: the slots it names
+   * lie over the configuration's, and without one the palette is left as it
+   * is. `palette` requires protocol 1.20, and from 1.20 the daemon keeps the
+   * colors across a configuration reload. Without `palette` any daemon
+   * accepts the call.
+   */
+  async setColors(sessionId: string, colors: SessionColors): Promise<void> {
+    if (!isValidSessionColors(colors)) throw new RangeError(SESSION_COLORS_RANGE_MESSAGE);
+    const event = await this.request({
+      type: "set-colors",
+      sessionId,
+      foreground: colors.foreground,
+      background: colors.background,
+      cursor: colors.cursor,
+      ...(colors.palette === undefined ? {} : { palette: colors.palette }),
+    });
+    if (event.type !== "ok") throw new Error("ghosttead rejected the session colors");
   }
 
   async getConfig(): Promise<ConfigSnapshot> {
@@ -453,6 +479,20 @@ export class GhostteaAutomationClient extends EventEmitter {
     ) {
       this.#requireProtocolMinor(SESSION_LIFECYCLE_PROTOCOL_MINOR, "session lifecycle ownership");
     }
+    // An older daemon ignores both fields, so sending them would only pretend
+    // the colors were set. A `set-colors` without `palette` predates the gate.
+    if (command.type === "set-colors" && command.palette !== undefined) {
+      if (!isValidSessionColors(command)) {
+        return Promise.reject(new RangeError(SESSION_COLORS_RANGE_MESSAGE));
+      }
+      this.#requireProtocolMinor(SESSION_COLORS_PROTOCOL_MINOR, "session palettes");
+    }
+    if (command.type === "create-session" && command.options.colors !== undefined) {
+      if (!isValidSessionColors(command.options.colors)) {
+        return Promise.reject(new RangeError(SESSION_COLORS_RANGE_MESSAGE));
+      }
+      this.#requireProtocolMinor(SESSION_COLORS_PROTOCOL_MINOR, "session colors at creation");
+    }
     const requestId = this.#nextRequestId++;
     const encoded = Buffer.from(JSON.stringify({ ...command, requestId } satisfies ClientCommand));
     if (encoded.byteLength > MAX_CONTROL_BYTES) {
@@ -558,4 +598,4 @@ export class GhostteaAutomationClient extends EventEmitter {
   }
 }
 
-export { SESSION_LIFECYCLE_PROTOCOL_MINOR };
+export { SESSION_COLORS_PROTOCOL_MINOR, SESSION_LIFECYCLE_PROTOCOL_MINOR };

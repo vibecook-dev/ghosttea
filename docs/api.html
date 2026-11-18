@@ -558,6 +558,13 @@ window.addEventListener(
                 </tbody>
               </table>
             </div>
+            <p>
+              <code>setColors(sessionId, colors)</code> tells a session its foreground, background, cursor and, from
+              protocol 1.20, sparse palette slots; programs' color queries are answered from them.
+              <code>createSession</code> takes the same <code>colors</code> from 1.20, so a session starts in them,
+              and a session told its colors keeps them across a configuration reload. The client refuses a palette or
+              create-time colors against an older daemon.
+            </p>
             <p>The client never opens the frame socket, attaches a view, or claims resize authority.</p>
           </section>
 
@@ -592,7 +599,7 @@ window.addEventListener(
             <div class="callout callout-orange">
               <strong>Current protocol versions</strong>
               <p>
-                Control protocol <code>1.7</code>; TRF1 frame protocol <code>1</code>. Control packets are capped at 1
+                Control protocol <code>1.20</code>; TRF1 frame protocol <code>1</code>. Control packets are capped at 1
                 MiB and frame packets at 16 MiB.
               </p>
             </div>
