@@ -8,9 +8,9 @@
     "timestamp": "2026-07-18T00:00:00Z",
     "component": {
       "type": "application",
-      "bom-ref": "pkg:npm/ghosttea@0.15.0",
+      "bom-ref": "pkg:npm/ghosttea@0.16.0",
       "name": "Ghosttea iOS",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -18,7 +18,7 @@
           }
         }
       ],
-      "purl": "pkg:npm/ghosttea@0.15.0",
+      "purl": "pkg:npm/ghosttea@0.16.0",
       "properties": [
         {
           "name": "ghosttea:scope",
@@ -129,7 +129,7 @@
       },
       {
         "name": "ghosttea:cargo-lock:sha256",
-        "value": "ffa63185955a86523d4dfa20563f55f10a3e5ed3263c276279fc00db21ff7029"
+        "value": "bb8b8facf308c3338d61f0c7386ef331660627a020def4110e1ca62dd536fc88"
       },
       {
         "name": "ghosttea:rust-target",
@@ -160,9 +160,9 @@
   "components": [
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-apple-ffi@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-apple-ffi@0.16.0",
       "name": "ghosttea-apple-ffi",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -170,7 +170,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-apple-ffi@0.15.0"
+      "purl": "pkg:cargo/ghosttea-apple-ffi@0.16.0"
     },
     {
       "type": "library",
@@ -1194,9 +1194,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-config@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-config@0.16.0",
       "name": "ghosttea-config",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1204,7 +1204,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-config@0.15.0",
+      "purl": "pkg:cargo/ghosttea-config@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1218,9 +1218,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-core@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-core@0.16.0",
       "name": "ghosttea-core",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1228,7 +1228,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-core@0.15.0",
+      "purl": "pkg:cargo/ghosttea-core@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1242,9 +1242,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-ffi@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-ffi@0.16.0",
       "name": "ghosttea-ffi",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1252,7 +1252,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-ffi@0.15.0",
+      "purl": "pkg:cargo/ghosttea-ffi@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1266,9 +1266,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0",
       "name": "ghosttea-font-fixture-ffi",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1276,7 +1276,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-font-fixture-ffi@0.15.0",
+      "purl": "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1290,9 +1290,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-text@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-text@0.16.0",
       "name": "ghosttea-text",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1300,7 +1300,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-text@0.15.0",
+      "purl": "pkg:cargo/ghosttea-text@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1314,9 +1314,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-vt-sys@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-vt-sys@0.16.0",
       "name": "ghosttea-vt-sys",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1324,7 +1324,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-vt-sys@0.15.0",
+      "purl": "pkg:cargo/ghosttea-vt-sys@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -1338,9 +1338,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/ghosttea-vt@0.15.0",
+      "bom-ref": "pkg:cargo/ghosttea-vt@0.16.0",
       "name": "ghosttea-vt",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "licenses": [
         {
           "license": {
@@ -1348,7 +1348,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/ghosttea-vt@0.15.0",
+      "purl": "pkg:cargo/ghosttea-vt@0.16.0",
       "properties": [
         {
           "name": "ghosttea:cargo-source",
@@ -3319,9 +3319,9 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:npm/ghosttea@0.15.0",
+      "ref": "pkg:npm/ghosttea@0.16.0",
       "dependsOn": [
-        "pkg:cargo/ghosttea-apple-ffi@0.15.0",
+        "pkg:cargo/ghosttea-apple-ffi@0.16.0",
         "pkg:github/openssl/openssl@8cf17aaeb4599f8af87fefd810b5b5fee90fe69e",
         "pkg:github/libssh2/libssh2@a312b43325e3383c865a87bb1d26cb52e3292641",
         "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
@@ -3338,10 +3338,10 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-apple-ffi@0.15.0",
+      "ref": "pkg:cargo/ghosttea-apple-ffi@0.16.0",
       "dependsOn": [
-        "pkg:cargo/ghosttea-ffi@0.15.0",
-        "pkg:cargo/ghosttea-font-fixture-ffi@0.15.0",
+        "pkg:cargo/ghosttea-ffi@0.16.0",
+        "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0",
         "pkg:github/ghostty-org/ghostty@0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec"
       ]
     },
@@ -3520,7 +3520,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-config@0.15.0",
+      "ref": "pkg:cargo/ghosttea-config@0.16.0",
       "dependsOn": [
         "pkg:cargo/libc@0.2.186",
         "pkg:cargo/serde@1.0.228",
@@ -3530,33 +3530,33 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-core@0.15.0",
+      "ref": "pkg:cargo/ghosttea-core@0.16.0",
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/ghosttea-text@0.15.0",
-        "pkg:cargo/ghosttea-vt@0.15.0",
+        "pkg:cargo/ghosttea-text@0.16.0",
+        "pkg:cargo/ghosttea-vt@0.16.0",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/smallvec@1.15.2"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-ffi@0.15.0",
+      "ref": "pkg:cargo/ghosttea-ffi@0.16.0",
       "dependsOn": [
-        "pkg:cargo/ghosttea-config@0.15.0",
-        "pkg:cargo/ghosttea-core@0.15.0",
-        "pkg:cargo/ghosttea-text@0.15.0",
+        "pkg:cargo/ghosttea-config@0.16.0",
+        "pkg:cargo/ghosttea-core@0.16.0",
+        "pkg:cargo/ghosttea-text@0.16.0",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.15.0",
+      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0",
       "dependsOn": [
-        "pkg:cargo/ghosttea-text@0.15.0",
+        "pkg:cargo/ghosttea-text@0.16.0",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-text@0.15.0",
+      "ref": "pkg:cargo/ghosttea-text@0.16.0",
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.103",
         "pkg:cargo/fontdb@0.24.0",
@@ -3570,7 +3570,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt-sys@0.15.0",
+      "ref": "pkg:cargo/ghosttea-vt-sys@0.16.0",
       "dependsOn": [
         "pkg:cargo/cc@1.2.67",
         "pkg:cargo/serde@1.0.228",
@@ -3581,9 +3581,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt@0.15.0",
+      "ref": "pkg:cargo/ghosttea-vt@0.16.0",
       "dependsOn": [
-        "pkg:cargo/ghosttea-vt-sys@0.15.0"
+        "pkg:cargo/ghosttea-vt-sys@0.16.0"
       ]
     },
     {
