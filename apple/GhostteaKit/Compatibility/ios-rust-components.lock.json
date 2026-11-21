@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "target": "aarch64-apple-ios",
   "root": {
-    "ref": "pkg:cargo/ghosttea-apple-ffi@0.16.0",
+    "ref": "pkg:cargo/ghosttea-apple-ffi@0.16.1",
     "name": "ghosttea-apple-ffi",
-    "version": "0.16.0",
+    "version": "0.16.1",
     "dependencies": [
-      "pkg:cargo/ghosttea-ffi@0.16.0",
-      "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0"
+      "pkg:cargo/ghosttea-ffi@0.16.1",
+      "pkg:cargo/ghosttea-font-fixture-ffi@0.16.1"
     ]
   },
-  "cargoLockSha256": "bb8b8facf308c3338d61f0c7386ef331660627a020def4110e1ca62dd536fc88",
+  "cargoLockSha256": "e0703160519a1940b069b0b4082bfcc0d41798cde61eac5de2329dfc67d327be",
   "components": [
     {
       "ref": "pkg:cargo/anyhow@1.0.103",
@@ -275,9 +275,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-config@0.16.0",
+      "ref": "pkg:cargo/ghosttea-config@0.16.1",
       "name": "ghosttea-config",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -289,47 +289,47 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-core@0.16.0",
+      "ref": "pkg:cargo/ghosttea-core@0.16.1",
       "name": "ghosttea-core",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
         "pkg:cargo/anyhow@1.0.103",
-        "pkg:cargo/ghosttea-text@0.16.0",
-        "pkg:cargo/ghosttea-vt@0.16.0",
+        "pkg:cargo/ghosttea-text@0.16.1",
+        "pkg:cargo/ghosttea-vt@0.16.1",
         "pkg:cargo/serde@1.0.228",
         "pkg:cargo/smallvec@1.15.2"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-ffi@0.16.0",
+      "ref": "pkg:cargo/ghosttea-ffi@0.16.1",
       "name": "ghosttea-ffi",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-config@0.16.0",
-        "pkg:cargo/ghosttea-core@0.16.0",
-        "pkg:cargo/ghosttea-text@0.16.0",
+        "pkg:cargo/ghosttea-config@0.16.1",
+        "pkg:cargo/ghosttea-core@0.16.1",
+        "pkg:cargo/ghosttea-text@0.16.1",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.16.0",
+      "ref": "pkg:cargo/ghosttea-font-fixture-ffi@0.16.1",
       "name": "ghosttea-font-fixture-ffi",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-text@0.16.0",
+        "pkg:cargo/ghosttea-text@0.16.1",
         "pkg:cargo/serde_json@1.0.150"
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-text@0.16.0",
+      "ref": "pkg:cargo/ghosttea-text@0.16.1",
       "name": "ghosttea-text",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -345,9 +345,9 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt-sys@0.16.0",
+      "ref": "pkg:cargo/ghosttea-vt-sys@0.16.1",
       "name": "ghosttea-vt-sys",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
@@ -360,13 +360,13 @@
       ]
     },
     {
-      "ref": "pkg:cargo/ghosttea-vt@0.16.0",
+      "ref": "pkg:cargo/ghosttea-vt@0.16.1",
       "name": "ghosttea-vt",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "source": "workspace",
       "license": "MIT",
       "dependencies": [
-        "pkg:cargo/ghosttea-vt-sys@0.16.0"
+        "pkg:cargo/ghosttea-vt-sys@0.16.1"
       ]
     },
     {

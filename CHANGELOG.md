@@ -3,6 +3,15 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.16.1 - 2026-11-21
+
+### Changed
+
+- The Swift package takes Truffle 0.7.29 (#109), whose TailscaleKit is built with
+  Go 1.27.4 and whose libtailscale carries a fourth patch: a host can turn off the
+  upload of this process's Tailscale client logs before a server starts. Ghosttea
+  calls nothing it adds. The cargo plane stays at `truffle-core = "=0.7.23"`.
+
 ## 0.16.0 - 2026-11-18
 
 ### Added
