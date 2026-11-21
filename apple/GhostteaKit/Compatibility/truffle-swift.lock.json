@@ -4,8 +4,8 @@
     "name": "Truffle",
     "repository": "https://github.com/vibecook-dev/truffle.git",
     "pinStyle": "exact-version",
-    "version": "0.7.26",
-    "revision": "101889f676d32989e2c32295c3b608ccd5972c02",
+    "version": "0.7.29",
+    "revision": "6d485b753da160c9eef10245be37eadb85e2f7af",
     "packagePath": "",
     "packageIdentity": "truffle",
     "license": "MIT",
@@ -37,22 +37,27 @@
         "path": "apple/patches/libtailscale-ipn-stream-recovery.patch",
         "sha256": "9bc20231b7e8dc81e0a09ddd178e7a6b45396882663ba57d42a0c3bb89c0bb22",
         "purpose": "Report an unexpected clean EOF after queued notifications drain, so the watch restarts."
+      },
+      {
+        "path": "apple/patches/libtailscale-client-log-upload.patch",
+        "sha256": "39cb8f97c6d269a1832c85178a6f5a0f57fd23a479cb6497f44029549b775bfe",
+        "purpose": "Let a host turn off the upload of this process's Tailscale client logs before a server starts, and read back whether it uploads."
       }
     ],
     "distribution": {
       "kind": "swiftpm-binary-target",
-      "url": "https://github.com/vibecook-dev/truffle/releases/download/tailscalekit-d1dc45d0-ts1.104.1-go1.27.3/TailscaleKit.xcframework.zip",
-      "swiftPMChecksum": "0895dc67fc6531b4b0183ae63648a8378aacd7a5a04aa35cacfdba5931fe71d3",
+      "url": "https://github.com/vibecook-dev/truffle/releases/download/tailscalekit-d1dc45d0-ts1.104.1-go1.27.4/TailscaleKit.xcframework.zip",
+      "swiftPMChecksum": "0aef708648f154abd771b239193cd13acdec4a5c906f6edad7542c74fad4af12",
       "note": "Truffle declares this artifact as .binaryTarget(url:checksum:). SwiftPM verifies swiftPMChecksum against the downloaded zip before unpacking, so it — not the sibling materializer — is the integrity root. The per-slice hashes below stay in the BOM as the executable-level record."
     },
     "artifacts": {
       "iosArm64": {
         "path": "TailscaleKit.xcframework/ios-arm64/TailscaleKit.framework/TailscaleKit",
-        "sha256": "7c96a548b97689e86f66e7c24d8e85d80d62f971ff725ea9978ec985efb3fd74"
+        "sha256": "073581ac11d0c4a6c46b842a8e53686a5ada4411a95ac3e51c7bebc00c4758e1"
       },
       "iosSimulatorUniversal": {
         "path": "TailscaleKit.xcframework/ios-arm64_x86_64-simulator/TailscaleKit.framework/TailscaleKit",
-        "sha256": "ff71b9ca15e62565b864a0f00f96879f374f6cf3cf0310b24b756206fe03c8c4"
+        "sha256": "e80d71177e065b6792c340585d4f7a863b3e8b0f0b853a69bf9ee25cd5beb663"
       }
     }
   },

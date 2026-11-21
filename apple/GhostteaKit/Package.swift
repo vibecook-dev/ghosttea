@@ -17,17 +17,21 @@ import PackageDescription
 // package by relative path, never surfaced it.
 //
 // `exact:` rather than `from:` keeps the lockstep discipline the revision pin
-// had: exactly one Truffle across both planes, moved deliberately. Truffle's
-// remote carries a plain `v0.7.26` tag on the same commit its release-please
-// `truffle-v0.7.26` tag names, so this resolves that exact build through a
+// had: one Truffle for every Swift consumer, moved deliberately. Truffle's
+// remote carries a plain `v0.7.29` tag on the same commit its release-please
+// `truffle-v0.7.29` tag names, so this resolves that exact build through a
 // stable requirement.
+//
+// Corrected 2026-11-21: this said "exactly one Truffle across both planes".
+// The cargo plane has pinned its own `truffle-core` since this plane took
+// 0.7.26, and it is `=0.7.23` today (the root Cargo.toml).
 //
 // Keep this equal to `package.version` in
 // `Compatibility/truffle-swift.lock.json`, whose `package.revision` records the
 // commit that version resolves to; the App Store readiness check compares the
 // resolved pin against both and fails closed on drift.
 let truffleRepository = "https://github.com/vibecook-dev/truffle.git"
-let truffleVersion: Version = "0.7.26"
+let truffleVersion: Version = "0.7.29"
 
 let package = Package(
   name: "GhostteaKit",
