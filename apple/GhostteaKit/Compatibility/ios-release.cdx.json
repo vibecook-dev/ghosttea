@@ -328,9 +328,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
+      "bom-ref": "pkg:github/vibecook-dev/truffle@6d485b753da160c9eef10245be37eadb85e2f7af",
       "name": "Truffle Swift",
-      "version": "101889f676d32989e2c32295c3b608ccd5972c02",
+      "version": "6d485b753da160c9eef10245be37eadb85e2f7af",
       "licenses": [
         {
           "license": {
@@ -338,7 +338,7 @@
           }
         }
       ],
-      "purl": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
+      "purl": "pkg:github/vibecook-dev/truffle@6d485b753da160c9eef10245be37eadb85e2f7af",
       "externalReferences": [
         {
           "type": "vcs",
@@ -376,7 +376,7 @@
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "7c96a548b97689e86f66e7c24d8e85d80d62f971ff725ea9978ec985efb3fd74"
+          "content": "073581ac11d0c4a6c46b842a8e53686a5ada4411a95ac3e51c7bebc00c4758e1"
         }
       ],
       "externalReferences": [
@@ -431,6 +431,18 @@
           "value": "Report an unexpected clean EOF after queued notifications drain, so the watch restarts."
         },
         {
+          "name": "ghosttea:source-patch",
+          "value": "apple/patches/libtailscale-client-log-upload.patch"
+        },
+        {
+          "name": "ghosttea:source-patch:sha256",
+          "value": "39cb8f97c6d269a1832c85178a6f5a0f57fd23a479cb6497f44029549b775bfe"
+        },
+        {
+          "name": "ghosttea:source-patch:purpose",
+          "value": "Let a host turn off the upload of this process's Tailscale client logs before a server starts, and read back whether it uploads."
+        },
+        {
           "name": "ghosttea:ios-device-artifact",
           "value": "TailscaleKit.xcframework/ios-arm64/TailscaleKit.framework/TailscaleKit"
         },
@@ -440,7 +452,7 @@
         },
         {
           "name": "ghosttea:ios-simulator-artifact:sha256",
-          "value": "ff71b9ca15e62565b864a0f00f96879f374f6cf3cf0310b24b756206fe03c8c4"
+          "value": "e80d71177e065b6792c340585d4f7a863b3e8b0f0b853a69bf9ee25cd5beb663"
         }
       ]
     },
@@ -3324,7 +3336,7 @@
         "pkg:cargo/ghosttea-apple-ffi@0.16.0",
         "pkg:github/openssl/openssl@8cf17aaeb4599f8af87fefd810b5b5fee90fe69e",
         "pkg:github/libssh2/libssh2@a312b43325e3383c865a87bb1d26cb52e3292641",
-        "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
+        "pkg:github/vibecook-dev/truffle@6d485b753da160c9eef10245be37eadb85e2f7af",
         "pkg:github/mbadolato/iTerm2-Color-Schemes@875a82f0fdc773ae45099ce683a11c56bb0f8b3d",
         "pkg:github/0xhckr/ghostty-shaders@85898f08fcf4a9274e418912098e99e00a5f8350",
         "ghosttea:font/regular@0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
@@ -3360,7 +3372,7 @@
       ]
     },
     {
-      "ref": "pkg:github/vibecook-dev/truffle@101889f676d32989e2c32295c3b608ccd5972c02",
+      "ref": "pkg:github/vibecook-dev/truffle@6d485b753da160c9eef10245be37eadb85e2f7af",
       "dependsOn": [
         "pkg:github/tailscale/libtailscale@d1dc45d039edb7759ecbee6ba2aea0c4bca884b8"
       ]
