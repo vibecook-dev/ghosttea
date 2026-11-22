@@ -1714,8 +1714,9 @@
       isPaused = !active
     }
 
-    @objc private func powerStateDidChange() {
-      updateEffectAnimationState()
+    // ProcessInfo posts this notification on a background queue.
+    @objc nonisolated private func powerStateDidChange() {
+      Task { @MainActor [weak self] in self?.updateEffectAnimationState() }
     }
 
     private func geometryDidChange() {
