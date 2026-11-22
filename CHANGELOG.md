@@ -3,6 +3,14 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.16.2 - 2026-11-22
+
+### Fixed
+
+- The iOS terminal now updates its frame rate on the main actor when Low Power
+  Mode changes. A power notification delivered on a background queue could
+  previously terminate the app.
+
 ## 0.16.1 - 2026-11-21
 
 ### Changed
