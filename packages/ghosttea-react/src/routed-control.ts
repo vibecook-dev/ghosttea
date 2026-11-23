@@ -88,6 +88,7 @@ export type RoutedControlTransportEvent =
 interface ControlActivation {
   request: RoutedControlAttachRequest;
   demandSequence: number;
+  resumeDemandSequence?: number;
   lastDemand: RoutedSourceDemand;
 }
 
@@ -191,6 +192,8 @@ export class RoutedControlTransport {
   declareDemand(activationId: string, demand: RoutedSourceDemand): number | undefined {
     const activation = this.#activations.get(activationId);
     if (!activation) return undefined;
+    const resuming = activation.lastDemand.mode === "none" && demand.mode === "live";
+    if (demand.mode === "none") delete activation.resumeDemandSequence;
     activation.lastDemand = demand;
     const connection = this.#connections.get(activation.request.cellBootId);
     if (!connection?.accepted) return undefined;
@@ -202,6 +205,7 @@ export class RoutedControlTransport {
     )
       return undefined;
     activation.demandSequence = ++this.#nextDemandSequence;
+    if (resuming) activation.resumeDemandSequence = activation.demandSequence;
     const body: RoutedDeclareDemand = {
       sessionId: activation.request.attachGrant.claims.sessionId,
       activationId,
@@ -604,7 +608,12 @@ export class RoutedControlTransport {
 
   #activationForDemand(connection: ControlConnection, sequence: number): string | undefined {
     for (const activationId of connection.activationIds) {
-      if (this.#activations.get(activationId)?.demandSequence === sequence) return activationId;
+      const activation = this.#activations.get(activationId);
+      if (activation?.resumeDemandSequence === sequence) {
+        delete activation.resumeDemandSequence;
+        return activationId;
+      }
+      if (activation?.demandSequence === sequence) return activationId;
     }
     return undefined;
   }

@@ -244,7 +244,7 @@ function holder(clientId: string, viewId: string, holderGeneration: number) {
 }
 
 describe("routed terminal runtime", () => {
-  function inputFixture(openTicket?: GhostteaRoutedHost["openTicket"]) {
+  function inputFixture(openTicket?: GhostteaRoutedHost["openTicket"], routedAttachmentGraceMs = 0) {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);
     const worker = new FakeWorker();
@@ -253,11 +253,12 @@ describe("routed terminal runtime", () => {
     let generation = 0;
     const runtime = new GhostteaTerminalRuntime({
       transport: "routed",
+      routedAttachmentGraceMs,
       host: {
         openTicket:
           openTicket ??
-          (async () => {
-            const result = ticket("cell-a", first.id, "set-a");
+          (async (sessionId) => {
+            const result = ticket("cell-a", sessionId, "set-a");
             result.attachGrant.claims.grantGeneration = ++generation;
             return result;
           }),
@@ -291,27 +292,27 @@ describe("routed terminal runtime", () => {
         }),
       );
     };
-    const accept = (activationId: string, grantGenerationAccepted: number) => {
+    const accept = (activationId: string, grantGenerationAccepted: number, target = first) => {
       socket.receive(
         encodeRoutedMessage("ControlLegAttached", {
-          sessionId: first.id,
+          sessionId: target.id,
           activationId,
           grantGenerationAccepted,
           rights: ["geometry", "input", "read"],
         }),
       );
     };
-    const present = (activationId: string) => {
+    const present = (activationId: string, target = first) => {
       const stamp = { sceneEpoch: { cellBootId: "cell-a", modelGeneration: 1 }, sceneRevision: 1 };
       worker.emit({
         type: "routed-frames-event",
         event: {
           type: "frames-attached",
           attached: {
-            sessionId: first.id,
+            sessionId: target.id,
             activationId,
             resumeToken: "resume",
-            trfIdentity: { sessionHandle: "11", viewHandle: "12" },
+            trfIdentity: { sessionHandle: target.handle, viewHandle: "12" },
             outcome: { kind: "seed-required", reason: "no-cursor" },
           },
         },
@@ -335,7 +336,7 @@ describe("routed terminal runtime", () => {
       });
       socket.receive(
         encodeRoutedMessage("CellActivationStatus", {
-          sessionId: first.id,
+          sessionId: target.id,
           activationId,
           cellStatusSequence: 1,
           leaseTtlMs: 10_000,
@@ -389,6 +390,140 @@ describe("routed terminal runtime", () => {
       expect(h.runtime.routedViewInputAllowed("view-a")).toBe(true);
       h.runtime.sendText(h.first.id, "view-a", "after confirmation");
       expect(h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "TerminalInput")).toHaveLength(1);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  async function parkFirst() {
+    const h = inputFixture(undefined, 4000);
+    const firstMount = h.mount("old-view");
+    await h.connect();
+    const id = h.attaches()[0].activationId as string;
+    h.accept(id, 1);
+    h.present(id);
+    firstMount.dispose();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.runtime.routedActivation(h.first.id)).toMatchObject({
+      activationId: id,
+      sourceDemand: "none",
+      inputAllowed: false,
+    });
+    return { ...h, id };
+  }
+
+  it("resumes the last attachment only after its live demand and a subsequent cell status", async () => {
+    const h = await parkFirst();
+    try {
+      expect(h.worker.messages).toContainEqual({ type: "unmount", surfaceId: "old-view" });
+      const status = { ...h.runtime.routedActivation(h.first.id)!.cellStatus! };
+      delete status.type;
+      await vi.advanceTimersByTimeAsync(2000);
+      h.mount("new-view");
+      const demand = h.socket.sent
+        .map((line) => JSON.parse(line))
+        .filter((m) => m.type === "DeclareDemand")
+        .at(-1);
+      expect(demand).toMatchObject({ activationId: h.id, demand: { mode: "live" } });
+      h.runtime.setFocused(h.first.handle, "new-view", true, 80, 24);
+      h.runtime.sendText(h.first.id, "new-view", "before ack");
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 2 }));
+      h.socket.receive(encodeRoutedMessage("DemandAccepted", { demandSequence: demand.demandSequence }));
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(false);
+      h.socket.receive(encodeRoutedMessage("CellActivationStatus", { ...status, cellStatusSequence: 3 }));
+      h.runtime.sendText(h.first.id, "old-view", "unmounted");
+      h.runtime.sendText(h.first.id, "new-view", "confirmed");
+      expect(h.socket.sent.map((line) => JSON.parse(line)).filter((m) => m.type === "TerminalInput")).toMatchObject([
+        { activationId: h.id, viewId: "new-view", operation: { text: "confirmed" } },
+      ]);
+      await vi.advanceTimersByTimeAsync(2001);
+      expect(h.attaches()).toHaveLength(1);
+      expect(h.framesAttaches()).toHaveLength(1);
+      expect(h.runtime.routedViewInputAllowed("new-view")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it.each([
+    "expiry",
+    "removed",
+    "exited",
+    "route",
+    "rights",
+    "handle",
+    "reassigned",
+    "revoked-input",
+    "hidden",
+  ] as const)("drops the parked attachment on %s and rejects late status", async (reason) => {
+    const page = Object.assign(new EventTarget(), { hidden: false });
+    vi.stubGlobal("document", page);
+    const h = await parkFirst();
+    try {
+      if (reason === "expiry") await vi.advanceTimersByTimeAsync(4000);
+      if (reason === "hidden") {
+        page.hidden = true;
+        page.dispatchEvent(new Event("visibilitychange"));
+      }
+      if (reason === "removed") h.runtime.unregisterSession(h.first.id);
+      if (reason === "exited") h.runtime.applySessionEvent({ type: "updated", session: { ...h.first, exited: true } });
+      if (reason === "rights")
+        h.runtime.applySessionEvent({ type: "updated", session: { ...h.first, readWrite: false } });
+      if (reason === "handle") h.runtime.registerSession({ ...h.first, handle: "99" });
+      if (reason === "reassigned") h.runtime.registerSession({ ...h.first, id: "another-session" });
+      if (reason === "route" || reason === "revoked-input") {
+        const status = { ...h.runtime.routedActivation(h.first.id)!.cellStatus! };
+        delete status.type;
+        h.socket.receive(
+          encodeRoutedMessage("CellActivationStatus", {
+            ...status,
+            cellStatusSequence: 2,
+            presentation: reason === "route" ? { state: "revoked", reason: "stale-route" } : status.presentation,
+            input: { state: "revoked", reason: "right-revoked" },
+          }),
+        );
+      }
+      expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
+      expect(h.worker.messages).toContainEqual({ type: "routed-frames-detach", activationId: h.id });
+      h.present(h.id);
+      expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("forgets a parked owner's scene before the host registers a new owner", async () => {
+    const h = await parkFirst();
+    try {
+      h.runtime.discardParkedSession("other-session");
+      expect(h.runtime.routedActivation(h.first.id)?.activationId).toBe(h.id);
+      h.runtime.discardParkedSession(h.first.id);
+      expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
+      expect(h.runtime.sessionSummary(h.first.id)).toBeUndefined();
+      expect(h.worker.messages).toContainEqual({ type: "drop-session", sessionHandle: h.first.handle });
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("evicts the older of two parked sessions", async () => {
+    const h = await parkFirst();
+    try {
+      const second = session("session-b", "22");
+      h.runtime.registerSession(second);
+      const view = h.runtime.mount(second.id, second.handle, "second", canvas());
+      await flush();
+      const id = h.attaches().at(-1)!.activationId;
+      h.accept(id, 2, second);
+      h.present(id, second);
+      view.dispose();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
+      expect(h.runtime.routedActivation(second.id)).toMatchObject({ activationId: id, sourceDemand: "none" });
+      h.mount("again");
+      await flush();
+      expect(h.attaches().at(-1)!.activationId).not.toBe(h.id);
+      expect(h.runtime.routedViewInputAllowed("again")).toBe(false);
     } finally {
       h.dispose();
     }
