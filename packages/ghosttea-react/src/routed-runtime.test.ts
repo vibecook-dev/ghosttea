@@ -485,6 +485,9 @@ describe("routed terminal runtime", () => {
       }
       expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
       expect(h.worker.messages).toContainEqual({ type: "routed-frames-detach", activationId: h.id });
+      if (reason === "handle" || reason === "reassigned") {
+        expect(h.worker.messages).toContainEqual({ type: "drop-session", sessionHandle: h.first.handle });
+      }
       h.present(h.id);
       expect(h.runtime.routedActivation(h.first.id)).toBeUndefined();
     } finally {

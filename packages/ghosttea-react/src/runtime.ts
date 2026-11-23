@@ -2530,13 +2530,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
   #invalidateParkedSummary(session: SessionSummary): void {
     const entry = this.#parkedActivation?.entry;
     if (!entry) return;
-    if (
-      (entry.sessionHandle === session.handle && entry.sessionId !== session.id) ||
-      (entry.sessionId === session.id &&
-        (entry.sessionHandle !== session.handle ||
-          session.exited ||
-          (!session.readWrite && entry.state.rights.includes("input"))))
-    ) {
+    const sameId = entry.sessionId === session.id;
+    const sameHandle = entry.sessionHandle === session.handle;
+    if (sameId !== sameHandle) {
+      // The transport is keyed by id and the worker's last scene by handle.
+      // If either identity was reassigned, both sides must forget the old pair.
+      this.discardParkedSession(entry.sessionId);
+    } else if (sameId && (session.exited || (!session.readWrite && entry.state.rights.includes("input")))) {
       this.#detachRoutedActivation(entry);
     }
   }
