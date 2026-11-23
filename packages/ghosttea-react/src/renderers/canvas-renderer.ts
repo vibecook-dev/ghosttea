@@ -47,6 +47,13 @@ export class CanvasTerminalRenderer implements TerminalRenderer {
     this.#surfaces.set(id, { canvas, context, width: 1, height: 1, dpr: 1 });
   }
 
+  rebind(from: string, to: string): void {
+    const surface = this.#surfaces.get(from);
+    if (!surface) return;
+    this.#surfaces.delete(from);
+    this.#surfaces.set(to, surface);
+  }
+
   unmount(id: string): void {
     this.#surfaces.delete(id);
   }

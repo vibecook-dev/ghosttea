@@ -194,9 +194,9 @@ export function reduceRoutedActivation(
       if (event.mode === "none") {
         delete next.resumeDemandSequence;
         delete next.inputStatusAfterDemand;
-      } else if (state.sourceDemand === "none" || state.resumeDemandSequence !== undefined) {
-        // A cached worker frame and old allowed lease cannot authorize input
-        // into a view the cell is still reattaching after a visibility change.
+      } else if (state.sourceDemand === "none") {
+        // The first live demand reattaches the native view. A subsequent focus
+        // or urgency update must not move this fence past the cell's fresh status.
         if (event.sequence !== undefined) next.resumeDemandSequence = event.sequence;
         next.inputStatusAfterDemand = state.lastCellStatusSequence;
       }

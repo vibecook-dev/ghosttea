@@ -1,6 +1,6 @@
 import { useTerminalLinks } from "./use-terminal-links.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ClipboardEvent, CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
+import type { ClipboardEvent, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import type { SessionSummary, TerminalKeyEvent, TerminalScrollbarState } from "@vibecook/ghosttea-protocol";
 import { useGhostteaRuntime } from "./context.js";
 import { terminalKeyboardLayout, terminalKeyDown, terminalKeyUp } from "./keyboard-input.js";
@@ -28,7 +28,7 @@ import {
   type TerminalTextInputSink,
   type TerminalTextKeyEventLike,
 } from "./text-input.js";
-import type { GhostteaTerminalRuntime } from "./runtime.js";
+import type { GhostteaTerminalRuntime, TerminalMount } from "./runtime.js";
 
 export type TerminalMenuAction = "copy" | "paste" | "select-all" | "clear-screen";
 export type TerminalInputPolicy = "inherit" | "read-only";
@@ -427,9 +427,24 @@ export function viewportSelection(
   };
 }
 
+// Each pane owns one physical screen. React owns the keyed input and overlays
+// beside it; only a session handoff can replace the canvas inside this host.
+const paneScreens = new WeakMap<
+  HTMLElement,
+  {
+    runtime: GhostteaTerminalRuntime;
+    mount: TerminalMount;
+    canvas: HTMLCanvasElement;
+  }
+>();
+
 export function TerminalSurface(props: TerminalSurfaceProps) {
   const { session } = props;
-  return <TerminalSurfaceSession key={`${session.id}:${session.handle}`} {...props} />;
+  return (
+    <div className="terminal-surface">
+      <TerminalSurfaceSession key={`${session.id}:${session.handle}`} {...props} />
+    </div>
+  );
 }
 
 function TerminalSurfaceSession({
@@ -456,7 +471,6 @@ function TerminalSurfaceSession({
   const terminalRuntime = useGhostteaRuntime();
   const clientReadWrite = readWrite && inputPolicy !== "read-only";
   const interactive = session.readWrite && clientReadWrite;
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const gridRef = useRef({ cols: session.cols, rows: session.rows });
   const links = useTerminalLinks(terminalRuntime, session.handle, inputRef, gridRef, platform, visible);
@@ -732,16 +746,21 @@ function TerminalSurfaceSession({
   }, [active]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const surface = canvas?.parentElement;
-    if (!canvas || !surface) return;
+    const surface = inputRef.current?.parentElement;
+    if (!surface) return;
+    const last = paneScreens.get(surface);
+    const canvas = (last?.runtime === terminalRuntime && last.mount.reusableCanvas) || document.createElement("canvas");
     const dpr = window.devicePixelRatio || 1;
     canvas.style.setProperty("--ghosttea-canvas-scale", `${1 / dpr}`);
+    canvas.setAttribute("aria-label", `Terminal session ${session.id}`);
     const handle = terminalRuntime.mount(session.id, session.handle, viewId, canvas, {
       width: surface.clientWidth,
       height: surface.clientHeight,
       dpr,
     });
+    if (!last) surface.prepend(canvas);
+    else if (last.canvas !== canvas) last.canvas.replaceWith(canvas);
+    paneScreens.set(surface, { runtime: terminalRuntime, mount: handle, canvas });
     terminalRuntime.setViewInputPolicy(viewId, clientReadWriteRef.current);
     let { cols, rows } = gridRef.current;
     const observer = new ResizeObserver(([entry]) => {
@@ -1156,21 +1175,12 @@ function TerminalSurfaceSession({
   };
 
   return (
-    <div className="terminal-surface">
+    <>
       {copyError ? (
         <div className="terminal-operation-error" role="status">
           {copyError}
         </div>
       ) : null}
-      <canvas
-        ref={canvasRef}
-        aria-label={`Terminal session ${session.id}`}
-        style={
-          {
-            "--ghosttea-canvas-scale": 1 / (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
-          } as CSSProperties
-        }
-      />
       <textarea
         ref={inputRef}
         className="terminal-input"
@@ -1252,6 +1262,6 @@ function TerminalSurfaceSession({
           />
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

@@ -136,6 +136,8 @@ export interface GhostteaRoutedHost {
 export interface GhostteaRoutedTerminalRuntimeOptions extends GhostteaTerminalRuntimeBaseOptions {
   transport: "routed";
   host: GhostteaRoutedHost;
+  /** Retain at most the last detached activation with no source demand for this long. Defaults to zero. */
+  routedAttachmentGraceMs?: number;
   websocketFactory?: (url: string) => WebSocket;
   receiverCapacities?: RoutedReceiverCapacities;
   capabilities?: string[];
@@ -144,6 +146,8 @@ export interface GhostteaRoutedTerminalRuntimeOptions extends GhostteaTerminalRu
 export type GhostteaTerminalRuntimeOptions = GhostteaPortTerminalRuntimeOptions | GhostteaRoutedTerminalRuntimeOptions;
 
 export type TerminalMount = {
+  /** The pane can keep this screen when rebinding a released view in the same commit. */
+  readonly reusableCanvas?: HTMLCanvasElement | undefined;
   resize: (width: number, height: number, dpr: number) => void;
   dispose: () => void;
 };
@@ -430,6 +434,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
   readonly #routedCapabilities: string[];
   readonly #routedControl: RoutedControlTransport | undefined;
   readonly #routedBySession = new Map<string, RoutedActivationRuntime>();
+  readonly #routedAttachmentGraceMs: number;
+  #parkedActivation: { entry: RoutedActivationRuntime; timer: number; expiresAt: number } | undefined;
+  readonly #releaseParkedWhenHidden = () => {
+    if (globalThis.document?.hidden && this.#parkedActivation)
+      this.#detachRoutedActivation(this.#parkedActivation.entry);
+  };
   readonly #routedByActivation = new Map<string, RoutedActivationRuntime>();
   readonly #routedGeometry = new Map<string, RoutedGeometryState>();
   readonly #routedAttachDeadlineByCell = new Map<string, number>();
@@ -518,6 +528,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#platform = options.platform;
     this.#clientBuild = options.clientBuild ?? "ghosttea-react";
     this.#sessionOwnerId = options.sessionOwnerId;
+    this.#routedAttachmentGraceMs =
+      options.transport === "routed" ? Math.min(MAX_BROWSER_TIMEOUT_MS, options.routedAttachmentGraceMs ?? 0) : 0;
     this.#frameSubscriptionGraceMs = Math.max(
       0,
       options.frameSubscriptionGraceMs ?? DEFAULT_FRAME_SUBSCRIPTION_GRACE_MS,
@@ -966,6 +978,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       exitOutcome: detail.exitOutcome,
     };
     this.#sessionByHandle.set(handle, exited);
+    this.#invalidateParkedSummary(exited);
     this.#bumpSessionGeneration(handle);
     this.dispatchEvent(new CustomEvent("session-metadata", { detail: exited }));
     this.dispatchEvent(new CustomEvent("session-exited", { detail }));
@@ -995,6 +1008,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       return false;
     }
     this.#sessionByHandle.set(sessionHandle, next);
+    this.#invalidateParkedSummary(next);
     this.#bumpSessionGeneration(sessionHandle);
     if (
       previous.inputUsed !== next.inputUsed ||
@@ -1097,7 +1111,13 @@ export class GhostteaTerminalRuntime extends EventTarget {
     return this.#sessionByHandle.get(sessionHandle);
   }
 
+  /** An owner change invalidates the retained transport and its last rendered scene. */
+  discardParkedSession(sessionId: string): void {
+    if (this.#parkedActivation?.entry.sessionId === sessionId) this.unregisterSession(sessionId);
+  }
+
   registerSession(session: SessionSummary): void {
+    this.#invalidateParkedSummary(session);
     const previous = this.#sessionByHandle.get(session.handle);
     if (!previous || previous.id !== session.id || !previous.exited || !session.exited) {
       this.#appliedRoutedExitEvents.delete(session.handle);
@@ -1506,13 +1526,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     initialSize?: PixelSize,
   ): TerminalMount {
     if (this.#disposed) throw new Error("Cannot mount a disposed terminal runtime");
-    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas, initialSize);
     const mounted = this.#mountedCanvases.get(canvas);
-    if (mounted) {
-      if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
-      if (mounted.sessionHandle !== sessionHandle) {
-        throw new Error("A terminal canvas cannot be reassigned to another session");
-      }
+    if (mounted && (mounted.references !== 0 || mounted.viewId === viewId)) {
+      if (!mounted.active || mounted.sessionHandle !== sessionHandle || mounted.sessionId !== sessionId)
+        throw new Error("A terminal canvas cannot be reassigned while its view owns it");
       mounted.references += 1;
       if (mounted.disposeTimer !== undefined) {
         window.clearTimeout(mounted.disposeTimer);
@@ -1520,21 +1537,23 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return this.#createMountLease(mounted);
     }
-
     const size: PixelSize = initialSize ?? {
       width: canvas.clientWidth || 0,
       height: canvas.clientHeight || 0,
       dpr: window.devicePixelRatio || 1,
     };
-    // Allocate the first render target at its actual size, too: the backend
-    // must not build a default 300x150 scene texture and immediately replace it.
-    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
-    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
-    const offscreen = canvas.transferControlToOffscreen();
-    const subscription = this.#retainFrameSubscription(sessionHandle);
+    const subscription = this.#routedHost ? undefined : this.#retainFrameSubscription(sessionHandle);
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
+    if (mounted) {
+      // The old input view still detaches on its own lease. Only the physical screen moves.
+      this.#postWorker({ type: "rebind", from: mounted.viewId, surfaceId: viewId, sessionHandle, size });
+    } else {
+      canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+      canvas.height = Math.max(1, Math.round(size.height * size.dpr));
+      const offscreen = canvas.transferControlToOffscreen();
+      this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
+    }
     const entry: MountedCanvas = {
       canvas,
       sessionHandle,
@@ -1547,9 +1566,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
     };
     this.#mountedCanvases.set(canvas, entry);
     this.#mountedEntries.add(entry);
+    const session = this.#sessionByHandle.get(sessionHandle);
     const view: ViewRuntimeState = {
       sessionId,
       sessionHandle,
+      ...(this.#routedHost && session ? { readWrite: session.readWrite } : {}),
       clientReadWrite: true,
       resizeControlRequested: false,
       visible: true,
@@ -1566,6 +1587,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
       routedGeometrySerial: 0,
     };
     this.#views.set(viewId, view);
+    if (!subscription) {
+      void this.#ensureRoutedActivation(sessionId, sessionHandle, viewId).catch((error: unknown) => {
+        if (!this.#disposed) console.error(`[terminal-runtime] routed activation failed for ${sessionId}`, error);
+      });
+      return this.#createMountLease(entry);
+    }
     const remote = this.#remoteSessions.get(sessionId);
     if (remote && remote.state !== "live") this.#setCursorFrozen(sessionId, true);
     void subscription.ready
@@ -1617,88 +1644,31 @@ export class GhostteaTerminalRuntime extends EventTarget {
           operation(response.attachmentEpoch, current.inputSequence);
         }
       })
-      .catch((error) => console.error(`[terminal-runtime] failed to attach view ${viewId}`, error));
-    return this.#createMountLease(entry);
-  }
-
-  #mountRouted(
-    sessionId: string,
-    sessionHandle: string,
-    viewId: string,
-    canvas: HTMLCanvasElement,
-    initialSize?: PixelSize,
-  ): TerminalMount {
-    const mounted = this.#mountedCanvases.get(canvas);
-    if (mounted) {
-      if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
-      if (mounted.sessionHandle !== sessionHandle) {
-        throw new Error("A terminal canvas cannot be reassigned to another session");
-      }
-      mounted.references += 1;
-      if (mounted.disposeTimer !== undefined) {
-        window.clearTimeout(mounted.disposeTimer);
-        mounted.disposeTimer = undefined;
-      }
-      return this.#createMountLease(mounted);
-    }
-    const size: PixelSize = initialSize ?? {
-      width: canvas.clientWidth || 0,
-      height: canvas.clientHeight || 0,
-      dpr: window.devicePixelRatio || 1,
-    };
-    // Allocate the first render target at its actual size, too: the backend
-    // must not build a default 300x150 scene texture and immediately replace it.
-    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
-    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
-    const offscreen = canvas.transferControlToOffscreen();
-    const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
-    this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
-    const entry: MountedCanvas = {
-      canvas,
-      sessionHandle,
-      sessionId,
-      viewId,
-      generation,
-      references: 1,
-      disposeTimer: undefined,
-      active: true,
-    };
-    this.#mountedCanvases.set(canvas, entry);
-    this.#mountedEntries.add(entry);
-    const session = this.#sessionByHandle.get(sessionHandle);
-    this.#views.set(viewId, {
-      sessionId,
-      sessionHandle,
-      ...(session === undefined ? {} : { readWrite: session.readWrite }),
-      clientReadWrite: true,
-      resizeControlRequested: false,
-      visible: true,
-      inputSequence: 0,
-      resizeSequence: 0,
-      controlEpoch: undefined,
-      desiredCols: undefined,
-      desiredRows: undefined,
-      pendingInput: [],
-      lastViewStateSeq: undefined,
-      lastAttachmentEpoch: undefined,
-      claimedEpoch: undefined,
-      claimedRevision: 0,
-      routedGeometrySerial: 0,
-    });
-    const activation = this.#routedBySession.get(sessionId);
-    if (activation) activation.viewIds.add(viewId);
-    void this.#ensureRoutedActivation(sessionId, sessionHandle, viewId).catch((error: unknown) => {
-      if (!this.#disposed) console.error(`[terminal-runtime] routed activation failed for ${sessionId}`, error);
-    });
+      .catch((error) => {
+        if (this.#views.get(viewId) === view) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
+        console.error(`[terminal-runtime] failed to attach view ${viewId}`, error);
+      });
     return this.#createMountLease(entry);
   }
 
   async #ensureRoutedActivation(sessionId: string, sessionHandle: string, viewId: string): Promise<void> {
+    const parked = this.#parkedActivation;
+    if (parked?.entry.sessionId === sessionId) {
+      this.#clearParkedActivation();
+      // A throttled window can mount before an overdue expiry callback runs.
+      if (
+        parked.entry.sessionHandle !== sessionHandle ||
+        performance.now() >= parked.expiresAt ||
+        !this.#canParkActivation(parked.entry)
+      )
+        this.#detachRoutedActivation(parked.entry);
+    }
     const existing = this.#routedBySession.get(sessionId);
     if (existing) {
       existing.viewIds.add(viewId);
       if (existing.start) await existing.start;
+      if (existing.state.phase === "unavailable" || existing.state.phase === "ended")
+        this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
       const anyWritable =
         this.#routedHost?.encodeInput !== undefined &&
         [...existing.viewIds].some((candidate) => {
@@ -1865,12 +1835,20 @@ export class GhostteaTerminalRuntime extends EventTarget {
     const previous = entry.state;
     const next = reduceRoutedActivation(previous, event);
     if (next === previous) return;
+    if (
+      this.#parkedActivation?.entry === entry &&
+      (!this.#canParkActivation(entry, next) || previous.rights.some((right) => !next.rights.includes(right)))
+    ) {
+      this.#detachRoutedActivation(entry);
+      return;
+    }
     entry.state = next;
     if (next.phase !== "attaching" && entry.attachTimer !== undefined) {
       window.clearTimeout(entry.attachTimer);
       delete entry.attachTimer;
     }
     if ((next.phase === "unavailable" || next.phase === "ended") && next.phase !== previous.phase) {
+      for (const viewId of entry.viewIds) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
       this.#stopRoutedActivation(entry);
     }
     if (!previous.presentationReady && next.presentationReady) {
@@ -1998,7 +1976,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       const previousSequence = entry.state.lastCellStatusSequence;
       this.#transitionRouted(entry, { type: "cell-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastCellStatusSequence;
-      if (sequence === previousSequence) return;
+      if (sequence === previousSequence || this.#routedByActivation.get(event.status.activationId) !== entry) return;
       if (entry.cellLeaseTimer !== undefined) window.clearTimeout(entry.cellLeaseTimer);
       entry.cellLeaseTimer = window.setTimeout(() => {
         delete entry.cellLeaseTimer;
@@ -2173,7 +2151,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       const previousSequence = entry.state.lastWorkerStatusSequence;
       this.#transitionRouted(entry, { type: "presentation-status", status: event.status, now: performance.now() });
       const sequence = entry.state.lastWorkerStatusSequence;
-      if (sequence === previousSequence) return;
+      if (sequence === previousSequence || this.#routedByActivation.get(event.status.activationId) !== entry) return;
       if (entry.workerLeaseTimer !== undefined) window.clearTimeout(entry.workerLeaseTimer);
       entry.workerLeaseTimer = window.setTimeout(() => {
         delete entry.workerLeaseTimer;
@@ -2410,6 +2388,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
     }
     entry.renewalTimer = window.setTimeout(() => {
       this.#transitionRouted(entry, { type: "grant-expiring" });
+      if (entry.ticket !== ticket) return;
       if (!host.renewAttach) {
         this.#transitionRouted(entry, { type: "renew-failed" });
         return;
@@ -2464,7 +2443,57 @@ export class GhostteaTerminalRuntime extends EventTarget {
     this.#recoverRoutedActivation(entry, "retry");
   }
 
-  #releaseRoutedView(sessionId: string, viewId: string): void {
+  #canParkActivation(entry: RoutedActivationRuntime, state = entry.state): boolean {
+    const { ticket } = entry;
+    const now = performance.now();
+    const session = this.#sessionByHandle.get(entry.sessionHandle);
+    return (
+      ticket !== undefined &&
+      ticket.attachGrant.claims.expiresAt > Date.now() &&
+      (state.phase === "presenting" || state.phase === "stalled") &&
+      state.controlAttached &&
+      state.framesAttached &&
+      state.grantInputValid &&
+      state.rights.includes("read") &&
+      state.framesState?.state !== "failed" &&
+      !(state.rights.includes("input") && state.cellStatus?.input.state === "revoked") &&
+      state.cellLeaseDeadline > now &&
+      state.workerLeaseDeadline > now &&
+      session?.id === entry.sessionId &&
+      !session.exited
+    );
+  }
+
+  #clearParkedActivation(): void {
+    if (!this.#parkedActivation) return;
+    window.clearTimeout(this.#parkedActivation.timer);
+    globalThis.document?.removeEventListener("visibilitychange", this.#releaseParkedWhenHidden);
+    this.#parkedActivation = undefined;
+  }
+
+  #invalidateParkedSummary(session: SessionSummary): void {
+    const entry = this.#parkedActivation?.entry;
+    if (!entry) return;
+    const sameId = entry.sessionId === session.id;
+    const sameHandle = entry.sessionHandle === session.handle;
+    if (sameId !== sameHandle) {
+      // The transport is keyed by id and the worker's last scene by handle.
+      // If either identity was reassigned, both sides must forget the old pair.
+      this.discardParkedSession(entry.sessionId);
+    } else if (sameId && (session.exited || (!session.readWrite && entry.state.rights.includes("input")))) {
+      this.#detachRoutedActivation(entry);
+    }
+  }
+
+  #detachRoutedActivation(entry: RoutedActivationRuntime): void {
+    if (this.#parkedActivation?.entry === entry) this.#clearParkedActivation();
+    this.#transitionRouted(entry, { type: "detach" });
+    this.#routedBySession.delete(entry.sessionId);
+    this.#routedByActivation.delete(entry.state.activationId);
+    this.#setRoutedGeometry(entry, undefined);
+  }
+
+  #releaseRoutedView(sessionId: string, viewId: string, allowParking = false): void {
     const entry = this.#routedBySession.get(sessionId);
     if (!entry) return;
     entry.viewIds.delete(viewId);
@@ -2480,10 +2509,25 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#declareRoutedDemand(entry);
       return;
     }
-    this.#transitionRouted(entry, { type: "detach" });
-    this.#routedBySession.delete(sessionId);
-    this.#routedByActivation.delete(entry.state.activationId);
-    this.#setRoutedGeometry(entry, undefined);
+    if (
+      allowParking &&
+      this.#routedAttachmentGraceMs > 0 &&
+      !globalThis.document?.hidden &&
+      this.#canParkActivation(entry)
+    ) {
+      if (this.#parkedActivation) this.#detachRoutedActivation(this.#parkedActivation.entry);
+      const expiresAt = performance.now() + this.#routedAttachmentGraceMs;
+      const timer = window.setTimeout(() => {
+        if (this.#parkedActivation?.timer === timer) this.#detachRoutedActivation(entry);
+      }, this.#routedAttachmentGraceMs);
+      this.#parkedActivation = { entry, timer, expiresAt };
+      globalThis.document?.addEventListener("visibilitychange", this.#releaseParkedWhenHidden);
+      this.#transitionRouted(entry, { type: "input-policy", policy: "read-only" });
+      this.#declareRoutedDemand(entry);
+      this.#setRoutedGeometry(entry, undefined);
+      return;
+    }
+    this.#detachRoutedActivation(entry);
   }
 
   /**
@@ -2510,7 +2554,17 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   #createMountLease(mounted: MountedCanvas): TerminalMount {
     let disposed = false;
+    const mountedCanvases = this.#mountedCanvases;
+    const mountGenerations = this.#mountGenerationBySurface;
     return {
+      get reusableCanvas() {
+        return mounted.active &&
+          mounted.references === 0 &&
+          mountedCanvases.get(mounted.canvas) === mounted &&
+          mountGenerations.get(mounted.viewId) === mounted.generation
+          ? mounted.canvas
+          : undefined;
+      },
       resize: (width, height, dpr) =>
         this.#postWorker({ type: "resize", surfaceId: mounted.viewId, width, height, dpr }),
       dispose: () => {
@@ -2527,12 +2581,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
           if (ownsWorkerSurface) {
             this.#postWorker({ type: "unmount", surfaceId: mounted.viewId });
             this.#mountGenerationBySurface.delete(mounted.viewId);
-            if (this.#routedHost) this.#releaseRoutedView(mounted.sessionId, mounted.viewId);
+            if (this.#routedHost) this.#releaseRoutedView(mounted.sessionId, mounted.viewId, true);
             else this.#detachView(mounted.sessionId, mounted.viewId);
             this.#views.delete(mounted.viewId);
             this.#focusByView.delete(mounted.viewId);
           }
-          this.#mountedCanvases.delete(mounted.canvas);
+          if (this.#mountedCanvases.get(mounted.canvas) === mounted) this.#mountedCanvases.delete(mounted.canvas);
           this.#mountedEntries.delete(mounted);
           if (!this.#routedHost) this.#releaseFrameSubscription(mounted.sessionHandle);
         }, 0);
@@ -2689,6 +2743,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#maybeReclaim(viewId);
       return true;
     }
+    if (update.error) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
     view.pendingInput.length = 0;
     view.attachmentEpoch = undefined;
     return true;
@@ -2770,8 +2825,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   /** Hold the cursor steady while the replica is frozen, without disturbing focus. */
   #setCursorFrozen(sessionId: string, frozen: boolean): void {
+    const state = this.#remoteSessions.get(sessionId)?.state;
     for (const [viewId, view] of this.#views) {
-      if (view.sessionId === sessionId) this.#postWorker({ type: "cursor-frozen", surfaceId: viewId, frozen });
+      if (view.sessionId !== sessionId) continue;
+      this.#postWorker({ type: "cursor-frozen", surfaceId: viewId, frozen });
+      if (state === "ended" || state === "suspended")
+        this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
     }
   }
 
@@ -3457,6 +3516,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
   }
 
   #removeRegisteredSession(sessionId: string, detachViews: boolean): void {
+    if (this.#parkedActivation?.entry.sessionId === sessionId)
+      this.#detachRoutedActivation(this.#parkedActivation.entry);
     const handle = this.#handleBySessionId.get(sessionId);
     if (!handle) return;
     const releaseTimer = this.#sessionReleaseTimers.get(handle);
@@ -3482,7 +3543,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.#views.delete(mounted.viewId);
         this.#focusByView.delete(mounted.viewId);
       }
-      this.#mountedCanvases.delete(mounted.canvas);
+      if (this.#mountedCanvases.get(mounted.canvas) === mounted) this.#mountedCanvases.delete(mounted.canvas);
       this.#mountedEntries.delete(mounted);
     }
     for (const [viewId, view] of this.#views) {
@@ -3555,6 +3616,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#clearParkedActivation();
     for (const [viewId, view] of this.#views) {
       view.pendingInput.length = 0;
       this.#control?.notify({ type: "detach-session", sessionId: view.sessionId, viewId });

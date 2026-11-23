@@ -76,6 +76,9 @@ interface SurfaceSnapshot {
 }
 
 interface MountedCanvas {
+  surfaceId: string;
+  /** Keep the compositor's last image until the next session has a committed grid. */
+  waitingForGrid: boolean;
   canvas: OffscreenCanvas;
   size: PixelSize;
   sessionHandle: string;
@@ -618,8 +621,7 @@ function scheduleFlush(): void {
 function shaderAnimationActive(surfaceId: string, presentation: SurfaceSnapshot): boolean {
   return (
     renderer?.kind === "webgpu" &&
-    mounts.has(surfaceId) &&
-    !occluded.has(surfaceId) &&
+    drawable(surfaceId) &&
     presentation.focused &&
     terminalEffectsNeedAnimation(presentation.effects)
   );
@@ -648,8 +650,14 @@ function scheduleShaderAnimation(): void {
 // holding a measurement's idle; mount, a resize and becoming visible each
 // invalidate it again once it can be drawn.
 function drawable(id: string): boolean {
-  const size = mounts.get(id)?.size;
-  return !occluded.has(id) && size !== undefined && size.width > 0 && size.height > 0;
+  const mount = mounts.get(id);
+  return (
+    mount !== undefined &&
+    !occluded.has(id) &&
+    mount.size.width > 0 &&
+    mount.size.height > 0 &&
+    (!mount.waitingForGrid || (snapshots.get(mount.sessionHandle)?.cols ?? 0) > 0)
+  );
 }
 
 async function flush(): Promise<void> {
@@ -667,7 +675,12 @@ async function flush(): Promise<void> {
   const entries = ids.flatMap((id) => {
     const presentation = surfaces.get(id);
     const session = presentation ? snapshots.get(presentation.sessionHandle) : undefined;
-    return mounts.has(id) && presentation && session ? [{ id, view: renderView(session, presentation) }] : [];
+    const mount = mounts.get(id);
+    if (!mount || !presentation || !session) return [];
+    // Changing the bitmap size clears the visible canvas. Do it in the same
+    // worker turn that draws the replacement, including a resize during attach.
+    if (mount.waitingForGrid) backend.resize(id, mount.size);
+    return [{ id, view: renderView(session, presentation) }];
   });
   if (entries.length > 0) {
     try {
@@ -687,6 +700,11 @@ async function flush(): Promise<void> {
       const renderedAt = active ? performance.now() : 0;
       for (const { id } of entries) {
         if (submitted && !submitted.has(id)) continue;
+        const mount = mounts.get(id);
+        if (mount?.waitingForGrid) {
+          mount.waitingForGrid = false;
+          scheduleShaderAnimation();
+        }
         const damage = surfaces.get(id)?.damage;
         if (!damage) continue;
         damage.full = false;
@@ -801,14 +819,52 @@ async function mount(
   if (mounts.has(surfaceId)) renderer?.unmount(surfaceId);
   snapshot(sessionHandle);
   surface(surfaceId, sessionHandle);
-  const entry: MountedCanvas = { canvas, size, sessionHandle };
+  const entry: MountedCanvas = { surfaceId, waitingForGrid: false, canvas, size, sessionHandle };
   mounts.set(surfaceId, entry);
   const backend = await ensureRenderer();
-  if (mounts.get(surfaceId) !== entry) return;
-  backend.mount(surfaceId, canvas);
-  backend.resize(surfaceId, entry.size);
-  invalidateFull(surfaceId);
+  // The pane may have selected another session while the backend was starting.
+  if (mounts.get(entry.surfaceId) !== entry) return;
+  backend.mount(entry.surfaceId, canvas);
+  backend.resize(entry.surfaceId, entry.size);
+  invalidateFull(entry.surfaceId);
   scheduleShaderAnimation();
+}
+
+function forgetSurface(id: string): void {
+  mounts.delete(id);
+  dirty.delete(id);
+  deleteSurface(id);
+  occluded.delete(id);
+  frozenCursors.delete(id);
+  const timer = cursorBlinkTimers.get(id);
+  if (timer !== undefined) clearTimeout(timer);
+  cursorBlinkTimers.delete(id);
+  performanceMeasurement?.dirtySince.delete(id);
+}
+
+function rebind(from: string, to: string, sessionHandle: string, size: PixelSize): void {
+  const entry = mounts.get(from);
+  if (!entry) return;
+  forgetSurface(from);
+  snapshot(sessionHandle);
+  surface(to, sessionHandle);
+  entry.surfaceId = to;
+  entry.sessionHandle = sessionHandle;
+  entry.size = size;
+  entry.waitingForGrid = true;
+  mounts.set(to, entry);
+  renderer?.rebind(from, to);
+  invalidateFull(to);
+}
+
+// A refused or frozen attach may never receive a grid. In that case present
+// the selected session's own last screen or empty ground when it has none.
+function releasePreviousFrame(surfaceId: string): void {
+  const mount = mounts.get(surfaceId);
+  if (!mount?.waitingForGrid) return;
+  mount.waitingForGrid = false;
+  renderer?.resize(surfaceId, mount.size);
+  invalidateFull(surfaceId);
 }
 
 function applyFrame(
@@ -1189,34 +1245,24 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
       void mount(message.surfaceId, message.sessionHandle, message.canvas, message.size).catch((error) => {
         console.error("[terminal-renderer] mount failed", error);
       });
+    } else if (message.type === "rebind") {
+      rebind(message.from, message.surfaceId, message.sessionHandle, message.size);
+    } else if (message.type === "release-previous-frame") {
+      releasePreviousFrame(message.surfaceId);
     } else if (message.type === "renderer-config") {
       forceCanvasFallback = Boolean(message.forceCanvasFallback);
     } else if (message.type === "partial-rendering") {
       partialRenderingEnabled = Boolean(message.enabled);
       for (const id of mounts.keys()) invalidateFull(id);
     } else if (message.type === "unmount") {
-      mounts.delete(message.surfaceId);
-      dirty.delete(message.surfaceId);
-      deleteSurface(message.surfaceId);
-      occluded.delete(message.surfaceId);
-      frozenCursors.delete(message.surfaceId);
+      forgetSurface(message.surfaceId);
       renderer?.unmount(message.surfaceId);
-      const timer = cursorBlinkTimers.get(message.surfaceId);
-      if (timer !== undefined) clearTimeout(timer);
-      cursorBlinkTimers.delete(message.surfaceId);
       // The session may be remounted after zoom/layout changes. Keep its decoded
       // snapshot; only drop-session represents terminal lifetime ending.
     } else if (message.type === "drop-session") {
       for (const surfaceId of surfaceIdsForSession(message.sessionHandle)) {
-        mounts.delete(surfaceId);
-        dirty.delete(surfaceId);
-        surfaces.delete(surfaceId);
-        occluded.delete(surfaceId);
-        frozenCursors.delete(surfaceId);
+        forgetSurface(surfaceId);
         renderer?.unmount(surfaceId);
-        const timer = cursorBlinkTimers.get(surfaceId);
-        if (timer !== undefined) clearTimeout(timer);
-        cursorBlinkTimers.delete(surfaceId);
       }
       surfaceIdsBySession.delete(message.sessionHandle);
       dropSessionSnapshot(message.sessionHandle);
@@ -1229,7 +1275,7 @@ self.onmessage = (event: MessageEvent<RendererToWorkerMessage>) => {
       const changed = renderedSizeChanged(mounted.size, nextSize);
       mounted.size = nextSize;
       if (!changed) return;
-      renderer?.resize(message.surfaceId, mounted.size);
+      if (!mounted.waitingForGrid) renderer?.resize(message.surfaceId, mounted.size);
       invalidateFull(message.surfaceId);
     } else if (message.type === "frame") {
       try {

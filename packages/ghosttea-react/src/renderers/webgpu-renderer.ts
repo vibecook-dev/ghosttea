@@ -1200,6 +1200,22 @@ export class WebGpuTerminalRenderer implements TerminalRenderer {
     this.#configure(surface);
   }
 
+  rebind(from: string, to: string): void {
+    const surface = this.#surfaces.get(from);
+    if (!surface) return;
+    this.#surfaces.delete(from);
+    // Geometry, shader time and light adaptation belong to the old session.
+    clearGeometryCache(surface);
+    surface.sceneValid = false;
+    surface.sceneHadSelection = false;
+    surface.sceneHadOverhang = false;
+    surface.sceneCursorRow = null;
+    surface.adaptation = null;
+    surface.effectFrame = 0;
+    surface.lastEffectTime = 0;
+    this.#surfaces.set(to, surface);
+  }
+
   unmount(id: string): void {
     const surface = this.#surfaces.get(id);
     if (!surface) return;

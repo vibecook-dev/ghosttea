@@ -8,6 +8,8 @@ export type RendererToWorkerMessage =
   | { type: "renderer-config"; forceCanvasFallback: boolean }
   | { type: "partial-rendering"; enabled: boolean }
   | { type: "mount"; surfaceId: string; sessionHandle: string; canvas: OffscreenCanvas; size: PixelSize }
+  | { type: "rebind"; from: string; surfaceId: string; sessionHandle: string; size: PixelSize }
+  | { type: "release-previous-frame"; surfaceId: string }
   | { type: "unmount"; surfaceId: string }
   | { type: "drop-session"; sessionHandle: string }
   | { type: "resize"; surfaceId: string; width: number; height: number; dpr: number }
