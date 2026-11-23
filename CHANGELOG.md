@@ -3,6 +3,18 @@
 All notable changes to Ghosttea are documented here. The Rust and npm packages
 share one version.
 
+## 0.16.3 - 2026-11-23
+
+### Fixed
+
+- Switching sessions in a React terminal pane keeps the outgoing frame on screen
+  until the selected session has a frame ready. The pane reuses its canvas across
+  switches on WebGPU and Canvas 2D. Input and selection follow the selected session.
+- Routed hosts can set `routedAttachmentGraceMs` to keep the most recently
+  detached session ready for a quick return. It has no frame demand while parked.
+  The runtime releases it on expiry or when the page is hidden and invalidates
+  cached content when a session's identity changes. The default grace period is zero.
+
 ## 0.16.2 - 2026-11-22
 
 ### Fixed
