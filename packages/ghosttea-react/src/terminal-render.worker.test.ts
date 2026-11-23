@@ -17,6 +17,7 @@ import {
 const renderer = vi.hoisted(() => ({
   mount: vi.fn(),
   unmount: vi.fn(),
+  rebind: vi.fn(),
   resize: vi.fn(),
   render: vi.fn(),
   renderBatch: vi.fn((_entries: ReadonlyArray<{ id: string; view: { effects?: unknown } }>) => []),
@@ -172,6 +173,7 @@ vi.mock("./renderers/canvas-renderer.js", () => ({
   CanvasTerminalRenderer: class {
     readonly kind = "canvas2d" as const;
     readonly mount = renderer.mount;
+    readonly rebind = renderer.rebind;
     readonly unmount = renderer.unmount;
     readonly resize = renderer.resize;
     readonly render = renderer.render;
@@ -186,6 +188,7 @@ vi.mock("./renderers/webgpu-renderer.js", () => ({
       return {
         kind: "webgpu" as const,
         mount: renderer.mount,
+        rebind: renderer.rebind,
         unmount: renderer.unmount,
         resize: renderer.resize,
         render: renderer.render,
@@ -221,6 +224,60 @@ describe("terminal render worker surfaces", () => {
     dispatch({ type: "drop-session", sessionHandle: "1" });
     dispatch({ type: "frame", packet: textFrame(["again"], 4n) });
     expect(drawn()).toHaveLength(2);
+  });
+
+  it("keeps the screen through rapid switches until the selected session has a grid, including a genuinely empty grid", async () => {
+    const raf: FrameRequestCallback[] = [];
+    vi.stubGlobal("self", { postMessage: vi.fn(), requestAnimationFrame: (cb: FrameRequestCallback) => raf.push(cb) });
+    await import("./terminal-render.worker.js");
+    const dispatch = (data: unknown) => self.onmessage!({ data } as MessageEvent);
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    dispatch({ type: "renderer-config", forceCanvasFallback: true });
+    const tick = async () => {
+      raf.splice(0).forEach((cb) => cb(0));
+      await settle();
+    };
+    const size = { width: 642, height: 418, dpr: 2 };
+    dispatch({ type: "frame", packet: textFrame(["outgoing"], 1n) });
+    dispatch({ type: "mount", surfaceId: "a", sessionHandle: "1", canvas: {}, size });
+    await settle();
+    await tick();
+    renderer.renderBatch.mockClear();
+    renderer.resize.mockClear();
+
+    dispatch({ type: "rebind", from: "a", surfaceId: "b", sessionHandle: "2", size });
+    dispatch({ type: "rebind", from: "b", surfaceId: "c", sessionHandle: "3", size });
+    dispatch({ type: "resize", surfaceId: "c", ...size, width: 730 });
+    const lateFrame = textFrame(["superseded"], 1n);
+    new DataView(lateFrame).setBigUint64(8, 2n, true);
+    dispatch({ type: "frame", packet: lateFrame });
+    await tick();
+    expect(renderer.rebind.mock.calls).toEqual([["a", "b"], ["b", "c"]]);
+    expect(renderer.renderBatch).not.toHaveBeenCalled();
+    expect(renderer.resize).not.toHaveBeenCalled();
+    expect(raf).toHaveLength(0);
+
+    const blank = textFrame([""], 1n);
+    new DataView(blank).setBigUint64(8, 3n, true);
+    dispatch({ type: "frame", packet: blank });
+    await tick();
+    expect(renderer.mount).toHaveBeenCalledTimes(1);
+    expect(renderer.unmount).not.toHaveBeenCalled();
+    expect(renderer.resize).toHaveBeenCalledWith("c", { ...size, width: 730 });
+    expect(renderer.renderBatch.mock.calls.map(([entries]) => entries.map(({ id }) => id))).toEqual([["c"]]);
+
+    // A failed cold attach has no PTY frame to wait for: release the outgoing
+    // pixels. A refusal for an already replaced view cannot release this one.
+    dispatch({ type: "rebind", from: "c", surfaceId: "d", sessionHandle: "4", size });
+    renderer.renderBatch.mockClear();
+    dispatch({ type: "release-previous-frame", surfaceId: "c" });
+    await tick();
+    expect(renderer.renderBatch).not.toHaveBeenCalled();
+    dispatch({ type: "release-previous-frame", surfaceId: "d" });
+    await tick();
+    expect(renderer.renderBatch).toHaveBeenCalledWith([expect.objectContaining({
+      id: "d", view: expect.objectContaining({ cols: 0, rows: [] }),
+    })]);
   });
 
   it("paints a cached session at its mount geometry and waits for a nonzero hidden-pane size", async () => {

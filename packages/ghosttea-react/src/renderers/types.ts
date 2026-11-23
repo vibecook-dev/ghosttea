@@ -126,6 +126,7 @@ export interface RenderSubmission {
 export interface TerminalRenderer {
   readonly kind: "webgpu" | "canvas2d";
   mount(id: string, canvas: OffscreenCanvas): void;
+  rebind(from: string, to: string): void;
   unmount(id: string): void;
   resize(id: string, size: PixelSize): void;
   render(id: string, view: RenderView): TerminalRenderMetrics | undefined;

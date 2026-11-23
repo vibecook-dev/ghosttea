@@ -146,6 +146,8 @@ export interface GhostteaRoutedTerminalRuntimeOptions extends GhostteaTerminalRu
 export type GhostteaTerminalRuntimeOptions = GhostteaPortTerminalRuntimeOptions | GhostteaRoutedTerminalRuntimeOptions;
 
 export type TerminalMount = {
+  /** The pane can keep this screen when rebinding a released view in the same commit. */
+  readonly reusableCanvas?: HTMLCanvasElement | undefined;
   resize: (width: number, height: number, dpr: number) => void;
   dispose: () => void;
 };
@@ -1524,13 +1526,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
     initialSize?: PixelSize,
   ): TerminalMount {
     if (this.#disposed) throw new Error("Cannot mount a disposed terminal runtime");
-    if (this.#routedHost) return this.#mountRouted(sessionId, sessionHandle, viewId, canvas, initialSize);
     const mounted = this.#mountedCanvases.get(canvas);
-    if (mounted) {
-      if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
-      if (mounted.sessionHandle !== sessionHandle) {
-        throw new Error("A terminal canvas cannot be reassigned to another session");
-      }
+    if (mounted && (mounted.references !== 0 || mounted.viewId === viewId)) {
+      if (!mounted.active || mounted.sessionHandle !== sessionHandle || mounted.sessionId !== sessionId)
+        throw new Error("A terminal canvas cannot be reassigned while its view owns it");
       mounted.references += 1;
       if (mounted.disposeTimer !== undefined) {
         window.clearTimeout(mounted.disposeTimer);
@@ -1538,36 +1537,33 @@ export class GhostteaTerminalRuntime extends EventTarget {
       }
       return this.#createMountLease(mounted);
     }
-
     const size: PixelSize = initialSize ?? {
       width: canvas.clientWidth || 0,
       height: canvas.clientHeight || 0,
       dpr: window.devicePixelRatio || 1,
     };
-    // Allocate the first render target at its actual size, too: the backend
-    // must not build a default 300x150 scene texture and immediately replace it.
-    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
-    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
-    const offscreen = canvas.transferControlToOffscreen();
-    const subscription = this.#retainFrameSubscription(sessionHandle);
+    const subscription = this.#routedHost ? undefined : this.#retainFrameSubscription(sessionHandle);
     const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
     this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
+    if (mounted) {
+      // The old input view still detaches on its own lease. Only the physical screen moves.
+      this.#postWorker({ type: "rebind", from: mounted.viewId, surfaceId: viewId, sessionHandle, size });
+    } else {
+      canvas.width = Math.max(1, Math.round(size.width * size.dpr));
+      canvas.height = Math.max(1, Math.round(size.height * size.dpr));
+      const offscreen = canvas.transferControlToOffscreen();
+      this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
+    }
     const entry: MountedCanvas = {
-      canvas,
-      sessionHandle,
-      sessionId,
-      viewId,
-      generation,
-      references: 1,
-      disposeTimer: undefined,
-      active: true,
+      canvas, sessionHandle, sessionId, viewId, generation, references: 1, disposeTimer: undefined, active: true,
     };
     this.#mountedCanvases.set(canvas, entry);
     this.#mountedEntries.add(entry);
+    const session = this.#sessionByHandle.get(sessionHandle);
     const view: ViewRuntimeState = {
       sessionId,
       sessionHandle,
+      ...(this.#routedHost && session ? { readWrite: session.readWrite } : {}),
       clientReadWrite: true,
       resizeControlRequested: false,
       visible: true,
@@ -1584,6 +1580,12 @@ export class GhostteaTerminalRuntime extends EventTarget {
       routedGeometrySerial: 0,
     };
     this.#views.set(viewId, view);
+    if (!subscription) {
+      void this.#ensureRoutedActivation(sessionId, sessionHandle, viewId).catch((error: unknown) => {
+        if (!this.#disposed) console.error(`[terminal-runtime] routed activation failed for ${sessionId}`, error);
+      });
+      return this.#createMountLease(entry);
+    }
     const remote = this.#remoteSessions.get(sessionId);
     if (remote && remote.state !== "live") this.#setCursorFrozen(sessionId, true);
     void subscription.ready
@@ -1635,78 +1637,10 @@ export class GhostteaTerminalRuntime extends EventTarget {
           operation(response.attachmentEpoch, current.inputSequence);
         }
       })
-      .catch((error) => console.error(`[terminal-runtime] failed to attach view ${viewId}`, error));
-    return this.#createMountLease(entry);
-  }
-
-  #mountRouted(
-    sessionId: string,
-    sessionHandle: string,
-    viewId: string,
-    canvas: HTMLCanvasElement,
-    initialSize?: PixelSize,
-  ): TerminalMount {
-    const mounted = this.#mountedCanvases.get(canvas);
-    if (mounted) {
-      if (!mounted.active) throw new Error("A released terminal canvas cannot be remounted");
-      if (mounted.sessionHandle !== sessionHandle) {
-        throw new Error("A terminal canvas cannot be reassigned to another session");
-      }
-      mounted.references += 1;
-      if (mounted.disposeTimer !== undefined) {
-        window.clearTimeout(mounted.disposeTimer);
-        mounted.disposeTimer = undefined;
-      }
-      return this.#createMountLease(mounted);
-    }
-    const size: PixelSize = initialSize ?? {
-      width: canvas.clientWidth || 0,
-      height: canvas.clientHeight || 0,
-      dpr: window.devicePixelRatio || 1,
-    };
-    // Allocate the first render target at its actual size, too: the backend
-    // must not build a default 300x150 scene texture and immediately replace it.
-    canvas.width = Math.max(1, Math.round(size.width * size.dpr));
-    canvas.height = Math.max(1, Math.round(size.height * size.dpr));
-    const offscreen = canvas.transferControlToOffscreen();
-    const generation = (this.#mountGenerationBySurface.get(viewId) ?? 0) + 1;
-    this.#mountGenerationBySurface.set(viewId, generation);
-    this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
-    const entry: MountedCanvas = {
-      canvas,
-      sessionHandle,
-      sessionId,
-      viewId,
-      generation,
-      references: 1,
-      disposeTimer: undefined,
-      active: true,
-    };
-    this.#mountedCanvases.set(canvas, entry);
-    this.#mountedEntries.add(entry);
-    const session = this.#sessionByHandle.get(sessionHandle);
-    this.#views.set(viewId, {
-      sessionId,
-      sessionHandle,
-      ...(session === undefined ? {} : { readWrite: session.readWrite }),
-      clientReadWrite: true,
-      resizeControlRequested: false,
-      visible: true,
-      inputSequence: 0,
-      resizeSequence: 0,
-      controlEpoch: undefined,
-      desiredCols: undefined,
-      desiredRows: undefined,
-      pendingInput: [],
-      lastViewStateSeq: undefined,
-      lastAttachmentEpoch: undefined,
-      claimedEpoch: undefined,
-      claimedRevision: 0,
-      routedGeometrySerial: 0,
-    });
-    void this.#ensureRoutedActivation(sessionId, sessionHandle, viewId).catch((error: unknown) => {
-      if (!this.#disposed) console.error(`[terminal-runtime] routed activation failed for ${sessionId}`, error);
-    });
+      .catch((error) => {
+        if (this.#views.get(viewId) === view) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
+        console.error(`[terminal-runtime] failed to attach view ${viewId}`, error);
+      });
     return this.#createMountLease(entry);
   }
 
@@ -1726,6 +1660,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     if (existing) {
       existing.viewIds.add(viewId);
       if (existing.start) await existing.start;
+      if (existing.state.phase === "unavailable" || existing.state.phase === "ended")
+        this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
       const anyWritable =
         this.#routedHost?.encodeInput !== undefined &&
         [...existing.viewIds].some((candidate) => {
@@ -1905,6 +1841,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       delete entry.attachTimer;
     }
     if ((next.phase === "unavailable" || next.phase === "ended") && next.phase !== previous.phase) {
+      for (const viewId of entry.viewIds) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
       this.#stopRoutedActivation(entry);
     }
     if (!previous.presentationReady && next.presentationReady) {
@@ -2610,7 +2547,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   #createMountLease(mounted: MountedCanvas): TerminalMount {
     let disposed = false;
+    const runtime = this;
     return {
+      get reusableCanvas() {
+        return mounted.active && mounted.references === 0 && runtime.#mountedCanvases.get(mounted.canvas) === mounted &&
+          runtime.#mountGenerationBySurface.get(mounted.viewId) === mounted.generation
+          ? mounted.canvas
+          : undefined;
+      },
       resize: (width, height, dpr) =>
         this.#postWorker({ type: "resize", surfaceId: mounted.viewId, width, height, dpr }),
       dispose: () => {
@@ -2632,7 +2576,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
             this.#views.delete(mounted.viewId);
             this.#focusByView.delete(mounted.viewId);
           }
-          this.#mountedCanvases.delete(mounted.canvas);
+          if (this.#mountedCanvases.get(mounted.canvas) === mounted) this.#mountedCanvases.delete(mounted.canvas);
           this.#mountedEntries.delete(mounted);
           if (!this.#routedHost) this.#releaseFrameSubscription(mounted.sessionHandle);
         }, 0);
@@ -2789,6 +2733,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#maybeReclaim(viewId);
       return true;
     }
+    if (update.error) this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
     view.pendingInput.length = 0;
     view.attachmentEpoch = undefined;
     return true;
@@ -2870,8 +2815,11 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   /** Hold the cursor steady while the replica is frozen, without disturbing focus. */
   #setCursorFrozen(sessionId: string, frozen: boolean): void {
+    const state = this.#remoteSessions.get(sessionId)?.state;
     for (const [viewId, view] of this.#views) {
-      if (view.sessionId === sessionId) this.#postWorker({ type: "cursor-frozen", surfaceId: viewId, frozen });
+      if (view.sessionId !== sessionId) continue;
+      this.#postWorker({ type: "cursor-frozen", surfaceId: viewId, frozen });
+      if (state === "ended" || state === "suspended") this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
     }
   }
 
@@ -3584,7 +3532,7 @@ export class GhostteaTerminalRuntime extends EventTarget {
         this.#views.delete(mounted.viewId);
         this.#focusByView.delete(mounted.viewId);
       }
-      this.#mountedCanvases.delete(mounted.canvas);
+      if (this.#mountedCanvases.get(mounted.canvas) === mounted) this.#mountedCanvases.delete(mounted.canvas);
       this.#mountedEntries.delete(mounted);
     }
     for (const [viewId, view] of this.#views) {

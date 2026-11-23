@@ -2532,6 +2532,45 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     await expect(runtime.connect()).rejects.toThrow("disposed");
   });
 
+  it("rebinds a released canvas once and retires the old view independently of the new input owner", async () => {
+    vi.stubGlobal("window", globalThis);
+    const worker = new FakeWorker();
+    const control = new FakePort();
+    const runtime = new GhostteaTerminalRuntime({
+      ports: { control: control as unknown as MessagePort, frames: new FakePort() as unknown as MessagePort },
+      platform: {
+        writeClipboard: () => undefined,
+        forceCanvasFallback: () => false,
+        setForceCanvasFallback: () => undefined,
+        reload: () => undefined,
+      },
+      workerFactory: () => worker as unknown as Worker,
+    });
+    await runtime.connect();
+    const screen = canvas();
+    const transfer = vi.spyOn(screen, "transferControlToOffscreen");
+    const size = { width: 642, height: 418, dpr: 2 };
+    const old = runtime.mount("first", "1", "a", screen, size);
+    expect(old.reusableCanvas).toBeUndefined();
+    expect(() => runtime.mount("second", "2", "b", screen, size)).toThrow();
+    old.dispose();
+    expect(old.reusableCanvas).toBe(screen);
+    const next = runtime.mount("second", "2", "b", screen, size);
+    expect(old.reusableCanvas).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(control.messages).toContainEqual(expect.objectContaining({ type: "detach-session", sessionId: "first", viewId: "a" }));
+    expect(control.messages).not.toContainEqual(expect.objectContaining({ type: "detach-session", viewId: "b" }));
+    expect(worker.messages).toContainEqual({ type: "rebind", from: "a", surfaceId: "b", sessionHandle: "2", size });
+    next.dispose();
+    expect(next.reusableCanvas).toBe(screen);
+    const last = runtime.mount("first", "1", "c", screen, size);
+    expect(transfer).toHaveBeenCalledTimes(1);
+    last.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(last.reusableCanvas).toBeUndefined();
+    runtime.dispose();
+  });
+
   it("mounts and unmounts mirrored session views as independent worker surfaces", async () => {
     vi.stubGlobal("window", globalThis);
     const worker = new FakeWorker();

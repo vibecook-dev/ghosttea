@@ -46,14 +46,16 @@ function session(id: string, handle: string): SessionSummary {
 }
 
 describe("TerminalSurface session ownership", () => {
-  it("gives each session a distinct component boundary", () => {
+  it("keeps the screen host and gives each session a distinct input boundary", () => {
     const first = TerminalSurface({ session: session("first", "11"), theme: DEFAULT_THEME });
     const second = TerminalSurface({ session: session("second", "22"), theme: DEFAULT_THEME });
 
     expect(isValidElement(first)).toBe(true);
     expect(isValidElement(second)).toBe(true);
-    expect(first.key).toBe("first:11");
-    expect(second.key).toBe("second:22");
+    expect(first.type).toBe(second.type);
+    expect(first.key).toBe(second.key);
+    expect(first.props.children.key).toBe("first:11");
+    expect(second.props.children.key).toBe("second:22");
   });
 });
 
