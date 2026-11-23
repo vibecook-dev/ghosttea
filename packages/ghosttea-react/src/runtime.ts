@@ -1555,7 +1555,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
       this.#postWorker({ type: "mount", surfaceId: viewId, sessionHandle, canvas: offscreen, size }, [offscreen]);
     }
     const entry: MountedCanvas = {
-      canvas, sessionHandle, sessionId, viewId, generation, references: 1, disposeTimer: undefined, active: true,
+      canvas,
+      sessionHandle,
+      sessionId,
+      viewId,
+      generation,
+      references: 1,
+      disposeTimer: undefined,
+      active: true,
     };
     this.#mountedCanvases.set(canvas, entry);
     this.#mountedEntries.add(entry);
@@ -2547,11 +2554,14 @@ export class GhostteaTerminalRuntime extends EventTarget {
 
   #createMountLease(mounted: MountedCanvas): TerminalMount {
     let disposed = false;
-    const runtime = this;
+    const mountedCanvases = this.#mountedCanvases;
+    const mountGenerations = this.#mountGenerationBySurface;
     return {
       get reusableCanvas() {
-        return mounted.active && mounted.references === 0 && runtime.#mountedCanvases.get(mounted.canvas) === mounted &&
-          runtime.#mountGenerationBySurface.get(mounted.viewId) === mounted.generation
+        return mounted.active &&
+          mounted.references === 0 &&
+          mountedCanvases.get(mounted.canvas) === mounted &&
+          mountGenerations.get(mounted.viewId) === mounted.generation
           ? mounted.canvas
           : undefined;
       },
@@ -2819,7 +2829,8 @@ export class GhostteaTerminalRuntime extends EventTarget {
     for (const [viewId, view] of this.#views) {
       if (view.sessionId !== sessionId) continue;
       this.#postWorker({ type: "cursor-frozen", surfaceId: viewId, frozen });
-      if (state === "ended" || state === "suspended") this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
+      if (state === "ended" || state === "suspended")
+        this.#postWorker({ type: "release-previous-frame", surfaceId: viewId });
     }
   }
 

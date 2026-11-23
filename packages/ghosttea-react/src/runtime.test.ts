@@ -2558,7 +2558,9 @@ describe("GhostteaTerminalRuntime mount ownership", () => {
     const next = runtime.mount("second", "2", "b", screen, size);
     expect(old.reusableCanvas).toBeUndefined();
     await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(control.messages).toContainEqual(expect.objectContaining({ type: "detach-session", sessionId: "first", viewId: "a" }));
+    expect(control.messages).toContainEqual(
+      expect.objectContaining({ type: "detach-session", sessionId: "first", viewId: "a" }),
+    );
     expect(control.messages).not.toContainEqual(expect.objectContaining({ type: "detach-session", viewId: "b" }));
     expect(worker.messages).toContainEqual({ type: "rebind", from: "a", surfaceId: "b", sessionHandle: "2", size });
     next.dispose();

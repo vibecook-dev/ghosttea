@@ -651,8 +651,13 @@ function scheduleShaderAnimation(): void {
 // invalidate it again once it can be drawn.
 function drawable(id: string): boolean {
   const mount = mounts.get(id);
-  return mount !== undefined && !occluded.has(id) && mount.size.width > 0 && mount.size.height > 0 &&
-    (!mount.waitingForGrid || (snapshots.get(mount.sessionHandle)?.cols ?? 0) > 0);
+  return (
+    mount !== undefined &&
+    !occluded.has(id) &&
+    mount.size.width > 0 &&
+    mount.size.height > 0 &&
+    (!mount.waitingForGrid || (snapshots.get(mount.sessionHandle)?.cols ?? 0) > 0)
+  );
 }
 
 async function flush(): Promise<void> {

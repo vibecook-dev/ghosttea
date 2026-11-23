@@ -252,7 +252,10 @@ describe("terminal render worker surfaces", () => {
     new DataView(lateFrame).setBigUint64(8, 2n, true);
     dispatch({ type: "frame", packet: lateFrame });
     await tick();
-    expect(renderer.rebind.mock.calls).toEqual([["a", "b"], ["b", "c"]]);
+    expect(renderer.rebind.mock.calls).toEqual([
+      ["a", "b"],
+      ["b", "c"],
+    ]);
     expect(renderer.renderBatch).not.toHaveBeenCalled();
     expect(renderer.resize).not.toHaveBeenCalled();
     expect(raf).toHaveLength(0);
@@ -275,9 +278,12 @@ describe("terminal render worker surfaces", () => {
     expect(renderer.renderBatch).not.toHaveBeenCalled();
     dispatch({ type: "release-previous-frame", surfaceId: "d" });
     await tick();
-    expect(renderer.renderBatch).toHaveBeenCalledWith([expect.objectContaining({
-      id: "d", view: expect.objectContaining({ cols: 0, rows: [] }),
-    })]);
+    expect(renderer.renderBatch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: "d",
+        view: expect.objectContaining({ cols: 0, rows: [] }),
+      }),
+    ]);
   });
 
   it("paints a cached session at its mount geometry and waits for a nonzero hidden-pane size", async () => {

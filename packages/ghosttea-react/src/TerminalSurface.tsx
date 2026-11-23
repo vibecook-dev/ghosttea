@@ -429,11 +429,14 @@ export function viewportSelection(
 
 // Each pane owns one physical screen. React owns the keyed input and overlays
 // beside it; only a session handoff can replace the canvas inside this host.
-const paneScreens = new WeakMap<HTMLElement, {
-  runtime: GhostteaTerminalRuntime;
-  mount: TerminalMount;
-  canvas: HTMLCanvasElement;
-}>();
+const paneScreens = new WeakMap<
+  HTMLElement,
+  {
+    runtime: GhostteaTerminalRuntime;
+    mount: TerminalMount;
+    canvas: HTMLCanvasElement;
+  }
+>();
 
 export function TerminalSurface(props: TerminalSurfaceProps) {
   const { session } = props;
