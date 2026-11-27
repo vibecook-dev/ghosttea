@@ -3,536 +3,289 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ghosttea — Ship the Ghostty experience across platforms</title>
-    <meta
-      name="description"
-      content="Put the Ghostty terminal experience inside your product. ghosttea is a WebGPU runtime for Electron on macOS and Windows, plus a native Metal runtime for iOS."
-    />
-    <meta name="theme-color" content="#fafaf7" />
-    <meta name="color-scheme" content="light dark" />
+    <title>ghosttea: ship the Ghostty experience inside your app</title>
+    <meta name="description" content="A terminal runtime for your app: Ghostty's terminal core, a Rust daemon, and GPU renderers for Electron on macOS and Windows and for iOS." />
+    <link rel="canonical" href="https://vibecook-dev.github.io/ghosttea/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ghosttea: ship the Ghostty experience inside your app" />
+    <meta property="og:description" content="A terminal runtime for your app: Ghostty's terminal core, a Rust daemon, and GPU renderers for Electron on macOS and Windows and for iOS." />
+    <meta property="og:url" content="https://vibecook-dev.github.io/ghosttea/" />
+    <meta property="og:image" content="https://vibecook-dev.github.io/ghosttea/assets/og.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="assets/fonts/Jost-Variable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="assets/site.css" />
     <script>
       try {
-        const theme = window.localStorage.getItem("ghosttea-theme");
-        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        const t = localStorage.getItem('vibecook-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
       } catch {}
     </script>
-    <link rel="canonical" href="https://vibecook-dev.github.io/ghosttea/" />
-    <link rel="icon" href="assets/logos/ghosttea-favicon.svg" type="image/svg+xml" />
-    <link rel="preload" href="fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="styles.css" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="ghosttea by VibeCook" />
-    <meta property="og:title" content="Ship the Ghostty experience across platforms." />
-    <meta
-      property="og:description"
-      content="A WebGPU terminal runtime for Electron on macOS and Windows, plus a native Metal runtime for iOS."
-    />
-    <meta property="og:url" content="https://vibecook-dev.github.io/ghosttea/" />
-    <meta property="og:image" content="https://vibecook-dev.github.io/ghosttea/og.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="ghosttea running one terminal experience across macOS, Windows, and iOS." />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="ghosttea — Ship the Ghostty experience across platforms" />
-    <meta
-      name="twitter:description"
-      content="A WebGPU terminal runtime for Electron on macOS and Windows, plus a native Metal runtime for iOS."
-    />
-    <meta name="twitter:image" content="https://vibecook-dev.github.io/ghosttea/og.png" />
-    <meta name="twitter:image:alt" content="ghosttea running one terminal experience across macOS, Windows, and iOS." />
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "SoftwareSourceCode",
-        "name": "ghosttea",
-        "description": "Embeddable Ghostty-powered WebGPU terminal runtime for Electron on macOS and Windows, plus a native Metal runtime for iOS.",
-        "codeRepository": "https://github.com/vibecook-dev/ghosttea",
-        "license": "https://opensource.org/license/mit",
-        "programmingLanguage": ["Rust", "TypeScript", "Swift"],
-        "runtimePlatform": ["macOS", "Windows", "iOS"]
-      }
-    </script>
+    <script src="assets/site.js" defer></script>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-
-    <header class="site-header">
-      <nav class="nav shell" aria-label="Main navigation">
-        <a class="brand-lockup" href="index.html" aria-label="VibeCook and ghosttea home">
-          <span class="vibecook-mark" aria-hidden="true">
-            <i class="vibecook-primitive vibecook-circle"></i>
-            <i class="vibecook-primitive vibecook-triangle"></i>
-            <i class="vibecook-primitive vibecook-square"></i>
-          </span>
-          <span class="brand-divider" aria-hidden="true"></span>
-          <span class="ghosttea-lockup" aria-hidden="true">
-            <span class="ghosttea-mark ghosttea-mark-outline product-brand-mark"></span>
-            <strong>ghosttea</strong>
-          </span>
-        </a>
-
-        <div class="nav-actions">
-          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to dark mode">
-            <span class="theme-swatch" aria-hidden="true"></span>
-            <span data-theme-label>Dark</span>
-          </button>
-          <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>
-            <span aria-hidden="true"></span>
-          </button>
-        </div>
-
-        <div class="nav-links" data-nav-links>
-          <a href="#architecture">Architecture</a>
-          <a href="#truffle">Truffle</a>
-          <a href="#packages">Packages</a>
+    <a class="skip" href="#main">Skip to the content</a>
+    <div class="guides" aria-hidden="true"></div>
+    <header class="bar">
+      <div class="sheet">
+        <a class="lockup" href="./" aria-label="ghosttea home"><svg viewBox="58.38 83 143.05 89.17" aria-hidden="true"><path d="M171.248 132.926C177.368 132.314 188.177 132.91 193.706 136.051C201.428 140.438 195.492 150.182 191.834 155.314C184.652 165.39 175.461 168.599 163.661 170.443C152.434 171.701 127.066 171.966 138.553 153.451C146.292 140.978 157.66 136.293 171.248 132.926Z"/><path d="M79.2576 134.961C88.7607 134.158 97.3116 136.73 104.744 142.678C121.595 156.162 129.11 170.343 100.815 172.174C85.6558 171.268 70.2767 165.523 62.1029 151.863C60.5804 149.319 58.3782 145.378 59.1648 142.448C63.407 138.277 73.4771 136.182 79.2576 134.961Z"/><path d="M127.372 83C140.064 88.2326 149.556 122.874 141.698 134.595C138.354 139.583 133.449 144.51 128.724 148.158C118.647 147.63 113.299 133.04 112.116 124.546C110.012 109.454 118.522 94.4875 127.372 83Z"/></svg><span>ghosttea</span></a>
+        <nav aria-label="Site">
+          <a href="./" aria-current="page">Guide</a>
           <a href="api.html">API</a>
-          <a href="https://github.com/vibecook-dev/ghosttea">GitHub</a>
-          <a class="button button-small button-solid" href="api.html#quickstart">Get started</a>
-        </div>
-      </nav>
-    </header>
-
-    <main id="main">
-      <section class="hero shell">
-        <div class="hero-copy">
-          <p class="meta-label">VibeCook / Ghostty-powered · WebGPU desktop + Metal iOS · v0.4.0</p>
-          <h1>
-            Ship the Ghostty experience.
-            <span>Across every screen.</span>
-          </h1>
-          <p class="hero-lede">
-            <strong>ghosttea</strong> turns <code>libghostty-vt</code> into an embeddable WebGPU runtime for Electron
-            and a native Metal runtime for iOS—so your IDE, agent, or productivity app can feel like the terminal
-            developers already love.
-          </p>
-          <div class="hero-actions">
-            <a class="button button-solid" href="api.html#quickstart">Embed ghosttea</a>
-            <a class="button" href="https://github.com/vibecook-dev/ghosttea">View on GitHub ↗</a>
-          </div>
-          <div class="install-command">
-            <span class="command-prefix" aria-hidden="true">$</span>
-            <code id="hero-install">npm i @vibecook/ghosttea-electron @vibecook/ghosttea-react</code>
-            <button class="copy-button" type="button" data-copy="#hero-install" aria-live="polite">Copy</button>
-          </div>
-        </div>
-
-        <figure
-          class="platform-showcase"
-          aria-label="Product visualization of one Ghostty-powered terminal session across macOS, Windows, and iOS"
-        >
-          <div class="showcase-header">
-            <span>product visualization</span>
-            <span>one runtime / three surfaces</span>
-          </div>
-
-          <div class="showcase-canvas">
-            <span class="ghosttea-mark showcase-watermark" aria-hidden="true"></span>
-
-            <div class="device-window mac-window">
-              <div class="mac-titlebar">
-                <span class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-                <span>agent-workspace — zsh</span>
-                <span class="window-spacer" aria-hidden="true"></span>
-              </div>
-              <div class="terminal-screen">
-                <div class="terminal-heading">
-                  <span>~/work/agent-workspace</span>
-                  <span>80 × 24</span>
-                </div>
-                <p><span class="terminal-prompt">❯</span> codex --resume</p>
-                <p class="terminal-muted">OpenAI Codex · agent session restored</p>
-                <p class="terminal-gap">
-                  <span class="terminal-user">›</span> Add a command palette to the terminal workspace.
-                </p>
-                <p><span class="terminal-step">•</span> Read 17 files</p>
-                <p><span class="terminal-step">•</span> Updated workspace actions and shortcuts</p>
-                <p><span class="terminal-ok">✓</span> 148 tests passed in 12.4s</p>
-                <p class="terminal-gap terminal-bright">
-                  Ready for review.<span class="terminal-cursor" aria-hidden="true"></span>
-                </p>
-              </div>
-              <span class="device-label">macOS <i>Electron / WebGPU</i></span>
-            </div>
-
-            <div class="device-window windows-window">
-              <div class="windows-titlebar">
-                <span class="windows-tab"><b aria-hidden="true">&gt;_</b> agent-workspace</span>
-                <span class="windows-add" aria-hidden="true">＋</span>
-                <span class="windows-controls" aria-hidden="true">—　□　×</span>
-              </div>
-              <div class="terminal-screen terminal-screen-compact">
-                <div class="terminal-heading">
-                  <span>C:\work\agent-workspace</span>
-                  <span>shared</span>
-                </div>
-                <p><span class="terminal-user">›</span> Add a command palette to the terminal workspace.</p>
-                <p class="terminal-gap"><span class="terminal-step">•</span> Synced from the active session</p>
-                <p><span class="terminal-step">•</span> Running package checks</p>
-                <p><span class="terminal-ok">✓</span> 148 tests passed</p>
-                <p class="terminal-bright">Ready for review.<span class="terminal-cursor" aria-hidden="true"></span></p>
-              </div>
-              <span class="device-label">Windows <i>Electron / WebGPU</i></span>
-            </div>
-
-            <div class="phone-device">
-              <div class="phone-screen">
-                <div class="phone-status">
-                  <span>9:41</span><span class="dynamic-island" aria-hidden="true"></span><span>5G 100%</span>
-                </div>
-                <div class="phone-nav">
-                  <span class="ghosttea-mark phone-mark" aria-hidden="true"></span>
-                  <strong>ghosttea</strong>
-                  <span>•••</span>
-                </div>
-                <div class="terminal-screen phone-terminal">
-                  <div class="terminal-heading">
-                    <span>agent-workspace</span>
-                    <span>control</span>
-                  </div>
-                  <p><span class="terminal-user">›</span> Add a command palette to the terminal workspace.</p>
-                  <p class="terminal-gap"><span class="terminal-step">•</span> Session attached</p>
-                  <p><span class="terminal-step">•</span> Changes synced</p>
-                  <p><span class="terminal-ok">✓</span> 148 tests passed</p>
-                  <p class="terminal-bright">
-                    Ready for review.<span class="terminal-cursor" aria-hidden="true"></span>
-                  </p>
-                </div>
-                <div class="phone-home" aria-hidden="true"></div>
-              </div>
-              <span class="device-label">iOS <i>Native / Metal</i></span>
-            </div>
-          </div>
-
-          <figcaption>
-            <span>macOS · Windows · iOS</span>
-            <strong>same terminal core / locally rendered</strong>
-          </figcaption>
-        </figure>
-      </section>
-
-      <div class="signal-strip">
-        <div class="shell signal-grid" aria-label="Technology highlights">
-          <span>macOS / WebGPU</span>
-          <span>Windows / WebGPU</span>
-          <span>iOS / Metal</span>
-          <span>libghostty-vt</span>
-          <span>Open source / MIT</span>
-        </div>
+          <a class="ext" href="https://github.com/vibecook-dev/ghosttea">GitHub</a>
+          <button class="theme" type="button" aria-label="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 12A8 8 0 1 1 4 12A8 8 0 1 1 20 12Z"/><path d="M12 4A8 8 0 0 0 12 20Z" fill="currentColor" stroke="none"/></svg></button>
+        </nav>
       </div>
-
-      <section class="architecture-section shell" id="architecture" aria-labelledby="architecture-title">
-        <div class="architecture-heading">
+    </header>
+    <main id="main">
+      <div class="sheet">
+        <section class="hero">
           <div>
-            <p class="section-index">01 / architecture</p>
-            <h2 id="architecture-title">One terminal core.<br />Native pixels everywhere.</h2>
-          </div>
-          <p>
-            Your product owns the interface. ghosttea owns terminal state, process lifecycle, ordered input, and the
-            shortest path to the local GPU.
-          </p>
-        </div>
-
-        <div
-          class="architecture-map"
-          role="img"
-          aria-label="Ghosttea architecture: Electron, React, or Swift sends typed control and input to the Ghosttea runtime. PTY, SSH, or shared replica sessions feed libghostty-vt, which produces TRF1 frames for local WebGPU rendering on macOS and Windows or Metal rendering on iOS. Shared sessions send logical state through Truffle, never screenshots."
-        >
-          <div class="architecture-map-header">
-            <span>ghosttea / system map</span>
-            <div class="architecture-legend" aria-hidden="true">
-              <span><i class="legend-control"></i>control + input</span>
-              <span><i class="legend-data"></i>terminal data</span>
+            <p class="kicker">vibecook / terminal runtime</p>
+            <h1><span>Ship the Ghostty</span> <span>experience</span> <span class="quiet">inside your app.</span></h1>
+            <p class="lede">A terminal runtime for your app. Ghostty's terminal core, a Rust daemon, and GPU renderers for Electron and iOS. You build the product. ghosttea draws the terminal.</p>
+            <div class="cmd"><code>npm install @vibecook/ghosttea-electron @vibecook/ghosttea-react @vibecook/ghosttead</code></div>
+            <div class="actions">
+              <a class="btn solid" href="#start">Embed it</a>
+              <a class="btn" href="api.html">Read the API</a>
             </div>
           </div>
-
-          <div class="architecture-flow">
-            <article class="architecture-node product-node">
-              <span class="architecture-node-index">01 / your product</span>
-              <h3>Electron + React<br />or native Swift</h3>
-              <div class="architecture-tags">
-                <span>workspace UI</span>
-                <span>human input</span>
-                <span>agent automation</span>
-              </div>
-            </article>
-
-            <div class="architecture-link control-link" aria-hidden="true">
-              <span>typed control + input</span>
-              <i>↔</i>
-            </div>
-
-            <article class="architecture-node runtime-node">
-              <span class="architecture-node-index">02 / ghosttea runtime</span>
-              <h3>One ordered terminal core.</h3>
-              <div class="runtime-stack">
-                <div>
-                  <span>session sources</span>
-                  <strong>local PTY · direct SSH · shared replica</strong>
-                </div>
-                <div class="runtime-core">
-                  <span>terminal engine</span>
-                  <strong>libghostty-vt</strong>
-                </div>
-                <div>
-                  <span>product layer</span>
-                  <strong>lifecycle · authority · automation</strong>
-                </div>
-              </div>
-            </article>
-
-            <div class="architecture-link frame-link" aria-hidden="true">
-              <span>TRF1 binary frames</span>
-              <i>→</i>
-              <small>direct MessagePort on Electron</small>
-            </div>
-
-            <article class="architecture-node renderer-node">
-              <span class="architecture-node-index">03 / local GPU</span>
-              <div class="renderer-option">
-                <strong>WebGPU</strong>
-                <span>macOS + Windows</span>
-                <small>worker-owned renderer</small>
-              </div>
-              <div class="renderer-option">
-                <strong>Metal</strong>
-                <span>iOS</span>
-                <small>native terminal view</small>
-              </div>
-              <p>Sharp terminal pixels inside your interface.</p>
-            </article>
-          </div>
-
-          <div class="shared-session-rail">
+          <figure>
+            <img class="only-light" src="assets/img/figure-light.svg" width="448" height="336" alt="ghosttea's mark, three leaves, drawn as three surfaces around one core: macOS with WebGPU, Windows with WebGPU, and iOS with Metal. The core is libghostty-vt." decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/figure-dark.svg" width="448" height="336" alt="" decoding="async" />
+          </figure>
+        </section>
+        <div class="rule"></div>
+        <ul class="specs" aria-label="packages">
+          <li>packages</li>
+          <li>ghosttea-electron</li>
+          <li>ghosttea-react</li>
+          <li>ghosttead</li>
+          <li>GhostteaKit</li>
+        </ul>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>A real terminal, in your window.</h2>
+          <p>Three splits in one window, drawn with WebGPU.</p>
+        </header>
+        <figure class="plate shot">
+          <div class="wide"><img src="assets/img/workspace.png" width="2080" height="1080" alt="The ghosttea demo app with three split panes: a colour and text-rendering test, a git graph, and a file listing with git status" loading="lazy" decoding="async" /></div>
+          <figcaption>The demo app in the repository. A screenshot, not a mock.</figcaption>
+        </figure>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>Three surfaces.</h2>
+          <p>One terminal core under all of them.</p>
+        </header>
+        <ul class="tiles">
+          <li>
+            <img class="only-light" src="assets/img/tile-macos-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-macos-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>macOS</h3>
+            <p>Apple silicon. Electron and React, drawn with WebGPU.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-windows-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-windows-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>Windows</h3>
+            <p>x64. Electron and React, drawn with WebGPU.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-ios-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-ios-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>iOS 18.1+</h3>
+            <p>Swift, drawn with Metal. Tested on devices; not yet qualified for release.</p>
+          </li>
+        </ul>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2 id="start">Embed it.</h2>
+          <p>Needs Electron 35 or later and React 19.</p>
+        </header>
+        <div class="two">
+          <div class="steps">
             <div>
-              <span>authoritative desktop session</span>
-              <strong>PTY + Ghostty VT</strong>
-            </div>
-            <div class="shared-session-link">
-              <span>logical state / Truffle</span>
-              <i aria-hidden="true">→</i>
+              <h3>Install</h3>
+              <p>The Electron bridge, the React surface, and the daemon binary.</p>
+              <div class="cmd"><code>npm install @vibecook/ghosttea-electron @vibecook/ghosttea-react @vibecook/ghosttead</code></div>
             </div>
             <div>
-              <span>local iOS replica</span>
-              <strong>TRF1 + Metal</strong>
+              <h3>Main process</h3>
+              <p>Start the daemon and hand the window its ports.</p>
             </div>
-          </div>
-
-          <div class="architecture-map-footer">
-            <span>Frames skip Electron main and React state.</span>
-            <strong>State moves. Pixels stay local.</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="statement-section shell" id="why">
-        <p class="section-index">02 / purpose</p>
-        <div class="statement-grid">
-          <h2>The terminal developers love. Now inside the products they build.</h2>
-          <div class="statement-copy">
-            <p>
-              CLI agents have turned the terminal into the center of modern development. Ghostty set the bar for how
-              fast, native, and calm that surface can feel.
-            </p>
-            <p>
-              ghosttea brings that terminal core into IDEs, AI workbenches, and productivity apps—without rebuilding VT
-              semantics, GPU rendering, PTYs, automation, and session continuity from scratch.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section class="capability-section shell">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">03 / what it changes</p>
-            <h2>One terminal core.<br />Three native surfaces.<br />Your product on top.</h2>
-          </div>
-          <p>Start with a complete workspace or compose only the runtime layers your product needs.</p>
-        </div>
-
-        <div class="capability-grid">
-          <article class="capability-card">
-            <div class="card-topline">
-              <span>01</span>
-              <span class="mini-shape mini-circle" aria-hidden="true"></span>
-            </div>
-            <h3>Feels like Ghostty</h3>
-            <p>The same pinned VT core, native text shaping, reflow, selection, scrollback, and GPU-first rendering.</p>
-            <span class="card-meta">libghostty-vt · no DOM grid</span>
-          </article>
-          <article class="capability-card">
-            <div class="card-topline">
-              <span>02</span>
-              <span class="mini-shape mini-triangle" aria-hidden="true"></span>
-            </div>
-            <h3>Drops into Electron</h3>
-            <p>
-              Ship the same terminal workspace on macOS and Windows with typed lifecycle APIs and a sandboxed bridge.
-            </p>
-            <span class="card-meta">Electron · React · WebGPU</span>
-          </article>
-          <article class="capability-card">
-            <div class="card-topline">
-              <span>03</span>
-              <span class="mini-shape mini-square" aria-hidden="true"></span>
-            </div>
-            <h3>Goes native on iOS</h3>
-            <p>
-              Connect over SSH or carry a live logical session to a locally rendered Metal surface on iPhone or iPad.
-            </p>
-            <span class="card-meta">Swift · Metal · local pixels</span>
-          </article>
-        </div>
-      </section>
-
-      <section class="truffle-section" id="truffle">
-        <div class="shell">
-          <div class="truffle-heading">
             <div>
-              <p class="section-index">Truffle / remote sessions</p>
-              <h2>A live terminal.<br />Replicated, not streamed.</h2>
+              <h3>Renderer</h3>
+              <p>A whole terminal workspace, with splits.</p>
             </div>
-            <p>
-              <strong>Truffle</strong> carries ordered terminal state to another device. ghosttea rebuilds the view
-              there and renders every pixel locally with WebGPU or Metal.
-            </p>
           </div>
+          <div class="code"><header><div role="tablist" aria-label="Files"><button type="button" role="tab" id="code-21-t0" aria-controls="code-21-p0" aria-selected="true">main.ts</button><button type="button" role="tab" id="code-21-t1" aria-controls="code-21-p1" aria-selected="false" tabindex="-1">renderer.tsx</button></div></header><pre id="code-21-p0" role="tabpanel" aria-labelledby="code-21-t0" tabindex="0"><code><span class="k">import</span> { GhostteaElectronBackend } <span class="k">from</span> <span class="s">"@vibecook/ghosttea-electron/main"</span>;
+<span class="k">import</span> { ghostteadPath } <span class="k">from</span> <span class="s">"@vibecook/ghosttead"</span>;
 
-          <div
-            class="truffle-map"
-            role="img"
-            aria-label="A terminal process remains authoritative on its host while Truffle sends ordered logical state—not screenshots—to a remote ghosttea replica that renders locally with WebGPU or Metal."
-          >
-            <article class="truffle-endpoint">
-              <div class="truffle-endpoint-label">
-                <span>authoritative host</span>
-                <i>keeps running</i>
-              </div>
-              <h3>The process<br />stays put.</h3>
-              <div class="truffle-terminal" aria-hidden="true">
-                <div><span>agent-workspace</span><span>live</span></div>
-                <p><b>❯</b> codex --resume</p>
-                <p class="truffle-terminal-muted">agent session restored</p>
-                <p><em>✓</em> 148 tests passed</p>
-              </div>
-              <small>PTY · Ghostty VT · source of truth</small>
-            </article>
+<span class="k">const</span> backend = <span class="k">new</span> GhostteaElectronBackend({
+  mode: <span class="s">"managed"</span>,
+  daemon: { binary: { kind: <span class="s">"executable"</span>, path: ghostteadPath() } },
+});
+<span class="k">await</span> backend.start();
+window.webContents.on(<span class="s">"did-finish-load"</span>, () =&gt; backend.attachRenderer(window.webContents));</code></pre><pre id="code-21-p1" role="tabpanel" aria-labelledby="code-21-t1" hidden tabindex="0"><code><span class="k">import</span> {
+  GhostteaProvider,
+  createGhostteaTerminalRuntime,
+  waitForGhostteaRendererPorts,
+} <span class="k">from</span> <span class="s">"@vibecook/ghosttea-react"</span>;
+<span class="k">import</span> { GhostteaWorkspace } <span class="k">from</span> <span class="s">"@vibecook/ghosttea-react/workspace"</span>;
 
-            <div class="truffle-transport">
-              <span>Truffle</span>
-              <strong>ordered<br />terminal state</strong>
-              <i aria-hidden="true">→</i>
-              <small>no screenshots<br />no video stream</small>
+<span class="k">const</span> runtime = createGhostteaTerminalRuntime({ ports: waitForGhostteaRendererPorts(), platform });
+
+&lt;GhostteaProvider runtime={runtime}&gt;
+  &lt;GhostteaWorkspace platform={workspacePlatform} /&gt;
+&lt;/GhostteaProvider&gt;;</code></pre></div>
+        </div>
+        <p class="after">The preload line and the two small <code>platform</code> adapters are in the <a href="api.html#quickstart">API guide</a>.</p>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>How a frame reaches the screen.</h2>
+          <p>The daemon shapes the text and sends a display list. Your app's main process and your React tree never touch a frame.</p>
+        </header>
+        <figure class="plate">
+          <div class="wide"><img class="only-light" src="assets/img/path-light.svg" width="0" height="1000" alt="The frame path: PTY, VT state, shaping and a TRF1 frame in the daemon; a bridge in an Electron utility process; decoding and WebGPU in one renderer worker. Electron main and React are kept off the path." loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/path-dark.svg" width="0" height="1000" alt="" loading="lazy" decoding="async" /></div>
+          
+        </figure>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>What you get.</h2>
+          
+        </header>
+        <ul class="tiles">
+          <li>
+            <img class="only-light" src="assets/img/tile-core-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-core-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>Ghostty's core</h3>
+            <p><code>libghostty-vt</code> 1.0 keeps the state: escape sequences, reflow, selection and scrollback.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-shaping-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-shaping-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>Real text shaping</h3>
+            <p>Ligatures and wide characters, shaped natively before they reach the GPU.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-splits-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-splits-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>A workspace</h3>
+            <p><code>GhostteaWorkspace</code> gives you splits, zoom and settings. Or place one <code>TerminalSurface</code> yourself.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-config-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-config-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>Ghostty config</h3>
+            <p>The same file syntax and 602 colour themes. <a href="https://github.com/vibecook-dev/ghosttea/blob/main/docs/ghostty-config-compatibility.md">Key coverage</a> is partial.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-automation-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-automation-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>Automation that yields</h3>
+            <p>Scripts and agents can type, but their input is refused if a person typed first.</p>
+          </li>
+          <li>
+            <img class="only-light" src="assets/img/tile-daemon-light.svg" width="0" height="320" alt="" loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/tile-daemon-dark.svg" width="0" height="320" alt="" loading="lazy" decoding="async" />
+            <h3>A daemon owns the PTYs</h3>
+            <p><code>ghosttead</code> runs your shells in its own process, on macOS and Windows.</p>
+          </li>
+        </ul>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>Shared sessions.</h2>
+          <p>Open a desktop session from another desktop or from an iPhone. The host sends terminal state, so every device draws sharp text at its own size.</p>
+        </header>
+        <figure class="plate">
+          <div class="wide"><img class="only-light" src="assets/img/share-light.svg" width="0" height="1000" alt="A shared session: the host, which owns the PTY, sends cells, styles and the cursor to a viewer, which draws the terminal itself. No pixels or video are sent." loading="lazy" decoding="async" /><img aria-hidden="true" class="only-dark" src="assets/img/share-dark.svg" width="0" height="1000" alt="" loading="lazy" decoding="async" /></div>
+          
+        </figure>
+        <p class="after">It travels over your tailnet on <a href="https://vibecook-dev.github.io/truffle/">truffle</a>, and your app supplies the truffle sidecar.</p>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>Run the demo.</h2>
+          <p>The app in the screenshot above, from a clone.</p>
+        </header>
+        <div class="two">
+          <div class="steps">
+            <div>
+              <h3>What it needs</h3>
+              <p>Node 22 or later and Rust 1.88 or later. The first run compiles the daemon with Cargo.</p>
             </div>
-
-            <article class="truffle-endpoint">
-              <div class="truffle-endpoint-label">
-                <span>remote replica</span>
-                <i>follows live</i>
-              </div>
-              <h3>The view<br />comes with you.</h3>
-              <div class="truffle-terminal" aria-hidden="true">
-                <div><span>agent-workspace</span><span>replica</span></div>
-                <p><b>❯</b> codex --resume</p>
-                <p class="truffle-terminal-muted">agent session restored</p>
-                <p><em>✓</em> 148 tests passed</p>
-              </div>
-              <small>WebGPU desktop · Metal iOS · local pixels</small>
-            </article>
           </div>
-
-          <div class="truffle-caption">
-            <p><strong>Same live session.</strong> Native resolution on every screen.</p>
-            <p><strong>Host stays authoritative.</strong> Input and resize control remain explicit.</p>
-          </div>
+          <div class="code"><header><span>shell</span></header><pre tabindex="0"><code>git clone https://github.com/vibecook-dev/ghosttea.git
+cd ghosttea
+npm install
+npm run fetch:ghostty-vt
+npm run dev</code></pre></div>
         </div>
-      </section>
-
-      <section class="package-section shell" id="packages">
-        <div class="section-heading">
-          <div>
-            <p class="section-index">Packages / choose a layer</p>
-            <h2>Start high-level.<br />Drop down deliberately.</h2>
-          </div>
-          <p>Six npm packages and six published Rust crates share one version contract.</p>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>Packages.</h2>
+          <p>Ten npm packages, seven crates and the Swift package share one version. <a href="https://github.com/vibecook-dev/ghosttea/blob/main/PUBLISHING.md">PUBLISHING.md</a> lists them all.</p>
+        </header>
+        <div class="scroll">
+          <table>
+            <thead><tr><th scope="col">Need</th><th scope="col">Use</th></tr></thead>
+            <tbody>
+              <tr><td>Complete terminal workspace</td><td><code>@vibecook/ghosttea-react/workspace</code></td></tr>
+              <tr><td>Terminal surfaces in custom UI</td><td><code>@vibecook/ghosttea-react</code></td></tr>
+              <tr><td>Electron lifecycle and bridge</td><td><code>@vibecook/ghosttea-electron</code></td></tr>
+              <tr><td>The daemon binary</td><td><code>@vibecook/ghosttead</code></td></tr>
+              <tr><td>Headless automation</td><td><code>@vibecook/ghosttea-client</code></td></tr>
+              <tr><td>Rust embedding</td><td><code>ghosttea</code> and <code>ghosttea-core</code> on crates.io</td></tr>
+              <tr><td>iOS</td><td><code>GhostteaKit</code> through SwiftPM, from the repository's URL</td></tr>
+            </tbody>
+          </table>
         </div>
-
-        <div class="package-list">
-          <a href="api.html#react">
-            <span class="package-number">01</span>
-            <span class="package-name">@vibecook/ghosttea-react</span>
-            <span class="package-role">workspace · surfaces · rendering</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a href="api.html#electron">
-            <span class="package-number">02</span>
-            <span class="package-name">@vibecook/ghosttea-electron</span>
-            <span class="package-role">lifecycle · transport · automation</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a href="api.html#node-client">
-            <span class="package-number">03</span>
-            <span class="package-name">@vibecook/ghosttea-client</span>
-            <span class="package-role">headless Node control</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a href="api.html#browser-client">
-            <span class="package-number">04</span>
-            <span class="package-name">@vibecook/ghosttea</span>
-            <span class="package-role">browser control plane</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a href="api.html#protocol">
-            <span class="package-number">05</span>
-            <span class="package-name">protocol + frame</span>
-            <span class="package-role">typed contracts · TRF1 decoder</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a href="api.html#rust">
-            <span class="package-number">06</span>
-            <span class="package-name">ghosttea + ghosttea-core</span>
-            <span class="package-role">native service · terminal model</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-        </div>
-      </section>
-
-      <section class="final-cta shell">
-        <span class="ghosttea-mark final-product-mark" aria-hidden="true"></span>
-        <p class="section-index">VibeCook / ghosttea</p>
-        <h2>Ship the terminal experience<br />your users already want.</h2>
-        <p>
-          Bring Ghostty-powered terminal behavior to your Electron or native iOS product without starting from a blank
-          emulator.
-        </p>
-        <div class="hero-actions">
-          <a class="button button-solid" href="api.html#quickstart">Read the quickstart</a>
-          <a class="button" href="https://github.com/vibecook-dev/ghosttea">Star on GitHub ↗</a>
-        </div>
-      </section>
+        </section>
+        <div class="rule"></div>
+        <section class="sec">
+        <header>
+          <h2>Status.</h2>
+          
+        </header>
+        <dl class="facts">
+          <dt>macOS and Windows</dt>
+          <dd>Release-gated in CI. Prebuilt binaries cover Apple silicon and x64 Windows only: there is no Intel Mac, arm64 Windows or Linux build yet.</dd>
+          <dt>iOS</dt>
+          <dd>Implemented and tested on devices. Release qualification is still open; see the <a href="https://github.com/vibecook-dev/ghosttea/blob/main/apple/GhostteaKit/Compatibility/release-hardening.md">qualification record</a>.</dd>
+          <dt>SSH</dt>
+          <dd>Exists on iOS only, and is not approved for production yet.</dd>
+          <dt>Images</dt>
+          <dd>The Kitty graphics protocol is not implemented.</dd>
+        </dl>
+        </section>
+      </div>
     </main>
-
-    <footer class="site-footer">
-      <div class="shell footer-grid">
-        <div>
-          <a class="brand-lockup footer-brand" href="index.html" aria-label="ghosttea by VibeCook home">
-            <span class="ghosttea-mark product-brand-mark" aria-hidden="true"></span>
-            <span class="brand-type"><strong>ghosttea</strong><span>by VibeCook</span></span>
-          </a>
-          <p>A focused open-source ingredient for terminal-native products.</p>
-        </div>
-        <div class="footer-links">
-          <a href="api.html">API guide</a>
-          <a href="https://www.npmjs.com/org/vibecook">npm</a>
-          <a href="https://crates.io/search?q=ghosttea">crates.io</a>
-          <a href="https://github.com/vibecook-dev/ghosttea">GitHub</a>
-        </div>
-        <p class="footer-meta">© <span data-year>2026</span> VibeCook · MIT licensed · Independent of Ghostty.</p>
+    <footer class="sheet">
+      <div class="rule"></div>
+      <div class="foot">
+        <h2>From the same kitchen</h2>
+        <ul class="family">
+          <li><a href="https://vibecook-dev.github.io/truffle/"><svg viewBox="78 81.6 97.3 92.4" aria-hidden="true"><path d="M98.7047 139.617C106.418 139.221 112.734 142.28 115.58 149.86C117.317 154.6 117.123 159.84 115.043 164.441C112.429 170.124 109.319 171.949 103.904 173.973C78.6944 173.479 77.9612 146.947 98.7047 139.617Z"/><path d="M150.179 139.544C157.989 139.03 165.208 141.278 169.298 148.47C171.499 152.293 172.023 156.854 170.749 161.073C169.041 166.544 165.457 169.115 160.681 171.462C156.545 172.556 152.986 173.024 148.906 171.363C144.771 169.682 141.551 166.314 140.057 162.115C136.569 152.556 140.327 142.88 150.179 139.544Z"/><path d="M153.255 82.222C156.898 81.932 159.93 81.6024 163.312 83.5272C171.276 88.0557 175.255 100.719 170.344 108.734C167.683 113.078 164.427 114.014 159.814 115.174C136.98 115.254 132.989 91.3912 153.255 82.222Z"/><path d="M100.043 82.3538C108.871 81.6419 116.625 88.1679 117.433 96.9877C118.24 105.808 111.801 113.632 102.991 114.542C97.2021 115.135 91.5383 112.577 88.1625 107.838C84.7874 103.098 84.2203 96.9086 86.679 91.6351C89.137 86.3617 94.241 82.8153 100.043 82.3538Z"/></svg><b>truffle</b><span>Your devices, talking to each other directly.</span></a></li>
+          <li><a href="./" aria-current="true"><svg viewBox="58.38 83 143.05 89.17" aria-hidden="true"><path d="M171.248 132.926C177.368 132.314 188.177 132.91 193.706 136.051C201.428 140.438 195.492 150.182 191.834 155.314C184.652 165.39 175.461 168.599 163.661 170.443C152.434 171.701 127.066 171.966 138.553 153.451C146.292 140.978 157.66 136.293 171.248 132.926Z"/><path d="M79.2576 134.961C88.7607 134.158 97.3116 136.73 104.744 142.678C121.595 156.162 129.11 170.343 100.815 172.174C85.6558 171.268 70.2767 165.523 62.1029 151.863C60.5804 149.319 58.3782 145.378 59.1648 142.448C63.407 138.277 73.4771 136.182 79.2576 134.961Z"/><path d="M127.372 83C140.064 88.2326 149.556 122.874 141.698 134.595C138.354 139.583 133.449 144.51 128.724 148.158C118.647 147.63 113.299 133.04 112.116 124.546C110.012 109.454 118.522 94.4875 127.372 83Z"/></svg><b>ghosttea</b><span>The Ghostty terminal experience, inside your app.</span></a></li>
+          <li><a href="https://vibecook-dev.github.io/mille/"><svg viewBox="70.57 75 120.63 107.34" aria-hidden="true"><path d="M128.651 75C131.634 75.6963 177.883 133.951 183.236 141.676L182.39 143.16C174.875 146.964 142.347 143.352 131.518 143.016C111.446 142.892 91.469 144.227 71.3885 143.567C80.4137 131.043 91.0678 118.833 101.109 107.046C109.988 96.6225 119.374 84.9839 128.651 75Z"/><path d="M167.846 154.381C185.143 154.085 191.201 172.394 175.234 180.899C156.801 182.342 152.991 159.248 167.846 154.381Z"/><path d="M79.8215 156.238C91.3465 155.191 98.2357 162.371 95.0299 174.588C94.0348 178.379 89.9894 179.932 86.5509 181.46C84.6362 181.589 81.6823 181.454 79.8997 180.847C76.6053 179.752 73.8849 177.388 72.3402 174.28C70.7738 171.143 70.5714 167.499 71.781 164.208C73.4846 159.473 75.7031 158.27 79.8215 156.238Z"/><path d="M125.393 154.309C141.945 154.48 145.686 171.751 130.892 179.889C111.89 178.768 110.897 163.247 125.393 154.309Z"/></svg><b>mille</b><span>The file tree for the editor you are building.</span></a></li>
+        </ul>
+        <dl class="block">
+          <div><dt>part</dt><dd class="title">ghosttea</dd></div>
+          <div><dt>version</dt><dd><a href="https://www.npmjs.com/package/@vibecook/ghosttea-react" data-npm="@vibecook/ghosttea-react">latest</a></dd></div>
+          <div><dt>licence</dt><dd><a href="https://github.com/vibecook-dev/ghosttea/blob/main/LICENSE">MIT</a></dd></div>
+          <div><dt>drawn by</dt><dd><a href="https://github.com/jamesyong-42"><svg class="jy" viewBox="0 0 14107.04 1105.36" role="img" aria-label="James Yong"><path d="M0 555.36a531 531 0 1 1 1062 0a531 531 0 1 1 -1062 0ZM1122 1065.36L2285 1065.36L1703.5 3.36ZM2463 1055.36L3463 1055.36L3463 55.36L2463 55.36ZM5063 55.36L5063 776.79L5062.64 791.51L5061.56 806.19L5059.75 820.8L5057.24 835.31L5054.01 849.68L5050.08 863.87L5045.46 877.85L5040.16 891.59L5034.2 905.05L5027.58 918.2L5020.32 931.02L5012.44 943.46L5003.96 955.5L4994.9 967.1L4985.29 978.25L4975.13 988.92L4964.47 999.07L4953.32 1008.69L4941.71 1017.75L4929.67 1026.23L4917.23 1034.1L4904.42 1041.36L4891.27 1047.98L4877.81 1053.95L4864.07 1059.25L4850.09 1063.87L4835.89 1067.8L4821.53 1071.02L4807.02 1073.54L4792.41 1075.34L4777.72 1076.42L4763 1076.79L4748.28 1076.42L4733.59 1075.34L4718.98 1073.54L4704.47 1071.02L4690.11 1067.8L4675.91 1063.87L4661.93 1059.25L4648.19 1053.95L4634.73 1047.98L4621.58 1041.36L4608.77 1034.1L4596.33 1026.23L4584.29 1017.75L4572.68 1008.69L4561.53 999.07L4550.87 988.92L4540.71 978.25L4531.1 967.1L4522.04 955.5L4513.56 943.46L4505.68 931.02L4498.42 918.2L4491.8 905.05L4485.84 891.59L4480.54 877.85L4475.92 863.87L4471.99 849.68L4468.76 835.31L4466.25 820.8L4464.44 806.19L4463.36 791.51L4463 776.79L4636.29 776.79L4636.44 783.89L4636.9 790.97L4637.66 798.02L4638.72 805.02L4640.08 811.95L4641.74 818.79L4643.69 825.54L4645.93 832.17L4648.45 838.66L4651.25 845L4654.31 851.18L4657.64 857.18L4661.22 862.99L4665.05 868.59L4669.11 873.97L4673.4 879.11L4677.9 884.01L4682.61 888.65L4687.52 893.02L4692.6 897.11L4697.86 900.91L4703.27 904.41L4708.82 907.61L4714.51 910.48L4720.31 913.04L4726.22 915.27L4732.21 917.16L4738.28 918.72L4744.41 919.93L4750.58 920.8L4756.78 921.33L4763 921.5L4769.22 921.33L4775.42 920.8L4781.59 919.93L4787.72 918.72L4793.79 917.16L4799.78 915.27L4805.69 913.04L4811.49 910.48L4817.18 907.61L4822.73 904.41L4828.14 900.91L4833.4 897.11L4838.48 893.02L4843.39 888.65L4848.1 884.01L4852.6 879.11L4856.89 873.97L4860.95 868.59L4864.78 862.99L4868.36 857.18L4871.69 851.18L4874.75 845L4877.55 838.66L4880.07 832.17L4882.31 825.54L4884.26 818.79L4885.92 811.95L4887.28 805.02L4888.34 798.02L4889.1 790.97L4889.56 783.89L4889.71 776.79L4889.71 55.36ZM5473.07 798.21H6001.64L5969.5 656.07H5505.21ZM5734.5 338.21 5893.78 709.29 5897 751.07 6032.71 1055.36H6223.78L5734.5 0L5245.21 1055.36H5436.28L5574.86 742.14L5577.36 705ZM6597.87 446.43 6902.51 962.5 7207.15 446.43 7275.72 1055.36H7450.72L7313.22 5.36L6902.51 683.57L6491.8 5.36L6354.3 1055.36H6529.3ZM7790.35 1055.36H8294.63V907.14H7790.35ZM7790.35 203.57H8294.63V55.36H7790.35ZM7790.35 592.86H8266.06V446.43H7790.35ZM7685.71 55.36V1055.36H7851.78V55.36ZM8559.37 733.21 8433.65 821.07Q8466.87 889.29 8522.76 948.04Q8578.65 1006.79 8653.65 1041.79Q8728.65 1076.79 8816.51 1076.79Q8880.8 1076.79 8940.26 1056.43Q8999.72 1036.07 9046.87 997.86Q9094.01 959.64 9121.33 904.11Q9148.65 848.57 9148.65 778.57Q9148.65 712.5 9126.15 663.57Q9103.65 614.64 9066.87 578.75Q9030.08 542.86 8985.08 518.39Q8940.08 493.93 8895.08 477.86Q8815.08 450 8764.9 422.86Q8714.72 395.71 8691.33 364.64Q8667.94 333.57 8667.94 295Q8667.94 252.5 8700.97 220.18Q8734.01 187.86 8803.3 187.86Q8854.01 187.86 8891.69 207.5Q8929.37 227.14 8957.76 259.11Q8986.15 291.07 9005.8 327.86L9142.22 250.71Q9117.22 198.21 9072.05 149.46Q9026.87 100.71 8961.15 69.11Q8895.44 37.5 8806.15 37.5Q8716.87 37.5 8645.8 71.25Q8574.72 105 8533.65 165.71Q8492.58 226.43 8492.58 306.79Q8492.58 377.14 8519.37 426.43Q8546.15 475.71 8587.76 509.46Q8629.37 543.21 8675.26 564.82Q8721.15 586.43 8757.94 599.64Q8821.15 622.5 8869.19 645.89Q8917.22 669.29 8944.19 702.86Q8971.15 736.43 8971.15 791.79Q8971.15 851.43 8928.3 888.39Q8885.44 925.36 8816.15 925.36Q8760.08 925.36 8713.83 901.43Q8667.58 877.5 8629.9 834.11Q8592.22 790.71 8559.37 733.21ZM10360.17 55.36 10126.96 483.21 9894.82 55.36H9701.96L10041.96 635.36V1055.36H10213.39V633.57L10553.03 55.36ZM10861.69 555.36Q10861.69 452.14 10905.44 371.96Q10949.19 291.79 11025.98 245.54Q11102.76 199.29 11201.69 199.29Q11302.76 199.29 11378.84 245.54Q11454.91 291.79 11498.3 371.96Q11541.69 452.14 11541.69 555.36Q11541.69 658.21 11497.94 738.57Q11454.19 818.93 11377.94 865.18Q11301.69 911.43 11201.69 911.43Q11102.76 911.43 11025.98 865.18Q10949.19 818.93 10905.44 738.57Q10861.69 658.21 10861.69 555.36ZM10682.05 555.36Q10682.05 666.79 10720.62 762.32Q10759.19 857.86 10829.19 928.04Q10899.19 998.21 10994.37 1037.5Q11089.55 1076.79 11201.69 1076.79Q11314.91 1076.79 11409.55 1037.5Q11504.19 998.21 11574.19 928.04Q11644.19 857.86 11682.76 762.32Q11721.34 666.79 11721.34 555.36Q11721.34 442.86 11682.59 348.39Q11643.84 253.93 11573.48 184.46Q11503.12 115 11408.66 76.25Q11314.19 37.5 11201.69 37.5Q11090.98 37.5 10995.98 76.25Q10900.98 115 10830.62 184.46Q10760.26 253.93 10721.16 348.39Q10682.05 442.86 10682.05 555.36ZM12688.55 55.36V726.79L11958.2 5.36V1055.36H12124.27V383.93L12854.63 1105.36V55.36ZM13625.73 675H13931.8Q13918.95 725.71 13893.41 770Q13867.87 814.29 13829.48 848.21Q13791.09 882.14 13738.05 900.89Q13685.02 919.64 13618.59 919.64Q13520.02 919.64 13441.27 873.93Q13362.52 828.21 13316.45 746.07Q13270.37 663.93 13270.37 555.36Q13270.37 445.36 13317.16 364.82Q13363.95 284.29 13442.87 239.46Q13521.8 194.64 13618.59 194.64Q13722.16 194.64 13795.73 237.32Q13869.3 280 13911.09 351.79L14048.59 260Q14003.95 190 13940.73 140.54Q13877.52 91.07 13797.16 64.29Q13716.8 37.5 13618.59 37.5Q13505.73 37.5 13409.48 75Q13313.23 112.5 13241.98 181.61Q13170.73 250.71 13131.27 345.89Q13091.8 441.07 13091.8 555.36Q13091.8 669.64 13130.73 765.36Q13169.66 861.07 13240.2 930.89Q13310.73 1000.71 13406.45 1038.75Q13502.16 1076.79 13615.02 1076.79Q13734.66 1076.79 13827.7 1033.39Q13920.73 990 13983.95 914.29Q14047.16 838.57 14078.41 740.54Q14109.66 642.5 14106.8 532.14H13625.73Z"/></svg></a></dd></div>
+          <div><dt>sheet</dt><dd><a href="./" aria-current="page">Guide</a> &nbsp; <a href="api.html">API</a></dd></div>
+        </dl>
+        <p class="legal"><a href="https://github.com/vibecook-dev/ghosttea/blob/main/LICENSE">MIT</a> © 2026 James Yong. ghosttea is a <a href="https://github.com/vibecook-dev">vibecook</a> project, built independently on <code>libghostty-vt</code> and not affiliated with Ghostty. <a href="https://github.com/vibecook-dev/ghosttea/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a></p>
       </div>
     </footer>
-
-    <script src="site.js" defer></script>
   </body>
 </html>
